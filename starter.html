@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SDF Raymarching with Three.js</title>
+    <style>
+        body { margin: 0; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <div id="container"></div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.157.0/build/three.module.js"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        // --- Shader Definitions ---
+
+        const vertexShader = `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `;
+
+        const fragmentShader = `
+            varying vec2 vUv;
+            uniform vec2 u_resolution;
+            uniform float u_time;
+            uniform vec2 u_mouse;
+            
+            // --- From sdf/primitives.glsl ---
+            float sdSphere(in vec3 point, in float radius) {
+                return length(point) - radius;
+            }
+
+            // --- From setup/raymarching.glsl ---
+            float Scene(in vec3 p); // Forward declaration
+
+            float raymarch(in vec3 ro, in vec3 rd) {
+                float t = 0.0;
+                for (int i = 0; i < 500; ++i) {
+                    vec3 p = ro + rd * t;
+                    float d = Scene(p);
+                    if (d < 0.001) return t;
+                    t += d;
+                    if (t > 200.0) break;
+                }
+                return -1.0;
+            }
+
+            vec3 estimateNormal(vec3 p) {
+                float eps = 0.001;
+                vec2 e = vec2(1.0, -1.0) * 0.5773 * eps;
+                return normalize(vec3(
+                    Scene(p + vec3(e.x, e.y, e.y)) - Scene(p + vec3(e.y, e.y, e.y)),
+                    Scene(p + vec3(e.y, e.x, e.y)) - Scene(p + vec3(e.y, e.y, e.y)),
+                    Scene(p + vec3(e.y, e.y, e.x)) - Scene(p + vec3(e.y, e.y, e.y))
+                ));
+            }
+
+            // --- From setup/camera.glsl ---
+            vec3 getRayDir(vec2 st, vec3 ro, vec3 lookAt) {
+                vec3 f = normalize(lookAt - ro);
+                vec3 r = normalize(cross(vec3(0,1,0), f));
+                vec3 u = cross(f, r);
+                return normalize(st.x * r + st.y * u + 1.5 * f);
+            }
+            
+            // --- From setup/lighting.glsl ---
+            float softShadow(vec3 ro, vec3 rd) {
+                float res = 1.0;
+                float t = 0.01;
+                for (int i = 0; i < 32; i++) {
+                    float h = Scene(ro + rd * t);
+                    if (h < 0.001) return 0.0;
+                    res = min(res, 10.0 * h / t);
+                    t += h;
+                    if (t > 5.0) break;
+                }
+                return clamp(res, 0.0, 1.0);
+            }
+            
+            // --- Your Scene Definition ---
+            float Scene(in vec3 p) {
+                // Animate the sphere's radius with time
+                float radius = 0.5 + 0.1 * sin(u_time);
+                return sdSphere(p, radius);
+            }
+
+            void main() {
+                vec2 st = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / u_resolution.y;
+
+                // --- Camera ---
+                vec3 ro = vec3(0.0, 0.0, -3.0);
+                vec3 rd = getRayDir(st, ro, vec3(0.0));
+
+                // --- Raymarching ---
+                float t = raymarch(ro, rd);
+
+                vec3 color = vec3(0.1, 0.1, 0.2); // Background color
+
+                if (t > -0.5) {
+                    vec3 p = ro + rd * t;
+                    vec3 normal = estimateNormal(p);
+                    vec3 lightPos = vec3(2.0, 3.0, -3.0);
+                    vec3 lightDir = normalize(lightPos - p);
+                    
+                    // --- Lighting ---
+                    float diffuse = max(dot(normal, lightDir), 0.0);
+                    float shadow = softShadow(p + normal * 0.01, lightDir);
+                    diffuse *= shadow;
+
+                    color = vec3(1.0, 0.5, 0.2) * diffuse;
+                }
+
+                gl_FragColor = vec4(color, 1.0);
+            }
+        `;
+
+        // --- Three.js Setup ---
+        
+        let scene, camera, renderer, material;
+        let uniforms;
+
+        function init() {
+            scene = new THREE.Scene();
+            
+            const aspect = window.innerWidth / window.innerHeight;
+            camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+            renderer = new THREE.WebGLRenderer();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.getElementById('container').appendChild(renderer.domElement);
+
+            uniforms = {
+                u_time: { value: 0.0 },
+                u_resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+                u_mouse: { value: new THREE.Vector2() }
+            };
+
+            const geometry = new THREE.PlaneGeometry(2, 2);
+            material = new THREE.ShaderMaterial({
+                vertexShader,
+                fragmentShader,
+                uniforms
+            });
+
+            const plane = new THREE.Mesh(geometry, material);
+            scene.add(plane);
+
+            window.addEventListener('resize', onWindowResize);
+            document.addEventListener('mousemove', onMouseMove);
+        }
+
+        function onWindowResize() {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            
+            renderer.setSize(width, height);
+            uniforms.u_resolution.value.set(width, height);
+        }
+
+        function onMouseMove(event) {
+            uniforms.u_mouse.value.set(event.clientX, event.clientY);
+        }
+
+        function animate(time) {
+            requestAnimationFrame(animate);
+            
+            uniforms.u_time.value = time * 0.001;
+            renderer.render(scene, camera);
+        }
+
+        init();
+        animate();
+
+    </script>
+</body>
+</html>

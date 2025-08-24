@@ -27,7 +27,16 @@ void cameraOrbit(in vec2 uv, in vec2 mouse, in vec2 resolution, in float zoom, o
     
     rd = getRayDir(uv, ro, vec3(0.0));
 }
-void cameraFirstPerson( in vec2 uv, in vec2 mouse, in vec2 resolution, in float time, in vec4 movement,  // x = forward, y = backward, z = left, w = right in float speed, out vec3 ro, out vec3 rd) 
+void cameraFirstPerson( 
+   in vec2 uv, 
+   in vec2 mouse, 
+   in vec2 resolution, 
+   in float time, 
+   in vec4 movement,  // x = forward, y = backward, z = left, w = right 
+   in float speed, 
+   out vec3 ro, 
+   out vec3 rd
+) 
 {
   // Mouse look
   vec2 mouseNorm = (mouse.xy / resolution.xy) * 2.0 - 1.0;

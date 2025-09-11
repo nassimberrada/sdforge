@@ -11,10 +11,11 @@ sdforge/
 ├── sdf/
 │   ├── operations.glsl  # Functions to combine and manipulate shapes
 │   └── primitives.glsl  # Basic SDF shapes (sphere, cube, etc.)
-├── setup/
+├── scene/
 │   ├── camera.glsl      # Camera controllers (orbit, fixed, etc.)
 │   ├── lighting.glsl    # Lighting, shadows, and ambient occlusion
 │   └── raymarching.glsl # Core raymarching logic and normal estimation
+│   └── render.glsl      # Core rendering pipeline
 └── utils/
     ├── math.glsl        # General mathematical utility functions
     └── noise.glsl       # Noise functions (random, fbm, etc.)

@@ -38,11 +38,12 @@ def assemble_shader_code(sdf_obj) -> str:
 class NativeRenderer:
     """Handles the creation of a native window and renders the SDF."""
 
-    def __init__(self, sdf_obj, watch=False, width=1280, height=720):
+    def __init__(self, sdf_obj, watch=False, width=1280, height=720, record=None):
         self.sdf_obj = sdf_obj
         self.watching = watch
         self.width = width
         self.height = height
+        self.record_path = record
         self.window = None
         self.ctx = None
         self.program = None
@@ -161,8 +162,6 @@ class NativeRenderer:
 
     def _start_watcher(self):
         """Starts the watchdog file observer for hot-reloading."""
-        # --- THE FIX IS HERE (Part 1) ---
-        # The event handler now only sets a flag. It does not do any GL work.
         class ChangeHandler(FileSystemEventHandler):
             def __init__(self, renderer_instance):
                 self.renderer = renderer_instance
@@ -181,6 +180,22 @@ class NativeRenderer:
         """Runs the main rendering loop."""
         import glfw
         import moderngl
+        import numpy as np
+
+        writer = None
+        if self.record_path:
+            try:
+                import imageio
+                fps = 30
+                writer = imageio.get_writer(self.record_path, fps=fps)
+                print(f"INFO: Recording video to '{self.record_path}' at {fps} FPS.")
+            except ImportError:
+                print("ERROR: 'imageio' is required for video recording.")
+                print("Please install it via: pip install sdforge[record]")
+                self.record_path = None
+            except Exception as e:
+                print(f"ERROR: Could not initialize video recorder: {e}")
+                self.record_path = None
 
         self._init_window()
         self._setup_gl()
@@ -189,23 +204,17 @@ class NativeRenderer:
             self._start_watcher()
 
         while not glfw.window_should_close(self.window):
-            # --- THE FIX IS HERE (Part 2) ---
-            # Check the flag on the main thread before rendering each frame.
             if self.reload_pending:
                 self._reload_script()
-                self.reload_pending = False # Reset the flag
+                self.reload_pending = False
 
             width, height = glfw.get_framebuffer_size(self.window)
             self.ctx.viewport = (0, 0, width, height)
             
-            try:
-                self.program['u_resolution'].value = (width, height)
+            try: self.program['u_resolution'].value = (width, height)
             except KeyError: pass
-
-            try:
-                self.program['u_time'].value = glfw.get_time()
+            try: self.program['u_time'].value = glfw.get_time()
             except KeyError: pass
-
             try:
                 mx, my = glfw.get_cursor_pos(self.window)
                 self.program['u_mouse'].value = (mx, height - my, 0, 0)
@@ -213,13 +222,22 @@ class NativeRenderer:
 
             self.vao.render(mode=moderngl.TRIANGLE_STRIP)
             
+            if writer:
+                frame_bytes = self.ctx.fbo.read(components=3, alignment=1)
+                frame_np = np.frombuffer(frame_bytes, dtype=np.uint8).reshape((height, width, 3))
+                writer.append_data(np.flipud(frame_np))
+            
             glfw.swap_buffers(self.window)
             glfw.poll_events()
+
+        if writer:
+            writer.close()
+            print(f"INFO: Video recording stopped. File saved to '{self.record_path}'.")
 
         print("INFO: Viewer window closed.")
         glfw.terminate()
 
-def render(sdf_obj, watch=True, **kwargs):
+def render(sdf_obj, watch=True, record=None, **kwargs):
     """
     Renders an SDF object.
     - In a native window on desktop.
@@ -228,7 +246,6 @@ def render(sdf_obj, watch=True, **kwargs):
     if is_in_colab():
         from IPython.display import display, HTML
         shader_code = assemble_shader_code(sdf_obj)
-        # ... (Colab rendering code remains the same) ...
         html_template = f"""
         <!DOCTYPE html><html><head><title>SDF Forge Viewer</title>
         <style>body{{margin:0;overflow:hidden}}canvas{{display:block}}</style></head>
@@ -288,8 +305,8 @@ def render(sdf_obj, watch=True, **kwargs):
         import glfw
     except ImportError:
         print("ERROR: Live rendering requires 'moderngl' and 'glfw'.")
-        print("Please install them via: pip install moderngl glfw")
+        print("Please install them via: pip install sdforge")
         return
         
-    renderer = NativeRenderer(sdf_obj, watch=watch, **kwargs)
+    renderer = NativeRenderer(sdf_obj, watch=watch, record=record, **kwargs)
     renderer.run()

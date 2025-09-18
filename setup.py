@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='sdforge',
-    version='0.2.0',
+    version='0.2.1',
     author='nassimberrada',
     author_email='your.email@example.com',
     description='A Python library for SDF modeling with real-time GLSL rendering and mesh export.',
@@ -19,7 +19,11 @@ setup(
         'glfw',
     ],
     extras_require={
-        'gpu': [] # This is now empty, but kept for compatibility
+        'gpu': [], # This is now empty, but kept for compatibility
+        'record': [
+            'imageio',
+            'imageio-ffmpeg',
+        ]
     },
     classifiers=[
         'Development Status :: 4 - Beta',

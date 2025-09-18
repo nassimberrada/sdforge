@@ -7,7 +7,7 @@ import numpy as np
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
-from .api import Camera
+from .api import Camera, Light
 
 # The maximum number of unique materials supported in a scene.
 MAX_MATERIALS = 64
@@ -50,9 +50,10 @@ def assemble_shader_code(sdf_obj) -> str:
 class NativeRenderer:
     """Handles the creation of a native window and renders the SDF."""
 
-    def __init__(self, sdf_obj, camera=None, watch=False, width=1280, height=720, record=None, bg_color=(0.1, 0.12, 0.15)):
+    def __init__(self, sdf_obj, camera=None, lighting=None, watch=False, width=1280, height=720, record=None, bg_color=(0.1, 0.12, 0.15)):
         self.sdf_obj = sdf_obj
         self.camera = camera
+        self.lighting = lighting
         self.watching = watch
         self.width = width
         self.height = height
@@ -91,6 +92,21 @@ class NativeRenderer:
         material_struct_glsl = "struct MaterialInfo { vec3 color; };\n"
         material_uniform_glsl = f"uniform MaterialInfo u_materials[{max(1, len(materials))}];\n"
 
+        # --- Light ---
+        light_pos_str = "ro"
+        ambient_strength_str = "0.1"
+        shadow_softness_str = "8.0"
+        ao_strength_str = "3.0"
+
+        if self.lighting:
+            if self.lighting.position:
+                pos = self.lighting.position
+                light_pos_str = f"vec3({_glsl_format(pos[0])}, {_glsl_format(pos[1])}, {_glsl_format(pos[2])})"
+            ambient_strength_str = _glsl_format(self.lighting.ambient_strength)
+            shadow_softness_str = _glsl_format(self.lighting.shadow_softness)
+            ao_strength_str = _glsl_format(self.lighting.ao_strength)
+        
+        # --- Camera ---
         camera_logic_glsl = ""
         if self.camera:
             pos = self.camera.position
@@ -140,13 +156,13 @@ class NativeRenderer:
                 if (t > 0.0) {{
                     vec3 p = ro + t * rd;
                     vec3 normal = estimateNormal(p);
-                    vec3 lightPos = ro;
+                    vec3 lightPos = {light_pos_str};
                     vec3 lightDir = normalize(lightPos - p);
                     
-                    float diffuse = max(dot(normal, lightDir), 0.1);
-                    float shadow = softShadow(p + normal * 0.01, lightDir);
+                    float diffuse = max(dot(normal, lightDir), {ambient_strength_str});
+                    float shadow = softShadow(p + normal * 0.01, lightDir, {shadow_softness_str});
                     diffuse *= shadow;
-                    float ao = ambientOcclusion(p, normal);
+                    float ao = ambientOcclusion(p, normal, {ao_strength_str});
                     
                     vec3 material_color = vec3(0.8); // Default color if no material
                     if (material_id >= 0 && material_id < {len(materials)}) {{
@@ -197,19 +213,22 @@ class NativeRenderer:
             spec.loader.exec_module(module)
             if hasattr(module, 'main') and callable(module.main):
                 result = module.main()
-                new_sdf_obj = None
-                new_cam_obj = None
+                new_sdf_obj, new_cam_obj, new_lighting_obj = None, None, None
                 
-                if isinstance(result, tuple) and len(result) > 0:
+                if isinstance(result, tuple):
                     new_sdf_obj = result[0]
-                    if len(result) > 1 and isinstance(result[1], Camera):
-                        new_cam_obj = result[1]
+                    for item in result[1:]:
+                        if isinstance(item, Camera):
+                            new_cam_obj = item
+                        elif isinstance(item, Light):
+                            new_lighting_obj = item
                 else:
                     new_sdf_obj = result
                 
                 if new_sdf_obj:
                     self.sdf_obj = new_sdf_obj
                     self.camera = new_cam_obj
+                    self.lighting = new_lighting_obj
                     self.program = self._compile_shader()
                     self.vao = self.ctx.simple_vertex_array(self.program, self.vbo, 'in_vert')
             else:
@@ -281,7 +300,7 @@ class NativeRenderer:
         print("INFO: Viewer window closed.")
         glfw.terminate()
 
-def render(sdf_obj, camera=None, watch=True, record=None, bg_color=(0.1, 0.12, 0.15), **kwargs):
+def render(sdf_obj, camera=None, lighting=None, watch=True, record=None, bg_color=(0.1, 0.12, 0.15), **kwargs):
     if is_in_colab():
         from IPython.display import display, HTML
         
@@ -295,6 +314,21 @@ def render(sdf_obj, camera=None, watch=True, record=None, bg_color=(0.1, 0.12, 0
         colors_glsl = ", ".join([f"vec3({c.color[0]}, {c.color[1]}, {c.color[2]})" for c in materials])
         material_array_glsl = f"const MaterialInfo u_materials[{max(1, len(materials))}] = MaterialInfo[]({colors_glsl});\n"
         
+        # --- Light ---
+        light_pos_str = "ro"
+        ambient_strength_str = "0.1"
+        shadow_softness_str = "8.0"
+        ao_strength_str = "3.0"
+
+        if lighting:
+            if lighting.position:
+                pos = lighting.position
+                light_pos_str = f"vec3({_glsl_format(pos[0])}, {_glsl_format(pos[1])}, {_glsl_format(pos[2])})"
+            ambient_strength_str = _glsl_format(lighting.ambient_strength)
+            shadow_softness_str = _glsl_format(lighting.shadow_softness)
+            ao_strength_str = _glsl_format(lighting.ao_strength)
+
+        # --- Camera ---
         camera_logic_glsl = ""
         if camera:
             pos = camera.position
@@ -339,12 +373,12 @@ def render(sdf_obj, camera=None, watch=True, record=None, bg_color=(0.1, 0.12, 0
                 if (t > 0.0) {{
                     vec3 p = ro + t * rd;
                     vec3 normal = estimateNormal(p);
-                    vec3 lightPos = ro;
+                    vec3 lightPos = {light_pos_str};
                     vec3 lightDir = normalize(lightPos - p);
-                    float diffuse = max(dot(normal, lightDir), 0.1);
-                    float shadow = softShadow(p+normal*0.01, lightDir);
+                    float diffuse = max(dot(normal, lightDir), {ambient_strength_str});
+                    float shadow = softShadow(p+normal*0.01, lightDir, {shadow_softness_str});
                     diffuse *= shadow;
-                    float ao = ambientOcclusion(p, normal);
+                    float ao = ambientOcclusion(p, normal, {ao_strength_str});
                     vec3 material_color = vec3(0.8);
                     if (material_id >= 0 && material_id < {len(materials)}) {{
                         material_color = u_materials[material_id].color;
@@ -377,5 +411,5 @@ def render(sdf_obj, camera=None, watch=True, record=None, bg_color=(0.1, 0.12, 0
         print("ERROR: Live rendering requires 'moderngl' and 'glfw'.\nPlease install them via: pip install sdforge")
         return
         
-    renderer = NativeRenderer(sdf_obj, camera=camera, watch=watch, record=record, bg_color=bg_color, **kwargs)
+    renderer = NativeRenderer(sdf_obj, camera=camera, lighting=lighting, watch=watch, record=record, bg_color=bg_color, **kwargs)
     renderer.run()

@@ -21,6 +21,9 @@ from .api import (
     # Camera
     Camera,
 
+    # Light
+    Light,
+
     # Constants
     X, Y, Z,
 )

@@ -62,6 +62,31 @@ class Camera:
         self.zoom = zoom
 
 
+# --- Light ---
+
+class Light:
+    """
+    Represents lighting and shadow properties for the scene.
+    """
+    def __init__(self, position=None, ambient_strength=0.1, shadow_softness=8.0, ao_strength=3.0):
+        """
+        Initializes the scene lighting.
+
+        Args:
+            position (tuple, optional): The position of the light source.
+                                        Components can be numbers or GLSL expressions (str).
+                                        If None, the light is positioned at the camera (headlight).
+                                        Defaults to None.
+            ambient_strength (float or str, optional): The minimum brightness for surfaces. Defaults to 0.1.
+            shadow_softness (float or str, optional): How soft the shadows are. Higher is softer. Defaults to 8.0.
+            ao_strength (float or str, optional): Strength of ambient occlusion. Defaults to 3.0.
+        """
+        self.position = position
+        self.ambient_strength = ambient_strength
+        self.shadow_softness = shadow_softness
+        self.ao_strength = ao_strength
+
+
 # --- Base Class ---
 
 class SDFObject:

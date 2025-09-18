@@ -93,7 +93,42 @@ if __name__ == '__main__':
     sdf_object.render(camera=camera_object, watch=True)
 ```
 
-### Per-Object Materials
+### Light Controls
+
+You can customize the scene's lighting, including light position, ambient light, and shadow softness. The `Light` object accepts GLSL expressions for its properties, which will be updated every frame.
+
+To use custom lighting, your `main` function can return a tuple containing your `SDFObject`, your `Camera` object, and your `Light` object.
+
+```python
+from sdforge import *
+
+# A simple shape to look at
+shape = sphere(1) - cylinder(0.5)
+
+# A standard orbiting camera
+cam = Camera(position=("5.0 * sin(u_time * 0.5)", "3.0", "5.0 * cos(u_time * 0.5)"))
+
+# An animated light source with soft shadows
+lighting = Light(
+    position=(
+        "8.0 * sin(u_time * 0.3)",
+        "5.0",
+        "8.0 * cos(u_time * 0.3)"
+    ),
+    ambient_strength=0.05,
+    shadow_softness="8.0 + 7.0 * sin(u_time * 0.7)"
+)
+
+# For hot-reloading, return all scene objects from main
+def main():
+    return shape, cam, lighting
+
+if __name__ == '__main__':
+    sdf_obj, cam_obj, light_obj = main()
+    sdf_obj.render(camera=cam_obj, lighting=light_obj, watch=True)
+```
+
+### Material Assignment
 
 You can assign a unique color to any object or group of objects using the `.color()` method. The renderer will automatically handle combining the shapes and their materials correctly.
 

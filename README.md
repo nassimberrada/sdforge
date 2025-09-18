@@ -11,10 +11,9 @@ SDF Forge is a Python library for creating 3D models using Signed Distance Funct
 ## Features
 
 - **Simple, Pythonic API:** Define complex shapes by combining primitives using standard operators (`|`, `-`, `&`).
-- **Real-time Native Rendering:** Get instant visual feedback in a lightweight native window powered by `moderngl` and `glfw`.
-- **Hot-Reloading:** Save your Python script and the 3D view updates instantly, without restarting.
+- **Real-time Rendering with Hot-Reloading:** Get instant visual feedback in a lightweight native window powered by `moderngl` and `glfw`.
 - **Mesh Exporting:** Save your creations as `.stl` files for 3D printing or use in other software.
-- **Custom GLSL with `Forge`:** Write custom SDF logic directly in GLSL and integrate it into the Python workflow.
+- **Flexible Scene Construction:** Write custom SDF logic directly in GLSL, easily assign different materials to individual objects, etc.
 
 ## Quick Start
 
@@ -61,6 +60,25 @@ f = s - custom_twist
 # Rendering and saving works out of the box
 f.render()
 f.save('example_forge.stl')
+```
+
+### Per-Object Materials
+
+You can assign a unique color to any object or group of objects using the `.color()` method. The renderer will automatically handle combining the shapes and their materials correctly.
+
+```python
+from sdforge import *
+
+# Define shapes with different colors
+red_sphere = sphere(0.8).color(1, 0, 0)
+blue_box = box(1.2).color(0, 0, 1)
+
+# Combine colored objects
+# The union operation will correctly preserve the material of the closest surface
+model = red_sphere | blue_box.translate(X * 0.5)
+
+# You can also set a custom background color
+f.render(bg_color=(0.1, 0.2, 0.3))
 ```
 
 ### Render to File

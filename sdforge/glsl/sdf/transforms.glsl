@@ -1,13 +1,13 @@
-// sdforge/glsl/sdf/transforms.glsl
-
 // --- Transformations ---
 
-void opTwist( inout vec3 p, float k )
+vec4 opTwist( in vec4 sdf_result, inout vec3 p, float k )
 {
     float c = cos(k*p.y);
     float s = sin(k*p.y);
     mat2  m = mat2(c,-s,s,c);
     p.xz = m*p.xz;
+
+    return sdf_result;
 }
 
 vec3 opRotateX(vec3 p, float theta) {

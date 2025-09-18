@@ -42,9 +42,13 @@ def _glsl_format(val):
 
 class SDFObject:
     """Base class for all SDF objects, defining the core interface."""
+    def __init__(self):
+        self.uuid = uuid.uuid4()
+
     def to_glsl(self) -> str: raise NotImplementedError
     def to_callable(self): raise NotImplementedError
     def get_glsl_definitions(self) -> list: return []
+    def _collect_materials(self, materials): pass
     def __or__(self, other): return Union(self, other)
     def __and__(self, other): return Intersection(self, other)
     def __sub__(self, other): return Difference(self, other)
@@ -58,13 +62,16 @@ class SDFObject:
     def smooth_union(self, other, k): return SmoothUnion(self, other, k)
     def smooth_intersection(self, other, k): return SmoothIntersection(self, other, k)
     def smooth_difference(self, other, k): return SmoothDifference(self, other, k)
+    def color(self, r, g, b): return Material(self, (r, g, b))
 
 
 # --- Primitives ---
 
 class Sphere(SDFObject):
-    def __init__(self, r=1.0): self.r = r
-    def to_glsl(self) -> str: return f"sdSphere(p, {_glsl_format(self.r)})"
+    def __init__(self, r=1.0):
+        super().__init__()
+        self.r = r
+    def to_glsl(self) -> str: return f"vec4(sdSphere(p, {_glsl_format(self.r)}), -1.0, 0.0, 0.0)"
     def to_callable(self):
         if isinstance(self.r, str): raise TypeError("Cannot save mesh of an object with animated (string) parameters.")
         return lambda p: np.linalg.norm(p, axis=-1) - self.r
@@ -73,6 +80,7 @@ def sphere(r=1.0) -> SDFObject: return Sphere(r)
 
 class Box(SDFObject):
     def __init__(self, size=1.0):
+        super().__init__()
         if isinstance(size, (int, float, str)): size = (size, size, size)
         self.size = size
     def to_glsl(self) -> str:
@@ -80,7 +88,7 @@ class Box(SDFObject):
         for v in self.size:
             if isinstance(v, str): s.append(f"({v})")
             else: s.append(_glsl_format(v / 2.0))
-        return f"sdBox(p, vec3({s[0]}, {s[1]}, {s[2]}))"
+        return f"vec4(sdBox(p, vec3({s[0]}, {s[1]}, {s[2]})), -1.0, 0.0, 0.0)"
     def to_callable(self):
         if any(isinstance(v, str) for v in self.size): raise TypeError("Cannot save mesh of an object with animated (string) parameters.")
         size_arr = np.array(self.size)
@@ -93,6 +101,7 @@ def box(size=1.0) -> SDFObject: return Box(size)
 
 class RoundedBox(SDFObject):
     def __init__(self, size=1.0, radius=0.1):
+        super().__init__()
         if isinstance(size, (int, float, str)): size = (size, size, size)
         self.size, self.radius = size, radius
     def to_glsl(self) -> str:
@@ -101,7 +110,7 @@ class RoundedBox(SDFObject):
             if isinstance(v, str): s.append(f"({v})")
             else: s.append(_glsl_format(v / 2.0))
         r = _glsl_format(self.radius)
-        return f"sdRoundedBox(p, vec3({s[0]}, {s[1]}, {s[2]}), {r})"
+        return f"vec4(sdRoundedBox(p, vec3({s[0]}, {s[1]}, {s[2]}), {r}), -1.0, 0.0, 0.0)"
     def to_callable(self):
         if any(isinstance(v, str) for v in self.size) or isinstance(self.radius, str):
             raise TypeError("Cannot save mesh of an object with animated (string) parameters.")
@@ -114,8 +123,10 @@ class RoundedBox(SDFObject):
 def rounded_box(size=1.0, radius=0.1) -> SDFObject: return RoundedBox(size, radius)
 
 class Torus(SDFObject):
-    def __init__(self, major=1.0, minor=0.25): self.major, self.minor = major, minor
-    def to_glsl(self) -> str: return f"sdTorus(p, vec2({_glsl_format(self.major)}, {_glsl_format(self.minor)}))"
+    def __init__(self, major=1.0, minor=0.25):
+        super().__init__()
+        self.major, self.minor = major, minor
+    def to_glsl(self) -> str: return f"vec4(sdTorus(p, vec2({_glsl_format(self.major)}, {_glsl_format(self.minor)})), -1.0, 0.0, 0.0)"
     def to_callable(self):
         if isinstance(self.major, str) or isinstance(self.minor, str):
             raise TypeError("Cannot save mesh of an object with animated (string) parameters.")
@@ -127,10 +138,12 @@ class Torus(SDFObject):
 def torus(major=1.0, minor=0.25) -> SDFObject: return Torus(major, minor)
 
 class Capsule(SDFObject):
-    def __init__(self, a, b, radius=0.1): self.a, self.b, self.radius = np.array(a), np.array(b), radius
+    def __init__(self, a, b, radius=0.1):
+        super().__init__()
+        self.a, self.b, self.radius = np.array(a), np.array(b), radius
     def to_glsl(self) -> str:
         a, b, r = self.a, self.b, _glsl_format(self.radius)
-        return f"sdCapsule(p, vec3({a[0]},{a[1]},{a[2]}), vec3({b[0]},{b[1]},{b[2]}), {r})"
+        return f"vec4(sdCapsule(p, vec3({a[0]},{a[1]},{a[2]}), vec3({b[0]},{b[1]},{b[2]}), {r}), -1.0, 0.0, 0.0)"
     def to_callable(self):
         if isinstance(self.radius, str): raise TypeError("Cannot save mesh of an object with animated (string) parameters.")
         def _callable(p):
@@ -142,11 +155,13 @@ class Capsule(SDFObject):
 def capsule(a, b, radius=0.1) -> SDFObject: return Capsule(a, b, radius)
 
 class Cylinder(SDFObject):
-    def __init__(self, radius=0.5, height=1.0): self.radius, self.height = radius, height
+    def __init__(self, radius=0.5, height=1.0):
+        super().__init__()
+        self.radius, self.height = radius, height
     def to_glsl(self) -> str:
         r = _glsl_format(self.radius)
         h = _glsl_format(self.height / 2.0) if not isinstance(self.height, str) else f"({self.height})/2.0"
-        return f"sdCylinder(p, vec2({r}, {h}))"
+        return f"vec4(sdCylinder(p, vec2({r}, {h})), -1.0, 0.0, 0.0)"
     def to_callable(self):
         if isinstance(self.radius, str) or isinstance(self.height, str):
             raise TypeError("Cannot save mesh of an object with animated (string) parameters.")
@@ -159,8 +174,10 @@ class Cylinder(SDFObject):
 def cylinder(radius=0.5, height=1.0) -> SDFObject: return Cylinder(radius, height)
 
 class Cone(SDFObject):
-    def __init__(self, height=1.0, radius=0.5): self.height, self.radius = height, radius
-    def to_glsl(self) -> str: return f"sdCone(p, vec2({_glsl_format(self.height)}, {_glsl_format(self.radius)}))"
+    def __init__(self, height=1.0, radius=0.5):
+        super().__init__()
+        self.height, self.radius = height, radius
+    def to_glsl(self) -> str: return f"vec4(sdCone(p, vec2({_glsl_format(self.height)}, {_glsl_format(self.radius)})), -1.0, 0.0, 0.0)"
     def to_callable(self):
         if isinstance(self.height, str) or isinstance(self.radius, str):
             raise TypeError("Cannot save mesh of an object with animated (string) parameters.")
@@ -175,8 +192,10 @@ class Cone(SDFObject):
 def cone(height=1.0, radius=0.5) -> SDFObject: return Cone(height, radius)
 
 class Plane(SDFObject):
-    def __init__(self, normal=Y, offset=0): self.normal, self.offset = np.array(normal), offset
-    def to_glsl(self) -> str: n = self.normal; return f"sdPlane(p, vec4({n[0]}, {n[1]}, {n[2]}, {_glsl_format(self.offset)}))"
+    def __init__(self, normal=Y, offset=0):
+        super().__init__()
+        self.normal, self.offset = np.array(normal), offset
+    def to_glsl(self) -> str: n = self.normal; return f"vec4(sdPlane(p, vec4({n[0]}, {n[1]}, {n[2]}, {_glsl_format(self.offset)})), -1.0, 0.0, 0.0)"
     def to_callable(self):
         if isinstance(self.offset, str): raise TypeError("Cannot save mesh of an object with animated (string) parameters.")
         return lambda p: np.dot(p, self.normal) + self.offset
@@ -184,8 +203,10 @@ class Plane(SDFObject):
 def plane(normal=Y, offset=0) -> SDFObject: return Plane(normal, offset)
 
 class HexPrism(SDFObject):
-    def __init__(self, radius=1.0, height=0.1): self.radius, self.height = radius, height
-    def to_glsl(self) -> str: return f"sdHexPrism(p, vec2({_glsl_format(self.radius)}, {_glsl_format(self.height)}))"
+    def __init__(self, radius=1.0, height=0.1):
+        super().__init__()
+        self.radius, self.height = radius, height
+    def to_glsl(self) -> str: return f"vec4(sdHexPrism(p, vec2({_glsl_format(self.radius)}, {_glsl_format(self.height)})), -1.0, 0.0, 0.0)"
     def to_callable(self):
         if isinstance(self.radius, str) or isinstance(self.height, str):
             raise TypeError("Cannot save mesh of an object with animated (string) parameters.")
@@ -194,8 +215,10 @@ class HexPrism(SDFObject):
 def hex_prism(radius=1.0, height=0.1) -> SDFObject: return HexPrism(radius, height)
 
 class Octahedron(SDFObject):
-    def __init__(self, size=1.0): self.size = size
-    def to_glsl(self) -> str: return f"sdOctahedron(p, {_glsl_format(self.size)})"
+    def __init__(self, size=1.0):
+        super().__init__()
+        self.size = size
+    def to_glsl(self) -> str: return f"vec4(sdOctahedron(p, {_glsl_format(self.size)}), -1.0, 0.0, 0.0)"
     def to_callable(self):
         if isinstance(self.size, str): raise TypeError("Cannot save mesh of an object with animated (string) parameters.")
         return lambda p: (np.sum(np.abs(p), axis=-1) - self.size) * 0.57735027
@@ -203,10 +226,12 @@ class Octahedron(SDFObject):
 def octahedron(size=1.0) -> SDFObject: return Octahedron(size)
 
 class Ellipsoid(SDFObject):
-    def __init__(self, radii): self.radii = radii
+    def __init__(self, radii):
+        super().__init__()
+        self.radii = radii
     def to_glsl(self) -> str:
         r = [_glsl_format(v) for v in self.radii]
-        return f"sdEllipsoid(p, vec3({r[0]}, {r[1]}, {r[2]}))"
+        return f"vec4(sdEllipsoid(p, vec3({r[0]}, {r[1]}, {r[2]})), -1.0, 0.0, 0.0)"
     def to_callable(self):
         if any(isinstance(v, str) for v in self.radii):
             raise TypeError("Cannot save mesh of an object with animated (string) parameters.")
@@ -220,34 +245,77 @@ class Ellipsoid(SDFObject):
 def ellipsoid(radii) -> SDFObject: return Ellipsoid(radii)
 
 
+# --- Material ---
+
+class Material(SDFObject):
+    def __init__(self, child, color):
+        super().__init__()
+        self.child = child
+        self.color = color
+        self.material_id = -1 # Will be set by the renderer
+    
+    def to_glsl(self) -> str:
+        child_glsl = self.child.to_glsl()
+        # The child returns a vec4. We need to overwrite the material ID.
+        return f"vec4(({child_glsl}).x, {float(self.material_id)}, 0.0, 0.0)"
+
+    def to_callable(self):
+        # Materials are a render-time concept; for mesh generation, we use the child's shape.
+        return self.child.to_callable()
+
+    def _collect_materials(self, materials):
+        if self not in materials:
+            self.material_id = len(materials)
+            materials.append(self)
+        self.child._collect_materials(materials)
+
+    def get_glsl_definitions(self) -> list:
+        return self.child.get_glsl_definitions()
+
+
 # --- Standard Operations ---
 
 class Union(SDFObject):
-    def __init__(self, *children): self.children = children
-    def to_glsl(self) -> str: return reduce(lambda a, b: f"min({a}, {b})", [c.to_glsl() for c in self.children])
+    def __init__(self, *children):
+        super().__init__()
+        self.children = children
+    def to_glsl(self) -> str: return reduce(lambda a, b: f"opU({a}, {b})", [c.to_glsl() for c in self.children])
     def to_callable(self):
         callables = [c.to_callable() for c in self.children]; return lambda p: reduce(np.minimum, [c(p) for c in callables])
-    def get_glsl_definitions(self) -> list: return sum([c.get_glsl_definitions() for c in self.children], [])
+    def get_glsl_definitions(self) -> list: return [_get_glsl_content('operations.glsl')] + sum([c.get_glsl_definitions() for c in self.children], [])
+    def _collect_materials(self, materials):
+        for c in self.children: c._collect_materials(materials)
 
 class Intersection(SDFObject):
-    def __init__(self, *children): self.children = children
-    def to_glsl(self) -> str: return reduce(lambda a, b: f"max({a}, {b})", [c.to_glsl() for c in self.children])
+    def __init__(self, *children):
+        super().__init__()
+        self.children = children
+    def to_glsl(self) -> str: return reduce(lambda a, b: f"opI({a}, {b})", [c.to_glsl() for c in self.children])
     def to_callable(self):
         callables = [c.to_callable() for c in self.children]; return lambda p: reduce(np.maximum, [c(p) for c in callables])
-    def get_glsl_definitions(self) -> list: return sum([c.get_glsl_definitions() for c in self.children], [])
+    def get_glsl_definitions(self) -> list: return [_get_glsl_content('operations.glsl')] + sum([c.get_glsl_definitions() for c in self.children], [])
+    def _collect_materials(self, materials):
+        for c in self.children: c._collect_materials(materials)
 
 class Difference(SDFObject):
-    def __init__(self, a, b): self.a, self.b = a, b
-    def to_glsl(self) -> str: return f"max({self.a.to_glsl()}, -({self.b.to_glsl()}))"
+    def __init__(self, a, b):
+        super().__init__()
+        self.a, self.b = a, b
+    def to_glsl(self) -> str: return f"opS({self.a.to_glsl()}, {self.b.to_glsl()})"
     def to_callable(self):
         a_call, b_call = self.a.to_callable(), self.b.to_callable(); return lambda p: np.maximum(a_call(p), -b_call(p))
-    def get_glsl_definitions(self) -> list: return self.a.get_glsl_definitions() + self.b.get_glsl_definitions()
+    def get_glsl_definitions(self) -> list: return [_get_glsl_content('operations.glsl')] + self.a.get_glsl_definitions() + self.b.get_glsl_definitions()
+    def _collect_materials(self, materials):
+        self.a._collect_materials(materials)
+        self.b._collect_materials(materials)
 
 
 # --- Smooth Operations ---
 
 class SmoothUnion(SDFObject):
-    def __init__(self, a, b, k): self.a, self.b, self.k = a, b, k
+    def __init__(self, a, b, k):
+        super().__init__()
+        self.a, self.b, self.k = a, b, k
     def to_glsl(self) -> str: return f"sUnion({self.a.to_glsl()}, {self.b.to_glsl()}, {_glsl_format(self.k)})"
     def to_callable(self):
         if isinstance(self.k, str): raise TypeError("Cannot save mesh of an object with animated (string) parameters.")
@@ -257,42 +325,66 @@ class SmoothUnion(SDFObject):
             return d2 * (1.0 - h) + d1 * h - k * h * (1.0 - h)
         return _callable
     def get_glsl_definitions(self) -> list: return [_get_glsl_content('operations.glsl')] + self.a.get_glsl_definitions() + self.b.get_glsl_definitions()
+    def _collect_materials(self, materials):
+        self.a._collect_materials(materials)
+        self.b._collect_materials(materials)
 
 class SmoothIntersection(SDFObject):
-    def __init__(self, a, b, k): self.a, self.b, self.k = a, b, k
+    def __init__(self, a, b, k):
+        super().__init__()
+        self.a, self.b, self.k = a, b, k
     def to_glsl(self) -> str: return f"sIntersect({self.a.to_glsl()}, {self.b.to_glsl()}, {_glsl_format(self.k)})"
     def to_callable(self):
         if isinstance(self.k, str): raise TypeError("Cannot save mesh of an object with animated (string) parameters.")
         raise NotImplementedError("Smooth Intersection for mesh generation is not yet implemented.")
     def get_glsl_definitions(self) -> list: return [_get_glsl_content('operations.glsl')] + self.a.get_glsl_definitions() + self.b.get_glsl_definitions()
+    def _collect_materials(self, materials):
+        self.a._collect_materials(materials)
+        self.b._collect_materials(materials)
 
 class SmoothDifference(SDFObject):
-    def __init__(self, a, b, k): self.a, self.b, self.k = a, b, k
+    def __init__(self, a, b, k):
+        super().__init__()
+        self.a, self.b, self.k = a, b, k
     def to_glsl(self) -> str: return f"sDifference({self.a.to_glsl()}, {self.b.to_glsl()}, {_glsl_format(self.k)})"
     def to_callable(self):
         if isinstance(self.k, str): raise TypeError("Cannot save mesh of an object with animated (string) parameters.")
         raise NotImplementedError("Smooth Difference for mesh generation is not yet implemented.")
     def get_glsl_definitions(self) -> list: return [_get_glsl_content('operations.glsl')] + self.a.get_glsl_definitions() + self.b.get_glsl_definitions()
+    def _collect_materials(self, materials):
+        self.a._collect_materials(materials)
+        self.b._collect_materials(materials)
 
 
 # --- Basic Transformations ---
 
 class Translate(SDFObject):
-    def __init__(self, child, offset): self.child, self.offset = child, offset
+    def __init__(self, child, offset):
+        super().__init__()
+        self.child, self.offset = child, offset
     def to_glsl(self) -> str: o = self.offset; return self.child.to_glsl().replace('p', f'(p - vec3({o[0]}, {o[1]}, {o[2]}))')
     def to_callable(self): child_call = self.child.to_callable(); return lambda p: child_call(p - self.offset)
     def get_glsl_definitions(self) -> list: return self.child.get_glsl_definitions()
+    def _collect_materials(self, materials): self.child._collect_materials(materials)
 
 class Scale(SDFObject):
-    def __init__(self, child, factor): self.child, self.factor = child, factor
-    def to_glsl(self) -> str: f = _glsl_format(self.factor); return f"({self.child.to_glsl().replace('p', '(p / (' + f + '))')} * ({f}))"
+    def __init__(self, child, factor):
+        super().__init__()
+        self.child, self.factor = child, factor
+    def to_glsl(self) -> str:
+        f = _glsl_format(self.factor)
+        # Use an IIFE to avoid evaluating the child GLSL twice
+        return f"(() {{ vec4 res = {self.child.to_glsl().replace('p', f'(p / ({f}))')}; res.x *= ({f}); return res; }})()"
     def to_callable(self):
         if isinstance(self.factor, str): raise TypeError("Cannot save mesh of an object with animated (string) parameters.")
         child_call = self.child.to_callable(); return lambda p: child_call(p / self.factor) * self.factor
     def get_glsl_definitions(self) -> list: return self.child.get_glsl_definitions()
+    def _collect_materials(self, materials): self.child._collect_materials(materials)
 
 class Orient(SDFObject):
-    def __init__(self, child, axis): self.child, self.axis = child, axis
+    def __init__(self, child, axis):
+        super().__init__()
+        self.child, self.axis = child, axis
     def to_glsl(self) -> str:
         if np.allclose(self.axis, X): return self.child.to_glsl().replace('p', 'p.zyx')
         elif np.allclose(self.axis, Y): return self.child.to_glsl().replace('p', 'p.xzy')
@@ -303,12 +395,15 @@ class Orient(SDFObject):
         elif np.allclose(self.axis, Y): return lambda p: child_call(p[:, [0, 2, 1]])
         return child_call
     def get_glsl_definitions(self) -> list: return self.child.get_glsl_definitions()
+    def _collect_materials(self, materials): self.child._collect_materials(materials)
 
 
 # --- Advanced Transformations ---
 
 class Rotate(SDFObject):
-    def __init__(self, child, axis, angle): self.child, self.axis, self.angle = child, axis, angle
+    def __init__(self, child, axis, angle):
+        super().__init__()
+        self.child, self.axis, self.angle = child, axis, angle
     def to_glsl(self) -> str:
         if np.allclose(self.axis, X): func = 'opRotateX'
         elif np.allclose(self.axis, Y): func = 'opRotateY'
@@ -322,12 +417,16 @@ class Rotate(SDFObject):
         else: R = np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]])
         return lambda p: child_call(p @ R.T)
     def get_glsl_definitions(self) -> list: return [_get_glsl_content('transforms.glsl')] + self.child.get_glsl_definitions()
+    def _collect_materials(self, materials): self.child._collect_materials(materials)
 
 class Twist(SDFObject):
     def __init__(self, child, k):
+        super().__init__()
         self.child, self.k = child, k
-        self.unique_id = "twist_wrapper_" + uuid.uuid4().hex[:8]
-    def to_glsl(self) -> str: return f"{self.unique_id}(p)"
+    def to_glsl(self) -> str:
+        k_str = _glsl_format(self.k)
+        # The opTwist function now modifies p in place and returns the child's result
+        return f"opTwist({self.child.to_glsl()}, p, {k_str})"
     def to_callable(self):
         if isinstance(self.k, str): raise TypeError("Cannot save mesh of an object with animated (string) parameters.")
         child_call, k = self.child.to_callable(), float(self.k)
@@ -337,11 +436,13 @@ class Twist(SDFObject):
             q = np.stack([x_new, p[:, 1], z_new], axis=-1); return child_call(q)
         return _callable
     def get_glsl_definitions(self) -> list:
-        definition = f"float {self.unique_id}(vec3 p){{ opTwist(p, {_glsl_format(self.k)}); return {self.child.to_glsl()}; }}"
-        return [_get_glsl_content('transforms.glsl')] + self.child.get_glsl_definitions() + [definition]
+        return [_get_glsl_content('transforms.glsl')] + self.child.get_glsl_definitions()
+    def _collect_materials(self, materials): self.child._collect_materials(materials)
 
 class Repeat(SDFObject):
-    def __init__(self, child, spacing): self.child, self.spacing = child, spacing
+    def __init__(self, child, spacing):
+        super().__init__()
+        self.child, self.spacing = child, spacing
     def to_glsl(self) -> str: s = self.spacing; return self.child.to_glsl().replace('p', f"opRepeat(p, vec3({s[0]}, {s[1]}, {s[2]}))")
     def to_callable(self):
         child_call, s = self.child.to_callable(), self.spacing
@@ -349,9 +450,12 @@ class Repeat(SDFObject):
         def _callable(p): return child_call(np.mod(p + 0.5 * active_spacing, active_spacing) - 0.5 * active_spacing)
         return _callable
     def get_glsl_definitions(self) -> list: return [_get_glsl_content('transforms.glsl')] + self.child.get_glsl_definitions()
+    def _collect_materials(self, materials): self.child._collect_materials(materials)
 
 class Mirror(SDFObject):
-    def __init__(self, child, axes): self.child, self.axes = child, axes
+    def __init__(self, child, axes):
+        super().__init__()
+        self.child, self.axes = child, axes
     def to_glsl(self) -> str: a = self.axes; return self.child.to_glsl().replace('p', f"opMirror(p, vec3({a[0]}, {a[1]}, {a[2]}))")
     def to_callable(self):
         child_call = self.child.to_callable(); a = self.axes
@@ -363,14 +467,17 @@ class Mirror(SDFObject):
             return child_call(q)
         return _callable
     def get_glsl_definitions(self) -> list: return [_get_glsl_content('transforms.glsl')] + self.child.get_glsl_definitions()
+    def _collect_materials(self, materials): self.child._collect_materials(materials)
+
 
 # --- Custom GLSL ---
 
 class Forge(SDFObject):
     def __init__(self, glsl_code_body: str):
+        super().__init__()
         self.glsl_code_body = glsl_code_body
         self.unique_id = "forge_func_" + uuid.uuid4().hex[:8]
-    def to_glsl(self) -> str: return f"{self.unique_id}(p)"
+    def to_glsl(self) -> str: return f"vec4({self.unique_id}(p), -1.0, 0.0, 0.0)"
     def get_glsl_definitions(self) -> list:
         return [f"float {self.unique_id}(vec3 p){{ {self.glsl_code_body} }}"]
     def to_callable(self):
@@ -388,7 +495,7 @@ class Forge(SDFObject):
         layout(std430, binding=0) buffer points {{ vec3 p[]; }};
         layout(std430, binding=1) buffer distances {{ float d[]; }};
         {self.get_glsl_definitions()[0]}
-        void main() {{ uint gid = gl_GlobalInvocationID.x; d[gid] = {self.to_glsl().replace('p', 'p[gid]')}; }}""")
+        void main() {{ uint gid = gl_GlobalInvocationID.x; d[gid] = {self.to_glsl().replace('p', 'p[gid]').replace('vec4', '').strip('()').split(',')[0]}; }}""")
         def _gpu_evaluator(points_np):
             points_np = np.array(points_np, dtype='f4'); num_points = len(points_np)
             point_buffer = ctx.buffer(points_np.tobytes()); dist_buffer = ctx.buffer(reserve=num_points * 4)

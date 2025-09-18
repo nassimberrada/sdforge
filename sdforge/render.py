@@ -3,9 +3,12 @@ import os
 import time
 from pathlib import Path
 import importlib.util
-
+import numpy as np
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
+
+# The maximum number of unique materials supported in a scene.
+MAX_MATERIALS = 64
 
 def is_in_colab():
     """Checks if the code is running in a Google Colab environment."""
@@ -23,57 +26,62 @@ def get_glsl_content(filename: str) -> str:
 
 def assemble_shader_code(sdf_obj) -> str:
     """Assembles the final GLSL scene function from an SDF object."""
+    # The Scene function now returns a vec4: (distance, material_id, 0, 0)
     scene_glsl = sdf_obj.to_glsl()
-    # Preserve order while deduplicating inline defs
     inline_definitions = []
-    for d in sdf_obj.get_glsl_definitions():
-        if d not in inline_definitions:
-            inline_definitions.append(d)
+    # Use a set to prevent duplicates, which cause redefinition errors
+    unique_defs = set(sdf_obj.get_glsl_definitions())
+    for d in unique_defs:
+        inline_definitions.append(d)
     joined_defs = '\n'.join(inline_definitions)
     return f"""
     {joined_defs}
-    float Scene(in vec3 p) {{ return {scene_glsl}; }}
+    vec4 Scene(in vec3 p) {{ return {scene_glsl}; }}
     """
 
 class NativeRenderer:
     """Handles the creation of a native window and renders the SDF."""
 
-    def __init__(self, sdf_obj, watch=False, width=1280, height=720, record=None):
+    def __init__(self, sdf_obj, watch=False, width=1280, height=720, record=None, bg_color=(0.1, 0.12, 0.15)):
         self.sdf_obj = sdf_obj
         self.watching = watch
         self.width = width
         self.height = height
         self.record_path = record
+        self.bg_color = bg_color
         self.window = None
         self.ctx = None
         self.program = None
         self.vao = None
         self.vbo = None
         self.script_path = os.path.abspath(sys.argv[0])
-        self.reload_pending = False # Flag to signal a reload is needed
+        self.reload_pending = False
 
     def _init_window(self):
-        """Initializes GLFW and creates a window."""
         import glfw
-        if not glfw.init():
-            raise RuntimeError("Could not initialize GLFW")
-        
+        if not glfw.init(): raise RuntimeError("Could not initialize GLFW")
         glfw.window_hint(glfw.CONTEXT_VERSION_MAJOR, 3)
         glfw.window_hint(glfw.CONTEXT_VERSION_MINOR, 3)
         glfw.window_hint(glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE)
         glfw.window_hint(glfw.OPENGL_FORWARD_COMPAT, True)
-        
         self.window = glfw.create_window(self.width, self.height, "SDF Forge Viewer", None, None)
         if not self.window:
             glfw.terminate()
             raise RuntimeError("Could not create GLFW window")
-        
         glfw.make_context_current(self.window)
 
     def _compile_shader(self):
-        """Compiles the vertex and fragment shaders."""
         import moderngl
         
+        materials = []
+        self.sdf_obj._collect_materials(materials)
+        if len(materials) > MAX_MATERIALS:
+            print(f"WARNING: Exceeded maximum of {MAX_MATERIALS} materials. Truncating.")
+            materials = materials[:MAX_MATERIALS]
+
+        material_struct_glsl = "struct MaterialInfo { vec3 color; };\n"
+        material_uniform_glsl = f"uniform MaterialInfo u_materials[{max(1, len(materials))}];\n"
+
         scene_code = assemble_shader_code(self.sdf_obj)
         
         full_fragment_shader = f"""
@@ -81,8 +89,12 @@ class NativeRenderer:
             
             uniform vec2 u_resolution;
             uniform float u_time;
-            uniform vec4 u_mouse; // .xy is pixel pos, .zw is click state
+            uniform vec4 u_mouse;
+            uniform vec3 u_bg_color;
             
+            {material_struct_glsl}
+            {material_uniform_glsl}
+
             out vec4 f_color;
             
             {get_glsl_content('sdf/primitives.glsl')}
@@ -97,13 +109,15 @@ class NativeRenderer:
                 vec3 ro, rd;
                 cameraOrbit(st, u_mouse.xy, u_resolution, 1.0, ro, rd);
                 
-                vec3 color = vec3(0.1, 0.12, 0.15); // Background color
-                float t = raymarch(ro, rd);
+                vec3 color = u_bg_color;
+                vec4 hit = raymarch(ro, rd);
+                float t = hit.x;
+                int material_id = int(hit.y);
                 
                 if (t > 0.0) {{
                     vec3 p = ro + t * rd;
                     vec3 normal = estimateNormal(p);
-                    vec3 lightPos = ro; // Camera as light source
+                    vec3 lightPos = ro;
                     vec3 lightDir = normalize(lightPos - p);
                     
                     float diffuse = max(dot(normal, lightDir), 0.1);
@@ -111,7 +125,12 @@ class NativeRenderer:
                     diffuse *= shadow;
                     float ao = ambientOcclusion(p, normal);
                     
-                    color = vec3(0.2, 0.5, 0.85) * diffuse * ao;
+                    vec3 material_color = vec3(0.8); // Default color if no material
+                    if (material_id >= 0 && material_id < {len(materials)}) {{
+                        material_color = u_materials[material_id].color;
+                    }}
+
+                    color = material_color * diffuse * ao;
                 }}
                 f_color = vec4(color, 1.0);
             }}
@@ -125,25 +144,29 @@ class NativeRenderer:
         try:
             program = self.ctx.program(vertex_shader=vertex_shader, fragment_shader=full_fragment_shader)
             print("INFO: Shader compiled successfully.")
+            
+            # Upload material data
+            for i, mat in enumerate(materials):
+                program[f'u_materials[{i}].color'].value = mat.color
+            
+            program['u_bg_color'].value = self.bg_color
+
             return program
         except Exception as e:
             print(f"ERROR: Shader compilation failed. Keeping previous shader. Details:\n{e}")
-            return self.program # Return old program if compilation fails
+            return self.program
 
     def _setup_gl(self):
-        """Sets up ModernGL context and shaders."""
         import moderngl
-        import numpy as np
-
         self.ctx = moderngl.create_context()
         self.program = self._compile_shader()
-
+        if self.program is None:
+            raise RuntimeError("Failed to compile initial shader. Cannot continue.")
         vertices = np.array([-1.0, -1.0, -1.0, 1.0, 1.0, -1.0, 1.0, 1.0], dtype='f4')
         self.vbo = self.ctx.buffer(vertices)
         self.vao = self.ctx.simple_vertex_array(self.program, self.vbo, 'in_vert')
 
     def _reload_script(self):
-        """Hot-reloads the user script to get the new SDF object."""
         print(f"INFO: Change detected in '{Path(self.script_path).name}'. Reloading...")
         try:
             spec = importlib.util.spec_from_file_location("user_script", self.script_path)
@@ -161,11 +184,8 @@ class NativeRenderer:
             print(f"ERROR: Failed to reload script: {e}")
 
     def _start_watcher(self):
-        """Starts the watchdog file observer for hot-reloading."""
         class ChangeHandler(FileSystemEventHandler):
-            def __init__(self, renderer_instance):
-                self.renderer = renderer_instance
-
+            def __init__(self, renderer_instance): self.renderer = renderer_instance
             def on_modified(self, event):
                 if event.src_path == self.renderer.script_path:
                     self.renderer.reload_pending = True
@@ -177,10 +197,8 @@ class NativeRenderer:
         print(f"INFO: Watching '{Path(self.script_path).name}' for changes...")
 
     def run(self):
-        """Runs the main rendering loop."""
         import glfw
         import moderngl
-        import numpy as np
 
         writer = None
         if self.record_path:
@@ -190,18 +208,13 @@ class NativeRenderer:
                 writer = imageio.get_writer(self.record_path, fps=fps)
                 print(f"INFO: Recording video to '{self.record_path}' at {fps} FPS.")
             except ImportError:
-                print("ERROR: 'imageio' is required for video recording.")
-                print("Please install it via: pip install sdforge[record]")
-                self.record_path = None
-            except Exception as e:
-                print(f"ERROR: Could not initialize video recorder: {e}")
+                print("ERROR: 'imageio' is required for video recording.\nPlease install it via: pip install sdforge[record]")
                 self.record_path = None
 
         self._init_window()
         self._setup_gl()
         
-        if self.watching:
-            self._start_watcher()
+        if self.watching: self._start_watcher()
 
         while not glfw.window_should_close(self.window):
             if self.reload_pending:
@@ -230,21 +243,24 @@ class NativeRenderer:
             glfw.swap_buffers(self.window)
             glfw.poll_events()
 
-        if writer:
-            writer.close()
-            print(f"INFO: Video recording stopped. File saved to '{self.record_path}'.")
-
+        if writer: writer.close()
         print("INFO: Viewer window closed.")
         glfw.terminate()
 
-def render(sdf_obj, watch=True, record=None, **kwargs):
-    """
-    Renders an SDF object.
-    - In a native window on desktop.
-    - As an embedded iframe in Google Colab.
-    """
+def render(sdf_obj, watch=True, record=None, bg_color=(0.1, 0.12, 0.15), **kwargs):
     if is_in_colab():
         from IPython.display import display, HTML
+        
+        materials = []
+        sdf_obj._collect_materials(materials)
+        if len(materials) > MAX_MATERIALS:
+            materials = materials[:MAX_MATERIALS]
+
+        material_struct_glsl = "struct MaterialInfo { vec3 color; };\n"
+        
+        colors_glsl = ", ".join([f"vec3({c.color[0]}, {c.color[1]}, {c.color[2]})" for c in materials])
+        material_array_glsl = f"const MaterialInfo u_materials[{max(1, len(materials))}] = MaterialInfo[]({colors_glsl});\n"
+        
         shader_code = assemble_shader_code(sdf_obj)
         html_template = f"""
         <!DOCTYPE html><html><head><title>SDF Forge Viewer</title>
@@ -254,9 +270,14 @@ def render(sdf_obj, watch=True, record=None, **kwargs):
         import * as THREE from 'three';
         const fragmentShader = `
             varying vec2 vUv;
-            uniform vec2 u_resolution;
             uniform float u_time;
             uniform vec4 u_mouse;
+            #define u_resolution vec2(800.0, 600.0)
+            #define u_bg_color vec3({bg_color[0]}, {bg_color[1]}, {bg_color[2]})
+            
+            {material_struct_glsl}
+            {material_array_glsl}
+
             {get_glsl_content('sdf/primitives.glsl')}
             {get_glsl_content('scene/camera.glsl')}
             {get_glsl_content('scene/raymarching.glsl')}
@@ -266,8 +287,10 @@ def render(sdf_obj, watch=True, record=None, **kwargs):
                 vec2 st = (2.0*vUv - 1.0) * vec2(u_resolution.x/u_resolution.y, 1.0);
                 vec3 ro, rd;
                 cameraOrbit(st, u_mouse.xy, u_resolution, 1.0, ro, rd);
-                vec3 color = vec3(0.1, 0.12, 0.15);
-                float t = raymarch(ro, rd);
+                vec3 color = u_bg_color;
+                vec4 hit = raymarch(ro, rd);
+                float t = hit.x;
+                int material_id = int(hit.y);
                 if (t > 0.0) {{
                     vec3 p = ro + t * rd;
                     vec3 normal = estimateNormal(p);
@@ -277,7 +300,11 @@ def render(sdf_obj, watch=True, record=None, **kwargs):
                     float shadow = softShadow(p+normal*0.01, lightDir);
                     diffuse *= shadow;
                     float ao = ambientOcclusion(p, normal);
-                    color = vec3(0.2, 0.5, 0.85) * diffuse * ao;
+                    vec3 material_color = vec3(0.8);
+                    if (material_id >= 0 && material_id < {len(materials)}) {{
+                        material_color = u_materials[material_id].color;
+                    }}
+                    color = material_color * diffuse * ao;
                 }}
                 gl_FragColor = vec4(color, 1.0);
             }}
@@ -286,27 +313,24 @@ def render(sdf_obj, watch=True, record=None, **kwargs):
         const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
         const renderer = new THREE.WebGLRenderer({{antialias: true}});
         document.body.appendChild(renderer.domElement);
-        const uniforms = {{u_time:{{value:0}},u_resolution:{{value:new THREE.Vector2()}},u_mouse:{{value:new THREE.Vector4()}}}};
+        const uniforms = {{u_time:{{value:0}}, u_mouse:{{value:new THREE.Vector4()}}}};
         const material = new THREE.ShaderMaterial({{vertexShader:`varying vec2 vUv; void main(){{vUv=uv;gl_Position=vec4(position,1.0);}}`, fragmentShader, uniforms}});
         scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2,2), material));
-        function onResize(){{renderer.setSize(800,600);uniforms.u_resolution.value.set(800,600);}}
+        renderer.setSize(800,600);
         document.addEventListener('mousemove', e=>{{uniforms.u_mouse.value.x=e.clientX;uniforms.u_mouse.value.y=600-e.clientY;}});
         function animate(t){{requestAnimationFrame(animate);uniforms.u_time.value=t*0.001;renderer.render(scene,camera);}}
-        onResize(); animate();
+        animate();
         </script></body></html>
         """
         escaped_html = html_template.replace('"', "&quot;")
         display(HTML(f'<iframe srcdoc="{escaped_html}" width="800" height="600" style="border:1px solid #ccc"></iframe>'))
         return
 
-    # Desktop rendering
     try:
-        import moderngl
-        import glfw
+        import moderngl, glfw
     except ImportError:
-        print("ERROR: Live rendering requires 'moderngl' and 'glfw'.")
-        print("Please install them via: pip install sdforge")
+        print("ERROR: Live rendering requires 'moderngl' and 'glfw'.\nPlease install them via: pip install sdforge")
         return
         
-    renderer = NativeRenderer(sdf_obj, watch=watch, record=record, **kwargs)
+    renderer = NativeRenderer(sdf_obj, watch=watch, record=record, bg_color=bg_color, **kwargs)
     renderer.run()

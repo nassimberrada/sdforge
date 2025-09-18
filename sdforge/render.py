@@ -7,8 +7,16 @@ import numpy as np
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
+from .api import Camera
+
 # The maximum number of unique materials supported in a scene.
 MAX_MATERIALS = 64
+
+def _glsl_format(val):
+    """Formats a Python value for injection into a GLSL string."""
+    if isinstance(val, str):
+        return val
+    return f"{float(val)}"
 
 def is_in_colab():
     """Checks if the code is running in a Google Colab environment."""
@@ -42,8 +50,9 @@ def assemble_shader_code(sdf_obj) -> str:
 class NativeRenderer:
     """Handles the creation of a native window and renders the SDF."""
 
-    def __init__(self, sdf_obj, watch=False, width=1280, height=720, record=None, bg_color=(0.1, 0.12, 0.15)):
+    def __init__(self, sdf_obj, camera=None, watch=False, width=1280, height=720, record=None, bg_color=(0.1, 0.12, 0.15)):
         self.sdf_obj = sdf_obj
+        self.camera = camera
         self.watching = watch
         self.width = width
         self.height = height
@@ -82,6 +91,20 @@ class NativeRenderer:
         material_struct_glsl = "struct MaterialInfo { vec3 color; };\n"
         material_uniform_glsl = f"uniform MaterialInfo u_materials[{max(1, len(materials))}];\n"
 
+        camera_logic_glsl = ""
+        if self.camera:
+            pos = self.camera.position
+            pos_str = f"vec3({_glsl_format(pos[0])}, {_glsl_format(pos[1])}, {_glsl_format(pos[2])})"
+            
+            target = self.camera.target
+            target_str = f"vec3({_glsl_format(target[0])}, {_glsl_format(target[1])}, {_glsl_format(target[2])})"
+
+            zoom_str = _glsl_format(self.camera.zoom)
+            
+            camera_logic_glsl = f"cameraStatic(st, {pos_str}, {target_str}, {zoom_str}, ro, rd);"
+        else:
+            camera_logic_glsl = "cameraOrbit(st, u_mouse.xy, u_resolution, 1.0, ro, rd);"
+
         scene_code = assemble_shader_code(self.sdf_obj)
         
         full_fragment_shader = f"""
@@ -107,7 +130,7 @@ class NativeRenderer:
             void main() {{
                 vec2 st = (2.0 * gl_FragCoord.xy - u_resolution.xy) / u_resolution.y;
                 vec3 ro, rd;
-                cameraOrbit(st, u_mouse.xy, u_resolution, 1.0, ro, rd);
+                {camera_logic_glsl}
                 
                 vec3 color = u_bg_color;
                 vec4 hit = raymarch(ro, rd);
@@ -173,9 +196,20 @@ class NativeRenderer:
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
             if hasattr(module, 'main') and callable(module.main):
-                new_sdf_obj = module.main()
+                result = module.main()
+                new_sdf_obj = None
+                new_cam_obj = None
+                
+                if isinstance(result, tuple) and len(result) > 0:
+                    new_sdf_obj = result[0]
+                    if len(result) > 1 and isinstance(result[1], Camera):
+                        new_cam_obj = result[1]
+                else:
+                    new_sdf_obj = result
+                
                 if new_sdf_obj:
                     self.sdf_obj = new_sdf_obj
+                    self.camera = new_cam_obj
                     self.program = self._compile_shader()
                     self.vao = self.ctx.simple_vertex_array(self.program, self.vbo, 'in_vert')
             else:
@@ -247,7 +281,7 @@ class NativeRenderer:
         print("INFO: Viewer window closed.")
         glfw.terminate()
 
-def render(sdf_obj, watch=True, record=None, bg_color=(0.1, 0.12, 0.15), **kwargs):
+def render(sdf_obj, camera=None, watch=True, record=None, bg_color=(0.1, 0.12, 0.15), **kwargs):
     if is_in_colab():
         from IPython.display import display, HTML
         
@@ -261,6 +295,17 @@ def render(sdf_obj, watch=True, record=None, bg_color=(0.1, 0.12, 0.15), **kwarg
         colors_glsl = ", ".join([f"vec3({c.color[0]}, {c.color[1]}, {c.color[2]})" for c in materials])
         material_array_glsl = f"const MaterialInfo u_materials[{max(1, len(materials))}] = MaterialInfo[]({colors_glsl});\n"
         
+        camera_logic_glsl = ""
+        if camera:
+            pos = camera.position
+            pos_str = f"vec3({_glsl_format(pos[0])}, {_glsl_format(pos[1])}, {_glsl_format(pos[2])})"
+            target = camera.target
+            target_str = f"vec3({_glsl_format(target[0])}, {_glsl_format(target[1])}, {_glsl_format(target[2])})"
+            zoom_str = _glsl_format(camera.zoom)
+            camera_logic_glsl = f"cameraStatic(st, {pos_str}, {target_str}, {zoom_str}, ro, rd);"
+        else:
+            camera_logic_glsl = "cameraOrbit(st, u_mouse.xy, u_resolution, 1.0, ro, rd);"
+
         shader_code = assemble_shader_code(sdf_obj)
         html_template = f"""
         <!DOCTYPE html><html><head><title>SDF Forge Viewer</title>
@@ -286,7 +331,7 @@ def render(sdf_obj, watch=True, record=None, bg_color=(0.1, 0.12, 0.15), **kwarg
             void main() {{
                 vec2 st = (2.0*vUv - 1.0) * vec2(u_resolution.x/u_resolution.y, 1.0);
                 vec3 ro, rd;
-                cameraOrbit(st, u_mouse.xy, u_resolution, 1.0, ro, rd);
+                {camera_logic_glsl}
                 vec3 color = u_bg_color;
                 vec4 hit = raymarch(ro, rd);
                 float t = hit.x;
@@ -332,5 +377,5 @@ def render(sdf_obj, watch=True, record=None, bg_color=(0.1, 0.12, 0.15), **kwarg
         print("ERROR: Live rendering requires 'moderngl' and 'glfw'.\nPlease install them via: pip install sdforge")
         return
         
-    renderer = NativeRenderer(sdf_obj, watch=watch, record=record, bg_color=bg_color, **kwargs)
+    renderer = NativeRenderer(sdf_obj, camera=camera, watch=watch, record=record, bg_color=bg_color, **kwargs)
     renderer.run()

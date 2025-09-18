@@ -18,6 +18,9 @@ from .api import (
     # Custom GLSL
     Forge,
 
+    # Camera
+    Camera,
+
     # Constants
     X, Y, Z,
 )

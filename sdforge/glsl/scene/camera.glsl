@@ -5,6 +5,11 @@ vec3 getRayDir(vec2 st, vec3 ro, vec3 lookAt, float zoom) {
   return normalize(st.x * r + st.y * u + 1.5 * f / zoom);
 }
 
+void cameraStatic(in vec2 st, in vec3 pos, in vec3 target, in float zoom, out vec3 ro, out vec3 rd) {
+    ro = pos;
+    rd = getRayDir(st, ro, target, zoom);
+}
+
 void cameraOrbit(in vec2 st, in vec2 mouse, in vec2 resolution, in float zoom, out vec3 ro, out vec3 rd) {
     vec2 mouse_norm = mouse / resolution;
     float yaw = (mouse_norm.x - 0.5) * 6.28;

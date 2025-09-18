@@ -62,6 +62,37 @@ f.render()
 f.save('example_forge.stl')
 ```
 
+### Camera Controls
+
+You can override the default mouse-orbit camera to create cinematic animations or set a static viewpoint. The `Camera` object accepts GLSL expressions for its position and target, which will be updated every frame.
+
+To use a custom camera, have your `main` function return a tuple containing your `SDFObject` and your `Camera` object.
+
+```python
+from sdforge import *
+
+# A simple shape to look at
+shape = sphere(1) & box(1.5)
+
+# An animated camera that orbits around the origin
+cam = Camera(
+    position=(
+        "5.0 * sin(u_time * 0.5)",
+        "3.0",
+        "5.0 * cos(u_time * 0.5)"
+    ),
+    target=(0, 0, 0) # Look at the center
+)
+
+# For hot-reloading to work, the main function must return the shape and camera
+def main():
+    return shape, cam
+
+if __name__ == '__main__':
+    sdf_object, camera_object = main()
+    sdf_object.render(camera=camera_object, watch=True)
+```
+
 ### Per-Object Materials
 
 You can assign a unique color to any object or group of objects using the `.color()` method. The renderer will automatically handle combining the shapes and their materials correctly.
@@ -78,7 +109,7 @@ blue_box = box(1.2).color(0, 0, 1)
 model = red_sphere | blue_box.translate(X * 0.5)
 
 # You can also set a custom background color
-f.render(bg_color=(0.1, 0.2, 0.3))
+model.render(bg_color=(0.1, 0.2, 0.3))
 ```
 
 ### Render to File

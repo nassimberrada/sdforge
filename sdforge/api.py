@@ -38,6 +38,30 @@ def _glsl_format(val):
     return f"{float(val)}"
 
 
+# --- Camera ---
+
+class Camera:
+    """
+    Represents a camera in the scene, allowing for static or animated positioning.
+    """
+    def __init__(self, position=(5, 4, 5), target=(0, 0, 0), zoom=1.0):
+        """
+        Initializes the camera.
+
+        Args:
+            position (tuple, optional): The position of the camera in 3D space.
+                                        Components can be numbers or GLSL expressions (str).
+                                        Defaults to (5, 4, 5).
+            target (tuple, optional): The point the camera is looking at.
+                                      Components can be numbers or GLSL expressions (str).
+                                      Defaults to (0, 0, 0).
+            zoom (float or str, optional): The zoom level. Defaults to 1.0.
+        """
+        self.position = position
+        self.target = target
+        self.zoom = zoom
+
+
 # --- Base Class ---
 
 class SDFObject:

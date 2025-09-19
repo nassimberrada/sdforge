@@ -50,10 +50,10 @@ def assemble_shader_code(sdf_obj) -> str:
 class NativeRenderer:
     """Handles the creation of a native window and renders the SDF."""
 
-    def __init__(self, sdf_obj, camera=None, lighting=None, watch=False, width=1280, height=720, record=None, bg_color=(0.1, 0.12, 0.15)):
+    def __init__(self, sdf_obj, camera=None, light=None, watch=False, width=1280, height=720, record=None, bg_color=(0.1, 0.12, 0.15)):
         self.sdf_obj = sdf_obj
         self.camera = camera
-        self.lighting = lighting
+        self.light = light
         self.watching = watch
         self.width = width
         self.height = height
@@ -98,13 +98,13 @@ class NativeRenderer:
         shadow_softness_str = "8.0"
         ao_strength_str = "3.0"
 
-        if self.lighting:
-            if self.lighting.position:
-                pos = self.lighting.position
+        if self.light:
+            if self.light.position:
+                pos = self.light.position
                 light_pos_str = f"vec3({_glsl_format(pos[0])}, {_glsl_format(pos[1])}, {_glsl_format(pos[2])})"
-            ambient_strength_str = _glsl_format(self.lighting.ambient_strength)
-            shadow_softness_str = _glsl_format(self.lighting.shadow_softness)
-            ao_strength_str = _glsl_format(self.lighting.ao_strength)
+            ambient_strength_str = _glsl_format(self.light.ambient_strength)
+            shadow_softness_str = _glsl_format(self.light.shadow_softness)
+            ao_strength_str = _glsl_format(self.light.ao_strength)
         
         # --- Camera ---
         camera_logic_glsl = ""
@@ -139,7 +139,7 @@ class NativeRenderer:
             {get_glsl_content('sdf/primitives.glsl')}
             {get_glsl_content('scene/camera.glsl')}
             {get_glsl_content('scene/raymarching.glsl')}
-            {get_glsl_content('scene/lighting.glsl')}
+            {get_glsl_content('scene/light.glsl')}
             
             {scene_code}
 
@@ -213,7 +213,7 @@ class NativeRenderer:
             spec.loader.exec_module(module)
             if hasattr(module, 'main') and callable(module.main):
                 result = module.main()
-                new_sdf_obj, new_cam_obj, new_lighting_obj = None, None, None
+                new_sdf_obj, new_cam_obj, new_light_obj = None, None, None
                 
                 if isinstance(result, tuple):
                     new_sdf_obj = result[0]
@@ -221,14 +221,14 @@ class NativeRenderer:
                         if isinstance(item, Camera):
                             new_cam_obj = item
                         elif isinstance(item, Light):
-                            new_lighting_obj = item
+                            new_light_obj = item
                 else:
                     new_sdf_obj = result
                 
                 if new_sdf_obj:
                     self.sdf_obj = new_sdf_obj
                     self.camera = new_cam_obj
-                    self.lighting = new_lighting_obj
+                    self.light = new_light_obj
                     self.program = self._compile_shader()
                     self.vao = self.ctx.simple_vertex_array(self.program, self.vbo, 'in_vert')
             else:
@@ -300,7 +300,7 @@ class NativeRenderer:
         print("INFO: Viewer window closed.")
         glfw.terminate()
 
-def render(sdf_obj, camera=None, lighting=None, watch=True, record=None, bg_color=(0.1, 0.12, 0.15), **kwargs):
+def render(sdf_obj, camera=None, light=None, watch=True, record=None, bg_color=(0.1, 0.12, 0.15), **kwargs):
     if is_in_colab():
         from IPython.display import IFrame
 
@@ -323,13 +323,13 @@ def render(sdf_obj, camera=None, lighting=None, watch=True, record=None, bg_colo
         shadow_softness_str = "8.0"
         ao_strength_str = "3.0"
 
-        if lighting:
-            if lighting.position:
-                pos = lighting.position
+        if light:
+            if light.position:
+                pos = light.position
                 light_pos_str = f"vec3({_glsl_format(pos[0])}, {_glsl_format(pos[1])}, {_glsl_format(pos[2])})"
-            ambient_strength_str = _glsl_format(lighting.ambient_strength)
-            shadow_softness_str = _glsl_format(lighting.shadow_softness)
-            ao_strength_str = _glsl_format(lighting.ao_strength)
+            ambient_strength_str = _glsl_format(light.ambient_strength)
+            shadow_softness_str = _glsl_format(light.shadow_softness)
+            ao_strength_str = _glsl_format(light.ao_strength)
 
         # --- Camera ---
         camera_logic_glsl = ""
@@ -368,7 +368,7 @@ def render(sdf_obj, camera=None, lighting=None, watch=True, record=None, bg_colo
             {get_glsl_content('sdf/primitives.glsl')}
             {get_glsl_content('scene/camera.glsl')}
             {get_glsl_content('scene/raymarching.glsl')}
-            {get_glsl_content('scene/lighting.glsl')}
+            {get_glsl_content('scene/light.glsl')}
             {shader_code}
             void main() {{
                 vec2 st = (2.0*vUv - 1.0) * vec2(u_resolution.x/u_resolution.y, 1.0);
@@ -423,5 +423,5 @@ def render(sdf_obj, camera=None, lighting=None, watch=True, record=None, bg_colo
         print("ERROR: Live rendering requires 'moderngl' and 'glfw'.\nPlease install them via: pip install sdforge")
         return
         
-    renderer = NativeRenderer(sdf_obj, camera=camera, lighting=lighting, watch=watch, record=record, bg_color=bg_color, **kwargs)
+    renderer = NativeRenderer(sdf_obj, camera=camera, light=light, watch=watch, record=record, bg_color=bg_color, **kwargs)
     renderer.run()

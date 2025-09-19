@@ -66,11 +66,11 @@ class Camera:
 
 class Light:
     """
-    Represents lighting and shadow properties for the scene.
+    Represents light and shadow properties for the scene.
     """
     def __init__(self, position=None, ambient_strength=0.1, shadow_softness=8.0, ao_strength=3.0):
         """
-        Initializes the scene lighting.
+        Initializes the scene light.
 
         Args:
             position (tuple, optional): The position of the light source.

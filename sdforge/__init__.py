@@ -14,6 +14,14 @@ from .api import (
     hex_prism,
     octahedron,
     ellipsoid,
+    box_frame,
+    capped_torus,
+    link,
+    capped_cylinder,
+    rounded_cylinder,
+    capped_cone,
+    round_cone,
+    pyramid,
 
     # Custom GLSL
     Forge,

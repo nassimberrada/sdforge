@@ -302,8 +302,8 @@ class NativeRenderer:
 
 def render(sdf_obj, camera=None, lighting=None, watch=True, record=None, bg_color=(0.1, 0.12, 0.15), **kwargs):
     if is_in_colab():
-        from IPython.display import display, HTML
-        
+        from IPython.display import IFrame
+
         materials = []
         sdf_obj._collect_materials(materials)
         if len(materials) > MAX_MATERIALS:
@@ -312,7 +312,10 @@ def render(sdf_obj, camera=None, lighting=None, watch=True, record=None, bg_colo
         material_struct_glsl = "struct MaterialInfo { vec3 color; };\n"
         
         colors_glsl = ", ".join([f"vec3({c.color[0]}, {c.color[1]}, {c.color[2]})" for c in materials])
-        material_array_glsl = f"const MaterialInfo u_materials[{max(1, len(materials))}] = MaterialInfo[]({colors_glsl});\n"
+        if not materials:
+            material_array_glsl = f"const MaterialInfo u_materials[1];\n"
+        else:
+            material_array_glsl = f"const MaterialInfo u_materials[{len(materials)}] = MaterialInfo[]({colors_glsl});\n"
         
         # --- Light ---
         light_pos_str = "ro"
@@ -341,17 +344,22 @@ def render(sdf_obj, camera=None, lighting=None, watch=True, record=None, bg_colo
             camera_logic_glsl = "cameraOrbit(st, u_mouse.xy, u_resolution, 1.0, ro, rd);"
 
         shader_code = assemble_shader_code(sdf_obj)
+        
+        width, height = 800, 600
+
         html_template = f"""
         <!DOCTYPE html><html><head><title>SDF Forge Viewer</title>
         <style>body{{margin:0;overflow:hidden}}canvas{{display:block}}</style></head>
         <body><script type="importmap">{{"imports":{{"three":"https://unpkg.com/three@0.157.0/build/three.module.js"}}}}</script>
         <script type="module">
         import * as THREE from 'three';
-        const fragmentShader = `
+        const fragmentShader = 
+            #version 300 es
+            precision mediump float;`
             varying vec2 vUv;
             uniform float u_time;
             uniform vec4 u_mouse;
-            #define u_resolution vec2(800.0, 600.0)
+            uniform vec2 u_resolution;
             #define u_bg_color vec3({bg_color[0]}, {bg_color[1]}, {bg_color[2]})
             
             {material_struct_glsl}
@@ -392,18 +400,22 @@ def render(sdf_obj, camera=None, lighting=None, watch=True, record=None, bg_colo
         const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
         const renderer = new THREE.WebGLRenderer({{antialias: true}});
         document.body.appendChild(renderer.domElement);
-        const uniforms = {{u_time:{{value:0}}, u_mouse:{{value:new THREE.Vector4()}}}};
+
+        const uniforms = {{
+            u_time:{{value:0}}, 
+            u_mouse:{{value:new THREE.Vector4()}},
+            u_resolution: {{value: new THREE.Vector2({width}.0, {height}.0)}}
+        }};
+
         const material = new THREE.ShaderMaterial({{vertexShader:`varying vec2 vUv; void main(){{vUv=uv;gl_Position=vec4(position,1.0);}}`, fragmentShader, uniforms}});
         scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2,2), material));
-        renderer.setSize(800,600);
-        document.addEventListener('mousemove', e=>{{uniforms.u_mouse.value.x=e.clientX;uniforms.u_mouse.value.y=600-e.clientY;}});
+        renderer.setSize({width}, {height});
+        document.addEventListener('mousemove', e=>{{uniforms.u_mouse.value.x=e.clientX;uniforms.u_mouse.value.y={height}-e.clientY;}});
         function animate(t){{requestAnimationFrame(animate);uniforms.u_time.value=t*0.001;renderer.render(scene,camera);}}
         animate();
         </script></body></html>
         """
-        escaped_html = html_template.replace('"', "&quot;")
-        display(HTML(f'<iframe srcdoc="{escaped_html}" width="800" height="600" style="border:1px solid #ccc"></iframe>'))
-        return
+        return IFrame(srcdoc=html_template, width=width + 20, height=height + 20)
 
     try:
         import moderngl, glfw

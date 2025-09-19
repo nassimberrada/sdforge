@@ -71,21 +71,21 @@ To use a custom camera, have your `main` function return a tuple containing your
 ```python
 from sdforge import *
 
-# A simple shape to look at
-shape = sphere(1) & box(1.5)
-
-# An animated camera that orbits around the origin
-cam = Camera(
-    position=(
-        "5.0 * sin(u_time * 0.5)",
-        "3.0",
-        "5.0 * cos(u_time * 0.5)"
-    ),
-    target=(0, 0, 0) # Look at the center
-)
-
-# For hot-reloading to work, the main function must return the shape and camera
 def main():
+    # A simple shape to look at
+    shape = sphere(1) & box(1.5)
+
+    # An animated camera that orbits around the origin
+    cam = Camera(
+        position=(
+            "5.0 * sin(u_time * 0.5)",
+            "3.0",
+            "5.0 * cos(u_time * 0.5)"
+        ),
+        target=(0, 0, 0) # Look at the center
+    )
+
+    # For hot-reloading to work, the main function must return the shape and camera
     return shape, cam
 
 if __name__ == '__main__':

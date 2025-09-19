@@ -14,7 +14,7 @@ def main():
     trunk = capsule(Y * 0, Y * 1.5, radius=0.2)
 
     tree = tree_top | trunk
-    
+
     # An octahedron "gem"
     gem = octahedron(0.5).translate(-X * 2 + Y * 0.5)
 
@@ -28,9 +28,18 @@ def main():
 
     # An ellipsoid "stone"
     stone = ellipsoid((0.8, 0.4, 0.5)).translate(Y * 0.4 + X * 3.5)
-    
+
+    # A pyramid
+    pyr = pyramid(height=1.0).translate(-X * 4 + Y * 0.5)
+
+    # A rounded cone
+    rc = round_cone(radius1=0.6, radius2=0.2, height=1.2).translate(-X * 5.5 + Y * 0.6)
+
+    # A box frame
+    bf = box_frame(size=(1, 1, 1), edge_radius=0.1).translate(X * 5.5 + Y * 0.6)
+
     # Combine all the objects into one scene
-    scene = tree | gem | pedestal | nut | stone
+    scene = tree | gem | pedestal | nut | stone | pyr | rc | bf
 
     # Use a boolean operation with the ground plane to cut everything off at y=0
     final_scene = scene & ground

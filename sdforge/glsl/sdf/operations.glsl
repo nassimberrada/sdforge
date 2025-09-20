@@ -46,7 +46,7 @@ vec4 opRound(vec4 res, float r) {
     return res;
 }
 
-vec4 opOnion(vec4 res, float thickness) {
+vec4 opBevel(vec4 res, float thickness) {
     res.x = abs(res.x) - thickness;
     return res;
 }

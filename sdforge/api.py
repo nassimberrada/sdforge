@@ -98,39 +98,96 @@ class SDFObject:
     def to_callable(self): raise NotImplementedError
     def get_glsl_definitions(self) -> list: return []
     def _collect_materials(self, materials): pass
-    def __or__(self, other): return Union(self, other)
-    def __and__(self, other): return Intersection(self, other)
-    def __sub__(self, other): return Difference(self, other)
-    def xor(self, other): return Xor(self, other)
-    def translate(self, offset): return Translate(self, np.array(offset))
-    def scale(self, factor): return Scale(self, factor)
-    def orient(self, axis): return Orient(self, np.array(axis))
-    def rotate(self, axis, angle): return Rotate(self, np.array(axis), angle)
-    def twist(self, k): return Twist(self, k)
-    def shear_xy(self, shear): return ShearXY(self, np.array(shear))
-    def shear_xz(self, shear): return ShearXZ(self, np.array(shear))
-    def shear_yz(self, shear): return ShearYZ(self, np.array(shear))
-    def bend_x(self, k): return BendX(self, k)
-    def bend_y(self, k): return BendY(self, k)
-    def bend_z(self, k): return BendZ(self, k)
-    def repeat(self, spacing): return Repeat(self, np.array(spacing))
-    def limited_repeat(self, spacing, limits): return LimitedRepeat(self, np.array(spacing), np.array(limits))
-    def polar_repeat(self, repetitions): return PolarRepeat(self, repetitions)
-    def mirror(self, axes): return Mirror(self, np.array(axes))
-    def smooth_union(self, other, k): return SmoothUnion(self, other, k)
-    def smooth_intersection(self, other, k): return SmoothIntersection(self, other, k)
-    def smooth_difference(self, other, k): return SmoothDifference(self, other, k)
-    def color(self, r, g, b): return Material(self, (r, g, b))
-    def round(self, radius): return Round(self, radius)
-    def onion(self, thickness): return Onion(self, thickness)
-    def elongate(self, h): return Elongate(self, np.array(h))
-    def displace(self, displacement_glsl): return Displace(self, displacement_glsl)
-    def extrude(self, height): return Extrude(self, height)
+    def __or__(self, other):
+        """Creates a union of this object and another."""
+        return Union(self, other)
+    def __and__(self, other):
+        """Creates an intersection of this object and another."""
+        return Intersection(self, other)
+    def __sub__(self, other):
+        """Subtracts another object from this one."""
+        return Difference(self, other)
+    def xor(self, other):
+        """Creates an exclusive-or (XOR) of this object and another."""
+        return Xor(self, other)
+    def translate(self, offset):
+        """Moves the object in space."""
+        return Translate(self, np.array(offset))
+    def scale(self, factor):
+        """Scales the object. Can be a uniform factor or per-axis."""
+        return Scale(self, factor)
+    def orient(self, axis):
+        """Orients the object along a primary axis (X, Y, or Z)."""
+        return Orient(self, np.array(axis))
+    def rotate(self, axis, angle):
+        """Rotates the object around an axis by a given angle in radians."""
+        return Rotate(self, np.array(axis), angle)
+    def twist(self, k):
+        """Twists the object around the Y-axis."""
+        return Twist(self, k)
+    def shear_xy(self, shear):
+        """Shears the object in the XY plane based on the Z coordinate."""
+        return ShearXY(self, np.array(shear))
+    def shear_xz(self, shear):
+        """Shears the object in the XZ plane based on the Y coordinate."""
+        return ShearXZ(self, np.array(shear))
+    def shear_yz(self, shear):
+        """Shears the object in the YZ plane based on the X coordinate."""
+        return ShearYZ(self, np.array(shear))
+    def bend_x(self, k):
+        """Bends the object around the X-axis."""
+        return BendX(self, k)
+    def bend_y(self, k):
+        """Bends the object around the Y-axis."""
+        return BendY(self, k)
+    def bend_z(self, k):
+        """Bends the object around the Z-axis."""
+        return BendZ(self, k)
+    def repeat(self, spacing):
+        """Repeats the object infinitely with a given spacing vector."""
+        return Repeat(self, np.array(spacing))
+    def limited_repeat(self, spacing, limits):
+        """Repeats the object a limited number of times along each axis."""
+        return LimitedRepeat(self, np.array(spacing), np.array(limits))
+    def polar_repeat(self, repetitions):
+        """Repeats the object in a circle around the Y-axis."""
+        return PolarRepeat(self, repetitions)
+    def mirror(self, axes):
+        """Mirrors the object across one or more axes (e.g., X, Y, X|Z)."""
+        return Mirror(self, np.array(axes))
+    def smooth_union(self, other, k):
+        """Creates a smooth union between this object and another."""
+        return SmoothUnion(self, other, k)
+    def smooth_intersection(self, other, k):
+        """Creates a smooth intersection between this object and another."""
+        return SmoothIntersection(self, other, k)
+    def smooth_difference(self, other, k):
+        """Creates a smooth difference between this object and another."""
+        return SmoothDifference(self, other, k)
+    def color(self, r, g, b):
+        """Applies a color material to the object."""
+        return Material(self, (r, g, b))
+    def round(self, radius):
+        """Rounds all edges of the object by a given radius."""
+        return Round(self, radius)
+    def bevel(self, thickness):
+        """Creates a shell or outline of the object with a given thickness."""
+        return Bevel(self, thickness)
+    def elongate(self, h):
+        """Elongates the object along its axes."""
+        return Elongate(self, np.array(h))
+    def displace(self, displacement_glsl):
+        """Displaces the surface of the object using a GLSL expression."""
+        return Displace(self, displacement_glsl)
+    def extrude(self, height):
+        """Extrudes a 2D SDF shape along the Z-axis."""
+        return Extrude(self, height)
 
 
 # --- Primitives ---
 
 class Sphere(SDFObject):
+    """Represents a sphere primitive."""
     def __init__(self, r=1.0):
         super().__init__()
         self.r = r
@@ -139,9 +196,16 @@ class Sphere(SDFObject):
         if isinstance(self.r, str): raise TypeError("Cannot save mesh of an object with animated (string) parameters.")
         return lambda p: np.linalg.norm(p, axis=-1) - self.r
 
-def sphere(r=1.0) -> SDFObject: return Sphere(r)
+def sphere(r=1.0) -> SDFObject:
+    """Creates a sphere.
+
+    Args:
+        r (float or str, optional): The radius of the sphere. Defaults to 1.0.
+    """
+    return Sphere(r)
 
 class Box(SDFObject):
+    """Represents a box primitive."""
     def __init__(self, size=1.0):
         super().__init__()
         if isinstance(size, (int, float, str)): size = (size, size, size)
@@ -160,9 +224,17 @@ class Box(SDFObject):
             return np.linalg.norm(np.maximum(q, 0), axis=-1) + np.minimum(np.max(q, axis=-1), 0)
         return _callable
 
-def box(size=1.0) -> SDFObject: return Box(size)
+def box(size=1.0) -> SDFObject:
+    """Creates a box.
+
+    Args:
+        size (float, tuple, or str, optional): The size of the box along each axis.
+                                               If a float, creates a uniform box. Defaults to 1.0.
+    """
+    return Box(size)
 
 class RoundedBox(SDFObject):
+    """Represents a box with rounded edges."""
     def __init__(self, size=1.0, radius=0.1):
         super().__init__()
         if isinstance(size, (int, float, str)): size = (size, size, size)
@@ -183,9 +255,17 @@ class RoundedBox(SDFObject):
             return np.linalg.norm(np.maximum(q, 0), axis=-1) - self.radius
         return _callable
 
-def rounded_box(size=1.0, radius=0.1) -> SDFObject: return RoundedBox(size, radius)
+def rounded_box(size=1.0, radius=0.1) -> SDFObject:
+    """Creates a box with rounded edges.
+
+    Args:
+        size (float, tuple, or str, optional): The size of the box. Defaults to 1.0.
+        radius (float or str, optional): The radius of the rounded edges. Defaults to 0.1.
+    """
+    return RoundedBox(size, radius)
 
 class Torus(SDFObject):
+    """Represents a torus primitive."""
     def __init__(self, major=1.0, minor=0.25):
         super().__init__()
         self.major, self.minor = major, minor
@@ -198,9 +278,17 @@ class Torus(SDFObject):
             return np.linalg.norm(q, axis=-1) - self.minor
         return _callable
 
-def torus(major=1.0, minor=0.25) -> SDFObject: return Torus(major, minor)
+def torus(major=1.0, minor=0.25) -> SDFObject:
+    """Creates a torus.
+
+    Args:
+        major (float or str, optional): The major radius (from center to tube center). Defaults to 1.0.
+        minor (float or str, optional): The minor radius (radius of the tube). Defaults to 0.25.
+    """
+    return Torus(major, minor)
 
 class Capsule(SDFObject):
+    """Represents a capsule primitive."""
     def __init__(self, a, b, radius=0.1):
         super().__init__()
         self.a, self.b, self.radius = np.array(a), np.array(b), radius
@@ -215,9 +303,18 @@ class Capsule(SDFObject):
             return np.linalg.norm(pa - ba * h[:, np.newaxis], axis=-1) - self.radius
         return _callable
 
-def capsule(a, b, radius=0.1) -> SDFObject: return Capsule(a, b, radius)
+def capsule(a, b, radius=0.1) -> SDFObject:
+    """Creates a capsule, a line segment with a radius.
+
+    Args:
+        a (tuple or np.ndarray): The start point of the capsule's spine.
+        b (tuple or np.ndarray): The end point of the capsule's spine.
+        radius (float or str, optional): The radius of the capsule. Defaults to 0.1.
+    """
+    return Capsule(a, b, radius)
 
 class Cylinder(SDFObject):
+    """Represents a cylinder primitive."""
     def __init__(self, radius=0.5, height=1.0):
         super().__init__()
         self.radius, self.height = radius, height
@@ -234,9 +331,17 @@ class Cylinder(SDFObject):
             return np.minimum(np.maximum(d[:, 0], d[:, 1]), 0.0) + np.linalg.norm(np.maximum(d, 0.0), axis=-1)
         return _callable
 
-def cylinder(radius=0.5, height=1.0) -> SDFObject: return Cylinder(radius, height)
+def cylinder(radius=0.5, height=1.0) -> SDFObject:
+    """Creates a cylinder oriented along the Y-axis.
+
+    Args:
+        radius (float or str, optional): The radius of the cylinder. Defaults to 0.5.
+        height (float or str, optional): The total height of the cylinder. Defaults to 1.0.
+    """
+    return Cylinder(radius, height)
 
 class Cone(SDFObject):
+    """Represents a cone primitive."""
     def __init__(self, height=1.0, radius=0.5):
         super().__init__()
         self.height, self.radius = height, radius
@@ -252,9 +357,17 @@ class Cone(SDFObject):
             return np.sqrt(d) * np.sign(s)
         return _callable
 
-def cone(height=1.0, radius=0.5) -> SDFObject: return Cone(height, radius)
+def cone(height=1.0, radius=0.5) -> SDFObject:
+    """Creates a cone oriented along the Y-axis.
+
+    Args:
+        height (float or str, optional): The height of the cone. Defaults to 1.0.
+        radius (float or str, optional): The radius of the cone's base. Defaults to 0.5.
+    """
+    return Cone(height, radius)
 
 class Plane(SDFObject):
+    """Represents an infinite plane."""
     def __init__(self, normal=Y, offset=0):
         super().__init__()
         self.normal, self.offset = np.array(normal), offset
@@ -263,9 +376,17 @@ class Plane(SDFObject):
         if isinstance(self.offset, str): raise TypeError("Cannot save mesh of an object with animated (string) parameters.")
         return lambda p: np.dot(p, self.normal) + self.offset
 
-def plane(normal=Y, offset=0) -> SDFObject: return Plane(normal, offset)
+def plane(normal=Y, offset=0) -> SDFObject:
+    """Creates an infinite plane.
+
+    Args:
+        normal (tuple or np.ndarray, optional): The normal vector of the plane. Defaults to Y.
+        offset (float or str, optional): The offset of the plane from the origin. Defaults to 0.
+    """
+    return Plane(normal, offset)
 
 class HexPrism(SDFObject):
+    """Represents a hexagonal prism."""
     def __init__(self, radius=1.0, height=0.1):
         super().__init__()
         self.radius, self.height = radius, height
@@ -290,9 +411,17 @@ class HexPrism(SDFObject):
             return np.minimum(max_d, 0.0) + np.linalg.norm(np.maximum(d, 0.0), axis=-1)
         return _callable
 
-def hex_prism(radius=1.0, height=0.1) -> SDFObject: return HexPrism(radius, height)
+def hex_prism(radius=1.0, height=0.1) -> SDFObject:
+    """Creates a hexagonal prism oriented along the Z-axis.
+
+    Args:
+        radius (float or str, optional): The radius (distance from center to vertex). Defaults to 1.0.
+        height (float or str, optional): The height of the prism. Defaults to 0.1.
+    """
+    return HexPrism(radius, height)
 
 class Octahedron(SDFObject):
+    """Represents an octahedron."""
     def __init__(self, size=1.0):
         super().__init__()
         self.size = size
@@ -301,9 +430,16 @@ class Octahedron(SDFObject):
         if isinstance(self.size, str): raise TypeError("Cannot save mesh of an object with animated (string) parameters.")
         return lambda p: (np.sum(np.abs(p), axis=-1) - self.size) * 0.57735027
 
-def octahedron(size=1.0) -> SDFObject: return Octahedron(size)
+def octahedron(size=1.0) -> SDFObject:
+    """Creates an octahedron.
+
+    Args:
+        size (float or str, optional): The size of the octahedron. Defaults to 1.0.
+    """
+    return Octahedron(size)
 
 class Ellipsoid(SDFObject):
+    """Represents an ellipsoid."""
     def __init__(self, radii):
         super().__init__()
         self.radii = radii
@@ -320,9 +456,16 @@ class Ellipsoid(SDFObject):
             return k0 * (k0 - 1.0) / (k1 + 1e-9)
         return _callable
 
-def ellipsoid(radii) -> SDFObject: return Ellipsoid(radii)
+def ellipsoid(radii) -> SDFObject:
+    """Creates an ellipsoid.
+
+    Args:
+        radii (tuple or list): The radii of the ellipsoid along the X, Y, and Z axes.
+    """
+    return Ellipsoid(radii)
 
 class BoxFrame(SDFObject):
+    """Represents the frame of a box."""
     def __init__(self, size, edge_radius=0.1):
         super().__init__()
         if isinstance(size, (int, float, str)): size = (size, size, size)
@@ -348,9 +491,17 @@ class BoxFrame(SDFObject):
             return np.minimum(np.minimum(d1, d2), d3)
         return _callable
 
-def box_frame(size, edge_radius=0.1) -> SDFObject: return BoxFrame(size, edge_radius)
+def box_frame(size, edge_radius=0.1) -> SDFObject:
+    """Creates the frame of a box.
+
+    Args:
+        size (tuple or float): The size of the box frame.
+        edge_radius (float, optional): The radius of the edges. Defaults to 0.1.
+    """
+    return BoxFrame(size, edge_radius)
 
 class CappedTorus(SDFObject):
+    """Represents a torus capped at a specific angle."""
     def __init__(self, angle_sc, major_radius, minor_radius):
         super().__init__()
         self.angle_sc = np.array(angle_sc)
@@ -375,9 +526,18 @@ class CappedTorus(SDFObject):
             return np.sqrt(dot_p + ra*ra - 2.0*ra*k) - rb
         return _callable
 
-def capped_torus(angle_sc, major_radius=1.0, minor_radius=0.25) -> SDFObject: return CappedTorus(angle_sc, major_radius, minor_radius)
+def capped_torus(angle_sc, major_radius=1.0, minor_radius=0.25) -> SDFObject:
+    """Creates a capped torus, like a 'C' shape.
+
+    Args:
+        angle_sc (tuple): A 2D vector representing (sin(angle), cos(angle)) of the cap.
+        major_radius (float, optional): The major radius. Defaults to 1.0.
+        minor_radius (float, optional): The minor radius. Defaults to 0.25.
+    """
+    return CappedTorus(angle_sc, major_radius, minor_radius)
 
 class Link(SDFObject):
+    """Represents two cylinders connected by a torus section."""
     def __init__(self, length, radius1, radius2):
         super().__init__()
         self.length, self.radius1, self.radius2 = length, radius1, radius2
@@ -395,9 +555,18 @@ class Link(SDFObject):
             return np.linalg.norm(vec, axis=-1) - r2
         return _callable
 
-def link(length=1.0, radius1=0.3, radius2=0.1) -> SDFObject: return Link(length, radius1, radius2)
+def link(length=1.0, radius1=0.3, radius2=0.1) -> SDFObject:
+    """Creates a link shape.
+
+    Args:
+        length (float, optional): The length of the straight sections. Defaults to 1.0.
+        radius1 (float, optional): The major radius of the curved section. Defaults to 0.3.
+        radius2 (float, optional): The minor radius of the shape. Defaults to 0.1.
+    """
+    return Link(length, radius1, radius2)
 
 class CappedCylinder(SDFObject):
+    """Represents a cylinder defined by two end points."""
     def __init__(self, a, b, radius):
         super().__init__()
         self.a, self.b, self.radius = np.array(a), np.array(b), radius
@@ -420,9 +589,18 @@ class CappedCylinder(SDFObject):
             return np.sign(d_inner) * np.sqrt(np.abs(d_inner)) / baba
         return _callable
 
-def capped_cylinder(a, b, radius=0.1) -> SDFObject: return CappedCylinder(a, b, radius)
+def capped_cylinder(a, b, radius=0.1) -> SDFObject:
+    """Creates a cylinder between two points.
+
+    Args:
+        a (tuple or np.ndarray): The start point of the cylinder.
+        b (tuple or np.ndarray): The end point of the cylinder.
+        radius (float, optional): The radius of the cylinder. Defaults to 0.1.
+    """
+    return CappedCylinder(a, b, radius)
 
 class RoundedCylinder(SDFObject):
+    """Represents a cylinder with rounded edges."""
     def __init__(self, radius, round_radius, height):
         super().__init__()
         self.radius, self.round_radius, self.height = radius, round_radius, height
@@ -442,9 +620,18 @@ class RoundedCylinder(SDFObject):
             return np.minimum(np.maximum(d[:, 0], d[:, 1]), 0.0) + np.linalg.norm(np.maximum(d, 0.0), axis=-1) - rb
         return _callable
 
-def rounded_cylinder(radius=1.0, round_radius=0.1, height=2.0) -> SDFObject: return RoundedCylinder(radius, round_radius, height)
+def rounded_cylinder(radius=1.0, round_radius=0.1, height=2.0) -> SDFObject:
+    """Creates a cylinder with rounded edges, oriented along the Y-axis.
+
+    Args:
+        radius (float, optional): The cylinder's radius. Defaults to 1.0.
+        round_radius (float, optional): The radius of the rounding. Defaults to 0.1.
+        height (float, optional): The height of the cylinder. Defaults to 2.0.
+    """
+    return RoundedCylinder(radius, round_radius, height)
 
 class CappedCone(SDFObject):
+    """Represents a cone with caps."""
     def __init__(self, height, radius1, radius2):
         super().__init__()
         self.height, self.radius1, self.radius2 = height, radius1, radius2
@@ -477,9 +664,18 @@ class CappedCone(SDFObject):
             return s * np.sqrt(np.minimum(dot2_ca, dot2_cb))
         return _callable
 
-def capped_cone(height=1.0, radius1=0.5, radius2=0.2) -> SDFObject: return CappedCone(height, radius1, radius2)
+def capped_cone(height=1.0, radius1=0.5, radius2=0.2) -> SDFObject:
+    """Creates a capped cone (a frustum).
+
+    Args:
+        height (float, optional): The height of the cone. Defaults to 1.0.
+        radius1 (float, optional): The radius of the base at Y=0. Defaults to 0.5.
+        radius2 (float, optional): The radius of the top at Y=height. Defaults to 0.2.
+    """
+    return CappedCone(height, radius1, radius2)
 
 class RoundCone(SDFObject):
+    """Represents a cone with rounded edges."""
     def __init__(self, radius1, radius2, height):
         super().__init__()
         self.radius1, self.radius2, self.height = radius1, radius2, height
@@ -505,9 +701,18 @@ class RoundCone(SDFObject):
             return np.where(cond1, dist1, np.where(cond2, dist2, dist3))
         return _callable
 
-def round_cone(radius1=0.5, radius2=0.2, height=1.0) -> SDFObject: return RoundCone(radius1, radius2, height)
+def round_cone(radius1=0.5, radius2=0.2, height=1.0) -> SDFObject:
+    """Creates a cone with rounded edges.
+
+    Args:
+        radius1 (float, optional): The radius of the bottom sphere. Defaults to 0.5.
+        radius2 (float, optional): The radius of the top sphere. Defaults to 0.2.
+        height (float, optional): The height between the sphere centers. Defaults to 1.0.
+    """
+    return RoundCone(radius1, radius2, height)
 
 class Pyramid(SDFObject):
+    """Represents a 4-sided pyramid."""
     def __init__(self, height):
         super().__init__()
         self.height = height
@@ -536,12 +741,19 @@ class Pyramid(SDFObject):
             return np.sqrt((d2 + q[:, 2]**2) / m2) * np.sign(np.maximum(q[:, 2], -p[:, 1]))
         return _callable
 
-def pyramid(height=1.0) -> SDFObject: return Pyramid(height)
+def pyramid(height=1.0) -> SDFObject:
+    """Creates a 4-sided pyramid.
+
+    Args:
+        height (float, optional): The height of the pyramid. Defaults to 1.0.
+    """
+    return Pyramid(height)
 
 
 # --- Material ---
 
 class Material(SDFObject):
+    """Applies a color material to a child object."""
     def __init__(self, child, color):
         super().__init__()
         self.child = child
@@ -570,6 +782,7 @@ class Material(SDFObject):
 # --- Standard Operations ---
 
 class Union(SDFObject):
+    """Represents the union of multiple SDF objects."""
     def __init__(self, *children):
         super().__init__()
         self.children = children
@@ -581,6 +794,7 @@ class Union(SDFObject):
         for c in self.children: c._collect_materials(materials)
 
 class Intersection(SDFObject):
+    """Represents the intersection of multiple SDF objects."""
     def __init__(self, *children):
         super().__init__()
         self.children = children
@@ -592,6 +806,7 @@ class Intersection(SDFObject):
         for c in self.children: c._collect_materials(materials)
 
 class Difference(SDFObject):
+    """Represents the subtraction of one SDF object from another."""
     def __init__(self, a, b):
         super().__init__()
         self.a, self.b = a, b
@@ -604,6 +819,7 @@ class Difference(SDFObject):
         self.b._collect_materials(materials)
 
 class Xor(SDFObject):
+    """Represents the exclusive-or (XOR) of two SDF objects."""
     def __init__(self, a, b):
         super().__init__()
         self.a, self.b = a, b
@@ -619,6 +835,7 @@ class Xor(SDFObject):
 # --- Smooth Operations ---
 
 class SmoothUnion(SDFObject):
+    """Represents the smooth union of two SDF objects."""
     def __init__(self, a, b, k):
         super().__init__()
         self.a, self.b, self.k = a, b, k
@@ -636,6 +853,7 @@ class SmoothUnion(SDFObject):
         self.b._collect_materials(materials)
 
 class SmoothIntersection(SDFObject):
+    """Represents the smooth intersection of two SDF objects."""
     def __init__(self, a, b, k):
         super().__init__()
         self.a, self.b, self.k = a, b, k
@@ -654,6 +872,7 @@ class SmoothIntersection(SDFObject):
         self.b._collect_materials(materials)
 
 class SmoothDifference(SDFObject):
+    """Represents the smooth difference of two SDF objects."""
     def __init__(self, a, b, k):
         super().__init__()
         self.a, self.b, self.k = a, b, k
@@ -675,6 +894,7 @@ class SmoothDifference(SDFObject):
 # --- Shaping Operations ---
 
 class Round(SDFObject):
+    """Rounds the edges of a child object."""
     def __init__(self, child, radius):
         super().__init__()
         self.child, self.radius = child, radius
@@ -687,12 +907,13 @@ class Round(SDFObject):
     def get_glsl_definitions(self) -> list: return [_get_glsl_content("operations.glsl")] + self.child.get_glsl_definitions()
     def _collect_materials(self, materials): self.child._collect_materials(materials)
 
-class Onion(SDFObject):
+class Bevel(SDFObject):
+    """Creates a shell or outline of a child object."""
     def __init__(self, child, thickness):
         super().__init__()
         self.child, self.thickness = child, thickness
     def to_glsl(self) -> str:
-        return f"opOnion({self.child.to_glsl()}, {_glsl_format(self.thickness)})"
+        return f"opBevel({self.child.to_glsl()}, {_glsl_format(self.thickness)})"
     def to_callable(self):
         if isinstance(self.thickness, str): raise TypeError("Animated parameters not supported for mesh export.")
         child_call = self.child.to_callable()
@@ -701,11 +922,14 @@ class Onion(SDFObject):
     def _collect_materials(self, materials): self.child._collect_materials(materials)
 
 class Elongate(SDFObject):
+    """Elongates a child object."""
     def __init__(self, child, h):
         super().__init__()
         self.child, self.h = child, h
     def to_glsl(self) -> str:
         h_str = f"vec3({_glsl_format(self.h[0])}, {_glsl_format(self.h[1])}, {_glsl_format(self.h[2])})"
+        # This transform is special as it doesn't just transform 'p', it uses 'p' to create an offset.
+        # It's safer to apply it directly to the coordinate space of the child.
         return self.child.to_glsl().replace("p", f"opElongate(p, {h_str})")
     def to_callable(self):
         child_call = self.child.to_callable()
@@ -714,6 +938,7 @@ class Elongate(SDFObject):
     def _collect_materials(self, materials): self.child._collect_materials(materials)
 
 class Displace(SDFObject):
+    """Displaces the surface of a child object."""
     def __init__(self, child, displacement_glsl):
         super().__init__()
         self.child, self.displacement_glsl = child, displacement_glsl
@@ -725,6 +950,7 @@ class Displace(SDFObject):
     def _collect_materials(self, materials): self.child._collect_materials(materials)
 
 class Extrude(SDFObject):
+    """Extrudes a 2D SDF shape."""
     def __init__(self, child, height):
         super().__init__()
         self.child, self.height = child, height
@@ -745,25 +971,50 @@ class Extrude(SDFObject):
 
 
 # --- Basic Transformations ---
-
-class Translate(SDFObject):
-    def __init__(self, child, offset):
+class _Transform(SDFObject):
+    """Base class for robust transformations."""
+    def __init__(self, child):
         super().__init__()
-        self.child, self.offset = child, offset
+        self.child = child
+
+    def _get_transform_glsl(self, p_expr: str) -> str:
+        raise NotImplementedError("Subclasses must implement _get_transform_glsl")
+
     def to_glsl(self) -> str:
-        o = self.offset
-        return self.child.to_glsl().replace(
-            "p", f"opTranslate(p, vec3({_glsl_format(o[0])}, {_glsl_format(o[1])}, {_glsl_format(o[2])}))"
+        # Create a unique ID to avoid variable name collisions in complex chains
+        unique_p = f"p_{self.uuid.hex[:8]}"
+        
+        # Define a transformed point and then call the child's GLSL with it.
+        # This is robust to chained transformations.
+        return (
+            f"((){{ "
+            f"vec3 {unique_p} = {self._get_transform_glsl('p')}; "
+            f"return {self.child.to_glsl().replace('p', unique_p)};"
+            f" }})()"
         )
+
+    def get_glsl_definitions(self):
+        return [_get_glsl_content("transforms.glsl")] + self.child.get_glsl_definitions()
+
+    def _collect_materials(self, materials):
+        self.child._collect_materials(materials)
+
+
+class Translate(_Transform):
+    """Translates a child object."""
+    def __init__(self, child, offset):
+        super().__init__(child)
+        self.offset = offset
+    def _get_transform_glsl(self, p_expr: str) -> str:
+        o = self.offset
+        return f"opTranslate({p_expr}, vec3({_glsl_format(o[0])}, {_glsl_format(o[1])}, {_glsl_format(o[2])}))"
     def to_callable(self):
         child_call = self.child.to_callable()
         return lambda p: child_call(p - self.offset)
-    def get_glsl_definitions(self): 
-        return [_get_glsl_content("transforms.glsl")] + self.child.get_glsl_definitions()
-    def _collect_materials(self, materials): self.child._collect_materials(materials)
 
 
 class Scale(SDFObject):
+    """Scales a child object."""
     def __init__(self, child, factor):
         super().__init__()
         self.child, self.factor = child, factor
@@ -771,9 +1022,21 @@ class Scale(SDFObject):
         f = self.factor
         if isinstance(f, (tuple, list, np.ndarray)):
             factor_str = f"vec3({_glsl_format(f[0])}, {_glsl_format(f[1])}, {_glsl_format(f[2])})"
+            len_str = f"dot(vec3(1.0), vec3({_glsl_format(f[0])}, {_glsl_format(f[1])}, {_glsl_format(f[2])}))/3.0"
         else:
             factor_str = f"vec3({_glsl_format(f)})"
-        return f"((){{ vec4 res = {self.child.to_glsl().replace('p', f'opScale(p, {factor_str})')}; res.x *= length({factor_str}); return res; }})()"
+            len_str = _glsl_format(f)
+        
+        unique_p = f"p_{self.uuid.hex[:8]}"
+        return (
+            f"((){{ "
+            f"vec3 {unique_p} = opScale(p, {factor_str}); "
+            f"vec4 res = {self.child.to_glsl().replace('p', unique_p)}; "
+            f"res.x *= {len_str}; "
+            f"return res; "
+            f"}})"
+            f"()"
+        )
     def to_callable(self):
         if isinstance(self.factor, str): 
             raise TypeError("Animated parameters not supported for mesh export.")
@@ -785,15 +1048,16 @@ class Scale(SDFObject):
     def _collect_materials(self, materials): self.child._collect_materials(materials)
 
 
-class Rotate(SDFObject):
+class Rotate(_Transform):
+    """Rotates a child object."""
     def __init__(self, child, axis, angle):
-        super().__init__()
-        self.child, self.axis, self.angle = child, axis, angle
-    def to_glsl(self) -> str:
+        super().__init__(child)
+        self.axis, self.angle = axis, angle
+    def _get_transform_glsl(self, p_expr: str) -> str:
         if np.allclose(self.axis, X): func = "opRotateX"
         elif np.allclose(self.axis, Y): func = "opRotateY"
         else: func = "opRotateZ"
-        return self.child.to_glsl().replace("p", f"{func}(p, {_glsl_format(self.angle)})")
+        return f"{func}({p_expr}, {_glsl_format(self.angle)})"
     def to_callable(self):
         if isinstance(self.angle, str): 
             raise TypeError("Animated parameters not supported for mesh export.")
@@ -806,35 +1070,32 @@ class Rotate(SDFObject):
         else:
             R = np.array([[c,-s,0],[s,c,0],[0,0,1]])
         return lambda p: child_call(p @ R.T)
-    def get_glsl_definitions(self):
-        return [_get_glsl_content("transforms.glsl")] + self.child.get_glsl_definitions()
-    def _collect_materials(self, materials): self.child._collect_materials(materials)
 
 
-class Orient(SDFObject):
+class Orient(_Transform):
+    """Orients a child object along an axis."""
     def __init__(self, child, axis):
-        super().__init__()
-        self.child, self.axis = child, axis
+        super().__init__(child)
+        self.axis = axis
     def to_glsl(self) -> str:
-        if np.allclose(self.axis, X): return self.child.to_glsl().replace("p", "opOrient(p, 0)")
-        elif np.allclose(self.axis, Y): return self.child.to_glsl().replace("p", "opOrient(p, 1)")
-        else: return self.child.to_glsl()
+        # Override to avoid redundant IIFE for a simple swizzle
+        if np.allclose(self.axis, X): return self.child.to_glsl().replace("p", "p.zyx")
+        elif np.allclose(self.axis, Y): return self.child.to_glsl().replace("p", "p.xzy")
+        else: return self.child.to_glsl() # Z is default, no-op
     def to_callable(self):
         child_call = self.child.to_callable()
         if np.allclose(self.axis, X): return lambda p: child_call(p[:, [2,1,0]])
         elif np.allclose(self.axis, Y): return lambda p: child_call(p[:, [0,2,1]])
         return child_call
-    def get_glsl_definitions(self):
-        return [_get_glsl_content("transforms.glsl")] + self.child.get_glsl_definitions()
-    def _collect_materials(self, materials): self.child._collect_materials(materials)
 
 
-class Twist(SDFObject):
+class Twist(_Transform):
+    """Twists a child object."""
     def __init__(self, child, k):
-        super().__init__()
-        self.child, self.k = child, k
-    def to_glsl(self) -> str:
-        return self.child.to_glsl().replace("p", f"opTwist(p, {_glsl_format(self.k)})")
+        super().__init__(child)
+        self.k = k
+    def _get_transform_glsl(self, p_expr: str) -> str:
+        return f"opTwist({p_expr}, {_glsl_format(self.k)})"
     def to_callable(self):
         if isinstance(self.k, str): raise TypeError("Animated parameters not supported for mesh export.")
         child_call, k = self.child.to_callable(), float(self.k)
@@ -844,17 +1105,15 @@ class Twist(SDFObject):
             q = np.stack([x_new, p[:,1], z_new], axis=-1)
             return child_call(q)
         return _callable
-    def get_glsl_definitions(self):
-        return [_get_glsl_content("transforms.glsl")] + self.child.get_glsl_definitions()
-    def _collect_materials(self, materials): self.child._collect_materials(materials)
 
-class ShearXY(SDFObject):
+class ShearXY(_Transform):
+    """Shears a child object."""
     def __init__(self, child, shear):
-        super().__init__()
-        self.child, self.shear = child, shear
-    def to_glsl(self) -> str:
+        super().__init__(child)
+        self.shear = shear
+    def _get_transform_glsl(self, p_expr: str) -> str:
         sh = self.shear
-        return self.child.to_glsl().replace("p", f"opShearXY(p, vec2({_glsl_format(sh[0])}, {_glsl_format(sh[1])}))")
+        return f"opShearXY({p_expr}, vec2({_glsl_format(sh[0])}, {_glsl_format(sh[1])}))"
     def to_callable(self):
         child_call, sh = self.child.to_callable(), np.array(self.shear)
         def _callable(p):
@@ -863,16 +1122,15 @@ class ShearXY(SDFObject):
             q[:,1] += sh[1] * p[:,2]
             return child_call(q)
         return _callable
-    def get_glsl_definitions(self): return [_get_glsl_content("transforms.glsl")] + self.child.get_glsl_definitions()
-    def _collect_materials(self, materials): self.child._collect_materials(materials)
 
-class ShearXZ(SDFObject):
+class ShearXZ(_Transform):
+    """Shears a child object."""
     def __init__(self, child, shear):
-        super().__init__()
-        self.child, self.shear = child, shear
-    def to_glsl(self) -> str:
+        super().__init__(child)
+        self.shear = shear
+    def _get_transform_glsl(self, p_expr: str) -> str:
         sh = self.shear
-        return self.child.to_glsl().replace("p", f"opShearXZ(p, vec2({_glsl_format(sh[0])}, {_glsl_format(sh[1])}))")
+        return f"opShearXZ({p_expr}, vec2({_glsl_format(sh[0])}, {_glsl_format(sh[1])}))"
     def to_callable(self):
         child_call, sh = self.child.to_callable(), np.array(self.shear)
         def _callable(p):
@@ -881,16 +1139,15 @@ class ShearXZ(SDFObject):
             q[:,2] += sh[1] * p[:,1]
             return child_call(q)
         return _callable
-    def get_glsl_definitions(self): return [_get_glsl_content("transforms.glsl")] + self.child.get_glsl_definitions()
-    def _collect_materials(self, materials): self.child._collect_materials(materials)
 
-class ShearYZ(SDFObject):
+class ShearYZ(_Transform):
+    """Shears a child object."""
     def __init__(self, child, shear):
-        super().__init__()
-        self.child, self.shear = child, shear
-    def to_glsl(self) -> str:
+        super().__init__(child)
+        self.shear = shear
+    def _get_transform_glsl(self, p_expr: str) -> str:
         sh = self.shear
-        return self.child.to_glsl().replace("p", f"opShearYZ(p, vec2({_glsl_format(sh[0])}, {_glsl_format(sh[1])}))")
+        return f"opShearYZ({p_expr}, vec2({_glsl_format(sh[0])}, {_glsl_format(sh[1])}))"
     def to_callable(self):
         child_call, sh = self.child.to_callable(), np.array(self.shear)
         def _callable(p):
@@ -899,15 +1156,14 @@ class ShearYZ(SDFObject):
             q[:,2] += sh[1] * p[:,0]
             return child_call(q)
         return _callable
-    def get_glsl_definitions(self): return [_get_glsl_content("transforms.glsl")] + self.child.get_glsl_definitions()
-    def _collect_materials(self, materials): self.child._collect_materials(materials)
 
-class BendX(SDFObject):
+class BendX(_Transform):
+    """Bends a child object."""
     def __init__(self, child, k):
-        super().__init__()
-        self.child, self.k = child, k
-    def to_glsl(self) -> str:
-        return self.child.to_glsl().replace("p", f"opBendX(p, {_glsl_format(self.k)})")
+        super().__init__(child)
+        self.k = k
+    def _get_transform_glsl(self, p_expr: str) -> str:
+        return f"opBendX({p_expr}, {_glsl_format(self.k)})"
     def to_callable(self):
         if isinstance(self.k, str): raise TypeError("Animated bend not supported for mesh export.")
         child_call, k = self.child.to_callable(), float(self.k)
@@ -918,15 +1174,14 @@ class BendX(SDFObject):
             q = np.stack([p[:,0], y_new, z_new], axis=-1)
             return child_call(q)
         return _callable
-    def get_glsl_definitions(self): return [_get_glsl_content("transforms.glsl")] + self.child.get_glsl_definitions()
-    def _collect_materials(self, materials): self.child._collect_materials(materials)
 
-class BendY(SDFObject):
+class BendY(_Transform):
+    """Bends a child object."""
     def __init__(self, child, k):
-        super().__init__()
-        self.child, self.k = child, k
-    def to_glsl(self) -> str:
-        return self.child.to_glsl().replace("p", f"opBendY(p, {_glsl_format(self.k)})")
+        super().__init__(child)
+        self.k = k
+    def _get_transform_glsl(self, p_expr: str) -> str:
+        return f"opBendY({p_expr}, {_glsl_format(self.k)})"
     def to_callable(self):
         if isinstance(self.k, str): raise TypeError("Animated bend not supported for mesh export.")
         child_call, k = self.child.to_callable(), float(self.k)
@@ -937,15 +1192,14 @@ class BendY(SDFObject):
             q = np.stack([x_new, p[:,1], z_new], axis=-1)
             return child_call(q)
         return _callable
-    def get_glsl_definitions(self): return [_get_glsl_content("transforms.glsl")] + self.child.get_glsl_definitions()
-    def _collect_materials(self, materials): self.child._collect_materials(materials)
 
-class BendZ(SDFObject):
+class BendZ(_Transform):
+    """Bends a child object."""
     def __init__(self, child, k):
-        super().__init__()
-        self.child, self.k = child, k
-    def to_glsl(self) -> str:
-        return self.child.to_glsl().replace("p", f"opBendZ(p, {_glsl_format(self.k)})")
+        super().__init__(child)
+        self.k = k
+    def _get_transform_glsl(self, p_expr: str) -> str:
+        return f"opBendZ({p_expr}, {_glsl_format(self.k)})"
     def to_callable(self):
         if isinstance(self.k, str): raise TypeError("Animated bend not supported for mesh export.")
         child_call, k = self.child.to_callable(), float(self.k)
@@ -956,53 +1210,62 @@ class BendZ(SDFObject):
             q = np.stack([x_new, y_new, p[:,2]], axis=-1)
             return child_call(q)
         return _callable
-    def get_glsl_definitions(self): return [_get_glsl_content("transforms.glsl")] + self.child.get_glsl_definitions()
-    def _collect_materials(self, materials): self.child._collect_materials(materials)
 
 
-class Repeat(SDFObject):
+class Repeat(_Transform):
+    """Repeats a child object infinitely."""
     def __init__(self, child, spacing):
-        super().__init__()
-        self.child, self.spacing = child, spacing
-    def to_glsl(self) -> str:
+        super().__init__(child)
+        self.spacing = spacing
+    def _get_transform_glsl(self, p_expr: str) -> str:
         s = self.spacing
-        return self.child.to_glsl().replace("p", f"opRepeat(p, vec3({_glsl_format(s[0])}, {_glsl_format(s[1])}, {_glsl_format(s[2])}))")
+        return f"opRepeat({p_expr}, vec3({_glsl_format(s[0])}, {_glsl_format(s[1])}, {_glsl_format(s[2])}))"
     def to_callable(self):
         child_call, s = self.child.to_callable(), self.spacing
-        active_spacing = np.where(s == 0, np.inf, s)
-        return lambda p: child_call(np.mod(p + 0.5*active_spacing, active_spacing) - 0.5*active_spacing)
-    def get_glsl_definitions(self):
-        return [_get_glsl_content("transforms.glsl")] + self.child.get_glsl_definitions()
-    def _collect_materials(self, materials): self.child._collect_materials(materials)
+        def _callable(p):
+            q = p.copy()
+            mask = s != 0
+            if np.any(mask):
+                p_masked = p[:, mask]
+                s_masked = s[mask]
+                q[:, mask] = np.mod(p_masked + 0.5 * s_masked, s_masked) - 0.5 * s_masked
+            return child_call(q)
+        return _callable
 
-class LimitedRepeat(SDFObject):
+class LimitedRepeat(_Transform):
+    """Repeats a child object a limited number of times."""
     def __init__(self, child, spacing, limits):
-        super().__init__()
-        self.child, self.spacing, self.limits = child, spacing, limits
-    def to_glsl(self) -> str:
+        super().__init__(child)
+        self.spacing, self.limits = spacing, limits
+    def _get_transform_glsl(self, p_expr: str) -> str:
         s = self.spacing
         l = self.limits
         s_str = f"vec3({_glsl_format(s[0])}, {_glsl_format(s[1])}, {_glsl_format(s[2])})"
         l_str = f"vec3({_glsl_format(l[0])}, {_glsl_format(l[1])}, {_glsl_format(l[2])})"
-        return self.child.to_glsl().replace("p", f"opLimitedRepeat(p, {s_str}, {l_str})")
+        return f"opLimitedRepeat({p_expr}, {s_str}, {l_str})"
     def to_callable(self):
         child_call = self.child.to_callable()
         s = self.spacing
         l = self.limits
         def _callable(p):
-            q = p - s * np.clip(np.round(p / s), -l, l)
+            q = p.copy()
+            mask = s != 0
+            if np.any(mask):
+                p_masked = p[:, mask]
+                s_masked = s[mask]
+                l_masked = l[mask]
+                q[:, mask] = p_masked - s_masked * np.clip(np.round(p_masked / s_masked), -l_masked, l_masked)
             return child_call(q)
         return _callable
-    def get_glsl_definitions(self): return [_get_glsl_content("transforms.glsl")] + self.child.get_glsl_definitions()
-    def _collect_materials(self, materials): self.child._collect_materials(materials)
 
 
-class PolarRepeat(SDFObject):
+class PolarRepeat(_Transform):
+    """Repeats a child object in a circle."""
     def __init__(self, child, repetitions):
-        super().__init__()
-        self.child, self.repetitions = child, repetitions
-    def to_glsl(self) -> str:
-        return self.child.to_glsl().replace("p", f"opPolarRepeat(p, {_glsl_format(self.repetitions)})")
+        super().__init__(child)
+        self.repetitions = repetitions
+    def _get_transform_glsl(self, p_expr: str) -> str:
+        return f"opPolarRepeat({p_expr}, {_glsl_format(self.repetitions)})"
     def to_callable(self):
         if isinstance(self.repetitions, str):
             raise TypeError("Animated polar repeat not supported for mesh export.")
@@ -1017,18 +1280,16 @@ class PolarRepeat(SDFObject):
             q = np.stack([x_new, p[:,1], z_new], axis=-1)
             return child_call(q)
         return _callable
-    def get_glsl_definitions(self):
-        return [_get_glsl_content("transforms.glsl")] + self.child.get_glsl_definitions()
-    def _collect_materials(self, materials): self.child._collect_materials(materials)
 
 
-class Mirror(SDFObject):
+class Mirror(_Transform):
+    """Mirrors a child object."""
     def __init__(self, child, axes):
-        super().__init__()
-        self.child, self.axes = child, axes
-    def to_glsl(self) -> str:
+        super().__init__(child)
+        self.axes = axes
+    def _get_transform_glsl(self, p_expr: str) -> str:
         a = self.axes
-        return self.child.to_glsl().replace("p", f"opMirror(p, vec3({_glsl_format(a[0])}, {_glsl_format(a[1])}, {_glsl_format(a[2])}))")
+        return f"opMirror({p_expr}, vec3({_glsl_format(a[0])}, {_glsl_format(a[1])}, {_glsl_format(a[2])}))"
     def to_callable(self):
         child_call, a = self.child.to_callable(), self.axes
         def _callable(p):
@@ -1038,15 +1299,23 @@ class Mirror(SDFObject):
             if a[2] > 0.5: q[:,2] = np.abs(q[:,2])
             return child_call(q)
         return _callable
-    def get_glsl_definitions(self):
-        return [_get_glsl_content("transforms.glsl")] + self.child.get_glsl_definitions()
-    def _collect_materials(self, materials): self.child._collect_materials(materials)
 
 
 # --- Custom GLSL ---
 
 class Forge(SDFObject):
+    """
+    An SDF object defined by a raw GLSL code snippet.
+    """
     def __init__(self, glsl_code_body: str):
+        """
+        Initializes the Forge object.
+
+        Args:
+            glsl_code_body (str): A string of GLSL code that returns a float.
+                                  The point in space is available as the `vec3 p` variable.
+                                  Example: "return length(p) - 1.0;"
+        """
         super().__init__()
         self.glsl_code_body = glsl_code_body
         self.unique_id = "forge_func_" + uuid.uuid4().hex[:8]

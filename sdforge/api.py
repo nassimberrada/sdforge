@@ -359,11 +359,24 @@ class Cone(SDFObject):
     def to_callable(self):
         if isinstance(self.height, str) or isinstance(self.radius, str):
             raise TypeError("Cannot save mesh of an object with animated (string) parameters.")
+        h, r = self.height, self.radius
         def _callable(p):
-            c = np.array([self.height, self.radius])
-            q = np.array([np.linalg.norm(p[:, [0, 2]], axis=-1), p[:, 1]]).T; a = c - q; b = q - c * np.array([1, -1])
-            k = np.sign(c[1]); d = np.minimum(np.sum(a*a, axis=-1), np.sum(b*b, axis=-1))
-            s = np.maximum(k * (q[:,0]*c[1] - q[:,1]*c[0]), k * (q[:,1] - c[1]))
+            q = np.stack([np.linalg.norm(p[:, [0, 2]], axis=-1), p[:, 1]], axis=-1)
+            w = np.array([r, h])
+            
+            dot_q_w = np.sum(q * w, axis=-1)
+            dot_w_w = np.dot(w, w)
+            
+            clamp_val = np.clip(dot_q_w / dot_w_w, 0.0, 1.0)
+            a = q - w * clamp_val[:, np.newaxis]
+            
+            clamped_y = np.clip(q[:, 1], 0.0, h)
+            b = q - np.stack([np.zeros_like(clamped_y), clamped_y], axis=-1)
+            
+            k = np.sign(r)
+            d = np.minimum(np.sum(a*a, axis=-1), np.sum(b*b, axis=-1))
+            s = np.maximum(k * (q[:, 0]*w[1] - q[:, 1]*w[0]), k * (q[:, 1] - h))
+
             return np.sqrt(d) * np.sign(s)
         return _callable
 

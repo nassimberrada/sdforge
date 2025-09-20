@@ -25,14 +25,16 @@ float sdCapsule(in vec3 p, in vec3 a, in vec3 b, in float r) {
     return length(pa - ba * h) - r;
 }
 
-float sdCone(in vec3 p, in vec2 c) { // c.x=height, c.y=radius
-    vec2 q = vec2(length(p.xz), p.y);
-    vec2 a = c - q;
-    vec2 b = q - c * vec2(1, -1);
-    float k = sign(c.y);
-    float d = min(dot(a, a), dot(b, b));
-    float s = max(k * (q.x * c.y - q.y * c.x), k * (q.y - c.y));
-    return sqrt(d) * sign(s);
+float sdCone( in vec3 p, in vec2 c ) // c.x=height, c.y=radius
+{
+    vec2 q = vec2( length(p.xz), p.y );
+    vec2 w = vec2( c.y, c.x );    
+    vec2 a = q - w*clamp( dot(q,w)/dot(w,w), 0.0, 1.0 );
+    vec2 b = q - vec2( 0.0, clamp( q.y, 0.0, c.x ) );
+    float k = sign( c.y );
+    float d = min(dot( a, a ),dot( b, b ));
+    float s = max( k*(q.x*w.y-q.y*w.x),k*(q.y-c.x) );
+    return sqrt(d)*sign(s);
 }
 
 float sdPlane(in vec3 p, in vec4 n) { // n.xyz is normal, n.w is offset

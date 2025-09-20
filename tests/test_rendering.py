@@ -49,6 +49,16 @@ def test_shader_assembly():
     except Exception as e:
         pytest.fail(f"Shader assembly failed with an exception: {e}")
 
+def test_shader_assembly_with_invalid_glsl():
+    # This tests that the Python-side assembly does not crash on bad GLSL.
+    # The GLSL compiler itself will catch the syntax error at render time.
+    invalid_shape = Forge("return length(p) - 1.0 // missing semicolon")
+    try:
+        shader_code = assemble_shader_code(invalid_shape)
+        assert "missing semicolon" in shader_code
+    except Exception as e:
+        pytest.fail(f"Shader assembly with invalid GLSL failed: {e}")
+
 def test_hot_reloading_triggers_reload():
     mock_renderer = MagicMock(spec=NativeRenderer)
     mock_renderer.script_path = os.path.abspath("my_script.py")

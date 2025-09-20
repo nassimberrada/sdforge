@@ -11,6 +11,12 @@ def test_save_static_object(tmp_path):
     assert os.path.exists(output_file)
     assert os.path.getsize(output_file) > 84
 
+def test_save_animated_object_fails(tmp_path):
+    animated_sphere = sphere(r="0.5 + 0.2 * sin(u_time)")
+    output_file = tmp_path / "animated.stl"
+    with pytest.raises(TypeError, match="Cannot save mesh of an object with animated"):
+        animated_sphere.save(str(output_file), verbose=False)
+
 def test_to_callable_animated_object_fails():
     animated_sphere = sphere(r="0.5 + 0.2 * sin(u_time)")
     with pytest.raises(TypeError, match="Cannot save mesh of an object with animated"):

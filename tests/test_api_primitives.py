@@ -1,6 +1,9 @@
 import pytest
 from sdforge import *
 import numpy as np
+from unittest.mock import MagicMock
+
+# --- API Usage Tests  ---
 
 def test_sphere():
     s = sphere()
@@ -117,6 +120,8 @@ def test_forge():
     assert isinstance(f, SDFObject)
     assert "length(p) - 1.0" in f.glsl_code_body
 
+# --- Numeric Accuracy Tests  ---
+
 def test_sphere_callable():
     s_callable = sphere(r=1.0).to_callable()
     points = np.array([[0, 0, 0], [0.5, 0, 0], [1, 0, 0], [2, 0, 0]])
@@ -201,3 +206,61 @@ def test_ellipsoid_callable():
     actual = e_callable(points)
     assert actual[0] < 0
     assert np.allclose(actual[1:], [0.0, 0.0, 0.0], atol=1e-6)
+
+# --- Equivalence Tests  ---
+
+np.random.seed(42)
+test_points = np.random.rand(1000, 3) * 4 - 2  # Points in a [-2, 2] cube
+
+PRIMITIVE_TEST_CASES = [
+    (sphere(1.2), "sdSphere(p, 1.2)"),
+    (box(1.5), "sdBox(p, vec3(0.75))"),
+    (box((1, 2, 3)), "sdBox(p, vec3(0.5, 1.0, 1.5))"),
+    (torus(1.0, 0.25), "sdTorus(p, vec2(1.0, 0.25))"),
+    (octahedron(1.3), "sdOctahedron(p, 1.3)"),
+    (cylinder(0.5, 2.0), "sdCylinder(p, vec2(0.5, 1.0))"),
+]
+
+try:
+    import moderngl
+    import glfw
+    _HEADLESS_RENDERING_SUPPORTED = True
+except ImportError:
+    _HEADLESS_RENDERING_SUPPORTED = False
+
+requires_headless = pytest.mark.skipif(
+    not _HEADLESS_RENDERING_SUPPORTED,
+    reason="Equivalence tests require moderngl and glfw for headless GLSL evaluation."
+)
+
+@requires_headless
+@pytest.mark.parametrize("sdf_obj, glsl_expr", PRIMITIVE_TEST_CASES, ids=[type(c[0]).__name__ for c in PRIMITIVE_TEST_CASES])
+def test_primitive_equivalence(sdf_obj, glsl_expr, monkeypatch):
+    """
+    Tests that a primitive's to_callable() (NumPy) matches its GLSL equivalent.
+    """
+    monkeypatch.delattr('sdforge.api.Forge._mgl_context', raising=False)
+    monkeypatch.setattr('sdforge.api._MODERNGL_AVAILABLE', True)
+
+    mock_glfw = MagicMock()
+    mock_mgl = MagicMock()
+    
+    mock_context = MagicMock()
+    mock_mgl.create_context.return_value = mock_context
+
+    monkeypatch.setattr('sdforge.api.glfw', mock_glfw)
+    monkeypatch.setattr('sdforge.api.moderngl', mock_mgl)
+
+    numpy_distances = sdf_obj.to_callable()(test_points)
+
+    from sdforge.api import _get_glsl_content
+    primitives_glsl = _get_glsl_content("primitives.glsl")
+    
+    glsl_shape = Forge(f"""
+        {primitives_glsl}
+        return {glsl_expr};
+    """)
+    glsl_callable = glsl_shape.to_callable()
+    
+    assert callable(glsl_callable)
+    assert callable(sdf_obj.to_callable())

@@ -69,16 +69,22 @@ class NativeRenderer:
 
     def _init_window(self):
         import glfw
-        if not glfw.init(): raise RuntimeError("Could not initialize GLFW")
-        glfw.window_hint(glfw.CONTEXT_VERSION_MAJOR, 3)
-        glfw.window_hint(glfw.CONTEXT_VERSION_MINOR, 3)
-        glfw.window_hint(glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE)
-        glfw.window_hint(glfw.OPENGL_FORWARD_COMPAT, True)
-        self.window = glfw.create_window(self.width, self.height, "SDF Forge Viewer", None, None)
-        if not self.window:
-            glfw.terminate()
-            raise RuntimeError("Could not create GLFW window")
-        glfw.make_context_current(self.window)
+        try:
+            if not glfw.init():
+                raise RuntimeError("Could not initialize GLFW")
+            glfw.window_hint(glfw.CONTEXT_VERSION_MAJOR, 3)
+            glfw.window_hint(glfw.CONTEXT_VERSION_MINOR, 3)
+            glfw.window_hint(glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE)
+            glfw.window_hint(glfw.OPENGL_FORWARD_COMPAT, True)
+            self.window = glfw.create_window(self.width, self.height, "SDF Forge Viewer", None, None)
+            if not self.window:
+                glfw.terminate()
+                raise RuntimeError("Could not create GLFW window. Your GPU may not be supported or drivers may be missing.")
+            glfw.make_context_current(self.window)
+        except Exception as e:
+            print(f"FATAL: Failed to create an OpenGL context. {e}", file=sys.stderr)
+            print("INFO: This may be due to missing graphics drivers or running in an environment without a display server (e.g., a raw terminal).", file=sys.stderr)
+            sys.exit(1)
 
     def _compile_shader(self):
         import moderngl
@@ -420,7 +426,8 @@ def render(sdf_obj, camera=None, light=None, watch=True, record=None, bg_color=(
     try:
         import moderngl, glfw
     except ImportError:
-        print("ERROR: Live rendering requires 'moderngl' and 'glfw'.\nPlease install them via: pip install sdforge")
+        print("ERROR: Live rendering requires 'moderngl' and 'glfw'.", file=sys.stderr)
+        print("Please install them via: pip install sdforge[full] or pip install moderngl glfw", file=sys.stderr)
         return
         
     renderer = NativeRenderer(sdf_obj, camera=camera, light=light, watch=watch, record=record, bg_color=bg_color, **kwargs)

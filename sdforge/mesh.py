@@ -46,7 +46,7 @@ def save(sdf_obj, path, bounds=((-1.5, -1.5, -1.5), (1.5, 1.5, 1.5)), samples=2*
         sdf_callable = sdf_obj.to_callable()
     except (TypeError, NotImplementedError, ImportError) as e:
         print(f"ERROR: Could not generate mesh. {e}")
-        return
+        raise
 
     volume = (bounds[1][0] - bounds[0][0]) * (bounds[1][1] - bounds[0][1]) * (bounds[1][2] - bounds[0][2])
     step = (volume / samples) ** (1 / 3)

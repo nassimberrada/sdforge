@@ -3,6 +3,7 @@ import uuid
 from functools import reduce, lru_cache
 from pathlib import Path
 import atexit
+import re
 
 # --- Constants ---
 X = np.array([1, 0, 0])
@@ -94,6 +95,15 @@ class SDFObject:
     def __init__(self):
         self.uuid = uuid.uuid4()
 
+    def render(self, camera=None, light=None, watch=True, record=None, bg_color=(0.1, 0.12, 0.15), **kwargs):
+        """Renders the SDF object in a live-updating viewer."""
+        from .render import render as render_func
+        render_func(self, camera, light, watch, record, bg_color, **kwargs)
+
+    def save(self, path, bounds=((-1.5, -1.5, -1.5), (1.5, 1.5, 1.5)), samples=2**22, verbose=True):
+        """Generates a mesh and saves it to a file (e.g., '.stl')."""
+        from .mesh import save as save_func
+        save_func(self, path, bounds, samples, verbose)
     def to_glsl(self) -> str: raise NotImplementedError
     def to_callable(self): raise NotImplementedError
     def get_glsl_definitions(self) -> list: return []
@@ -762,8 +772,10 @@ class Material(SDFObject):
     
     def to_glsl(self) -> str:
         child_glsl = self.child.to_glsl()
-        # The child returns a vec4. We need to overwrite the material ID.
-        return f"vec4(({child_glsl}).x, {float(self.material_id)}, 0.0, 0.0)"
+        return (
+            f"(vec4(({child_glsl}).x, {float(self.material_id)}, "
+            f"({child_glsl}).z, ({child_glsl}).w))"
+        )
 
     def to_callable(self):
         # Materials are a render-time concept; for mesh generation, we use the child's shape.
@@ -981,17 +993,10 @@ class _Transform(SDFObject):
         raise NotImplementedError("Subclasses must implement _get_transform_glsl")
 
     def to_glsl(self) -> str:
-        # Create a unique ID to avoid variable name collisions in complex chains
-        unique_p = f"p_{self.uuid.hex[:8]}"
-        
-        # Define a transformed point and then call the child's GLSL with it.
-        # This is robust to chained transformations.
-        return (
-            f"((){{ "
-            f"vec3 {unique_p} = {self._get_transform_glsl('p')}; "
-            f"return {self.child.to_glsl().replace('p', unique_p)};"
-            f" }})()"
-        )
+        transformed_p = f"({self._get_transform_glsl('p')})"
+        child_glsl = self.child.to_glsl()
+        child_glsl = re.sub(r'\bp\b', transformed_p, child_glsl)
+        return child_glsl
 
     def get_glsl_definitions(self):
         return [_get_glsl_content("transforms.glsl")] + self.child.get_glsl_definitions()
@@ -1077,11 +1082,18 @@ class Orient(_Transform):
     def __init__(self, child, axis):
         super().__init__(child)
         self.axis = axis
+
     def to_glsl(self) -> str:
-        # Override to avoid redundant IIFE for a simple swizzle
-        if np.allclose(self.axis, X): return self.child.to_glsl().replace("p", "p.zyx")
-        elif np.allclose(self.axis, Y): return self.child.to_glsl().replace("p", "p.xzy")
-        else: return self.child.to_glsl() # Z is default, no-op
+        # If the orientation is along the Z axis, it's a no-op.
+        # Return the child's GLSL directly to avoid a redundant wrapper.
+        if np.allclose(self.axis, Z):
+            return self.child.to_glsl()
+        # For other axes, use the robust scoped transformation from the parent class.
+        return super().to_glsl()
+    def _get_transform_glsl(self, p_expr: str) -> str:
+        if np.allclose(self.axis, X): return f"{p_expr}.zyx"
+        if np.allclose(self.axis, Y): return f"{p_expr}.xzy"
+        return p_expr # Z is default, no-op
     def to_callable(self):
         child_call = self.child.to_callable()
         if np.allclose(self.axis, X): return lambda p: child_call(p[:, [2,1,0]])

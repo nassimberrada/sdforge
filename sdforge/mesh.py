@@ -12,8 +12,9 @@ def _cartesian_product(*arrays):
     return arr.reshape(-1, la)
 
 def _write_binary_stl(path, points):
-    n = len(points) // 3
-    points = np.array(points, dtype='float32').reshape((-1, 3, 3))
+    n = len(points)
+    points = np.array(points, dtype='float32')
+
     normals = np.cross(points[:,1] - points[:,0], points[:,2] - points[:,0])
     norm = np.linalg.norm(normals, axis=1).reshape((-1, 1))
     normals /= np.where(norm == 0, 1, norm)
@@ -43,7 +44,7 @@ def save(sdf_obj, path, bounds=((-1.5, -1.5, -1.5), (1.5, 1.5, 1.5)), samples=2*
 
     try:
         sdf_callable = sdf_obj.to_callable()
-    except (NotImplementedError, ImportError) as e:
+    except (TypeError, NotImplementedError, ImportError) as e:
         print(f"ERROR: Could not generate mesh. {e}")
         return
 

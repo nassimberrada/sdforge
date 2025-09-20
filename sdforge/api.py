@@ -940,9 +940,9 @@ class Elongate(SDFObject):
         self.child, self.h = child, h
     def to_glsl(self) -> str:
         h_str = f"vec3({_glsl_format(self.h[0])}, {_glsl_format(self.h[1])}, {_glsl_format(self.h[2])})"
-        # This transform is special as it doesn't just transform 'p', it uses 'p' to create an offset.
-        # It's safer to apply it directly to the coordinate space of the child.
-        return self.child.to_glsl().replace("p", f"opElongate(p, {h_str})")
+        transformed_p = f"opElongate(p, {h_str})"
+        child_glsl = self.child.to_glsl()
+        return re.sub(r'\bp\b', transformed_p, child_glsl)
     def to_callable(self):
         child_call = self.child.to_callable()
         return lambda p: child_call(p - np.clip(p, -self.h, self.h))
@@ -1031,17 +1031,14 @@ class Scale(SDFObject):
         else:
             factor_str = f"vec3({_glsl_format(f)})"
             len_str = _glsl_format(f)
-        
-        unique_p = f"p_{self.uuid.hex[:8]}"
-        return (
-            f"((){{ "
-            f"vec3 {unique_p} = opScale(p, {factor_str}); "
-            f"vec4 res = {self.child.to_glsl().replace('p', unique_p)}; "
-            f"res.x *= {len_str}; "
-            f"return res; "
-            f"}})"
-            f"()"
-        )
+       
+        transformed_p = f"opScale(p, {factor_str})"
+        child_glsl = self.child.to_glsl()
+        child_glsl = re.sub(r'\bp\b', transformed_p, child_glsl)
+
+        child_expr = f"({child_glsl})"
+        return f"vec4({child_expr}.x * ({len_str}), {child_expr}.y, {child_expr}.z, {child_expr}.w)"
+
     def to_callable(self):
         if isinstance(self.factor, str): 
             raise TypeError("Animated parameters not supported for mesh export.")

@@ -18,10 +18,6 @@ def _glsl_format(val):
         return val
     return f"{float(val)}"
 
-def is_in_colab():
-    """Checks if the code is running in a Google Colab environment."""
-    return 'google.colab' in sys.modules
-
 def get_glsl_content(filename: str) -> str:
     """Reads the content of a GLSL file from the package."""
     glsl_dir = Path(__file__).parent / 'glsl'
@@ -307,121 +303,6 @@ class NativeRenderer:
         glfw.terminate()
 
 def render(sdf_obj, camera=None, light=None, watch=True, record=None, bg_color=(0.1, 0.12, 0.15), **kwargs):
-    if is_in_colab():
-        from IPython.display import IFrame
-
-        materials = []
-        sdf_obj._collect_materials(materials)
-        if len(materials) > MAX_MATERIALS:
-            materials = materials[:MAX_MATERIALS]
-
-        material_struct_glsl = "struct MaterialInfo { vec3 color; };\n"
-        
-        colors_glsl = ", ".join([f"vec3({c.color[0]}, {c.color[1]}, {c.color[2]})" for c in materials])
-        if not materials:
-            material_array_glsl = f"const MaterialInfo u_materials[1];\n"
-        else:
-            material_array_glsl = f"const MaterialInfo u_materials[{len(materials)}] = MaterialInfo[]({colors_glsl});\n"
-        
-        # --- Light ---
-        light_pos_str = "ro"
-        ambient_strength_str = "0.1"
-        shadow_softness_str = "8.0"
-        ao_strength_str = "3.0"
-
-        if light:
-            if light.position:
-                pos = light.position
-                light_pos_str = f"vec3({_glsl_format(pos[0])}, {_glsl_format(pos[1])}, {_glsl_format(pos[2])})"
-            ambient_strength_str = _glsl_format(light.ambient_strength)
-            shadow_softness_str = _glsl_format(light.shadow_softness)
-            ao_strength_str = _glsl_format(light.ao_strength)
-
-        # --- Camera ---
-        camera_logic_glsl = ""
-        if camera:
-            pos = camera.position
-            pos_str = f"vec3({_glsl_format(pos[0])}, {_glsl_format(pos[1])}, {_glsl_format(pos[2])})"
-            target = camera.target
-            target_str = f"vec3({_glsl_format(target[0])}, {_glsl_format(target[1])}, {_glsl_format(target[2])})"
-            zoom_str = _glsl_format(camera.zoom)
-            camera_logic_glsl = f"cameraStatic(st, {pos_str}, {target_str}, {zoom_str}, ro, rd);"
-        else:
-            camera_logic_glsl = "cameraOrbit(st, u_mouse.xy, u_resolution, 1.0, ro, rd);"
-
-        shader_code = assemble_shader_code(sdf_obj)
-        
-        width, height = 800, 600
-
-        html_template = f"""
-        <!DOCTYPE html><html><head><title>SDF Forge Viewer</title>
-        <style>body{{margin:0;overflow:hidden}}canvas{{display:block}}</style></head>
-        <body><script type="importmap">{{"imports":{{"three":"https://unpkg.com/three@0.157.0/build/three.module.js"}}}}</script>
-        <script type="module">
-        import * as THREE from 'three';
-        const fragmentShader = 
-            #version 300 es
-            precision mediump float;`
-            varying vec2 vUv;
-            uniform float u_time;
-            uniform vec4 u_mouse;
-            uniform vec2 u_resolution;
-            #define u_bg_color vec3({bg_color[0]}, {bg_color[1]}, {bg_color[2]})
-            
-            {material_struct_glsl}
-            {material_array_glsl}
-
-            {get_glsl_content('sdf/primitives.glsl')}
-            {get_glsl_content('scene/camera.glsl')}
-            {get_glsl_content('scene/raymarching.glsl')}
-            {get_glsl_content('scene/light.glsl')}
-            {shader_code}
-            void main() {{
-                vec2 st = (2.0*vUv - 1.0) * vec2(u_resolution.x/u_resolution.y, 1.0);
-                vec3 ro, rd;
-                {camera_logic_glsl}
-                vec3 color = u_bg_color;
-                vec4 hit = raymarch(ro, rd);
-                float t = hit.x;
-                int material_id = int(hit.y);
-                if (t > 0.0) {{
-                    vec3 p = ro + t * rd;
-                    vec3 normal = estimateNormal(p);
-                    vec3 lightPos = {light_pos_str};
-                    vec3 lightDir = normalize(lightPos - p);
-                    float diffuse = max(dot(normal, lightDir), {ambient_strength_str});
-                    float shadow = softShadow(p+normal*0.01, lightDir, {shadow_softness_str});
-                    diffuse *= shadow;
-                    float ao = ambientOcclusion(p, normal, {ao_strength_str});
-                    vec3 material_color = vec3(0.8);
-                    if (material_id >= 0 && material_id < {len(materials)}) {{
-                        material_color = u_materials[material_id].color;
-                    }}
-                    color = material_color * diffuse * ao;
-                }}
-                gl_FragColor = vec4(color, 1.0);
-            }}
-        `;
-        const scene = new THREE.Scene();
-        const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-        const renderer = new THREE.WebGLRenderer({{antialias: true}});
-        document.body.appendChild(renderer.domElement);
-
-        const uniforms = {{
-            u_time:{{value:0}}, 
-            u_mouse:{{value:new THREE.Vector4()}},
-            u_resolution: {{value: new THREE.Vector2({width}.0, {height}.0)}}
-        }};
-
-        const material = new THREE.ShaderMaterial({{vertexShader:`varying vec2 vUv; void main(){{vUv=uv;gl_Position=vec4(position,1.0);}}`, fragmentShader, uniforms}});
-        scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2,2), material));
-        renderer.setSize({width}, {height});
-        document.addEventListener('mousemove', e=>{{uniforms.u_mouse.value.x=e.clientX;uniforms.u_mouse.value.y={height}-e.clientY;}});
-        function animate(t){{requestAnimationFrame(animate);uniforms.u_time.value=t*0.001;renderer.render(scene,camera);}}
-        animate();
-        </script></body></html>
-        """
-        return IFrame(srcdoc=html_template, width=width + 20, height=height + 20)
 
     try:
         import moderngl, glfw

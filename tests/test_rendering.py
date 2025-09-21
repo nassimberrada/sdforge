@@ -83,26 +83,3 @@ def test_hot_reloading_triggers_reload():
     other_event.src_path = os.path.abspath("other_file.py")
     handler.on_modified(other_event)
     assert mock_renderer.reload_pending is False
-
-def test_colab_rendering_path(monkeypatch):
-    monkeypatch.setitem(sys.modules, 'google.colab', MagicMock())
-
-    mock_iframe_class = MagicMock()
-    mock_display_module = MagicMock()
-    mock_display_module.IFrame = mock_iframe_class
-
-    monkeypatch.setitem(sys.modules, 'IPython.display', mock_display_module)
-
-    s = sphere(1).color(1, 0, 0)
-    s.render()
-
-    mock_iframe_class.assert_called()
-    
-    args, kwargs = mock_iframe_class.call_args
-    assert 'srcdoc' in kwargs
-    srcdoc_html = kwargs['srcdoc']
-
-    assert '<!DOCTYPE html>' in srcdoc_html
-    assert 'three' in srcdoc_html
-    assert 'sdSphere' in srcdoc_html
-    assert 'const MaterialInfo u_materials[1]' in srcdoc_html

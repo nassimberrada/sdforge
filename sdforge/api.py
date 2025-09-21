@@ -1343,6 +1343,8 @@ class Forge(SDFObject):
                                   Example: "return length(p) - 1.0;"
         """
         super().__init__()
+        if "return" not in glsl_code_body:
+            glsl_code_body = f"return {glsl_code_body};"
         self.glsl_code_body = glsl_code_body
         self.unique_id = "forge_func_" + uuid.uuid4().hex[:8]
     def to_glsl(self) -> str: return f"vec4({self.unique_id}(p), -1.0, 0.0, 0.0)"
@@ -1362,12 +1364,27 @@ class Forge(SDFObject):
         layout(local_size_x=256, local_size_y=1, local_size_z=1) in;
         layout(std430, binding=0) buffer points {{ vec3 p[]; }};
         layout(std430, binding=1) buffer distances {{ float d[]; }};
+        uniform int u_num_points;
         {self.get_glsl_definitions()[0]}
-        void main() {{ uint gid = gl_GlobalInvocationID.x; d[gid] = {self.to_glsl().replace('p', 'p[gid]').replace('vec4', '').strip('()').split(',')[0]}; }}""")
+        void main() {{
+            uint gid = gl_GlobalInvocationID.x;
+            if (gid >= u_num_points) return;
+            d[gid] = {self.to_glsl().replace('p', 'p[gid]').replace('vec4', '').strip('()').split(',')[0]};
+        }}""")
         def _gpu_evaluator(points_np):
-            points_np = np.array(points_np, dtype='f4'); num_points = len(points_np)
-            point_buffer = ctx.buffer(points_np.tobytes()); dist_buffer = ctx.buffer(reserve=num_points * 4)
-            point_buffer.bind_to_storage_buffer(0); dist_buffer.bind_to_storage_buffer(1)
-            group_size = (num_points + 255) // 256; compute_shader.run(group_x=group_size)
+            points_np = np.array(points_np, dtype='f4')
+            num_points = len(points_np)
+            if 'u_num_points' in compute_shader:
+                compute_shader['u_num_points'].value = num_points
+            
+            padded_points = np.zeros((num_points, 4), dtype='f4')
+            padded_points[:, :3] = points_np
+            
+            point_buffer = ctx.buffer(padded_points.tobytes())
+            dist_buffer = ctx.buffer(reserve=num_points * 4)
+            point_buffer.bind_to_storage_buffer(0)
+            dist_buffer.bind_to_storage_buffer(1)
+            group_size = (num_points + 255) // 256
+            compute_shader.run(group_x=group_size)
             return np.frombuffer(dist_buffer.read(), dtype='f4')
         return _gpu_evaluator

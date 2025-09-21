@@ -34,6 +34,13 @@ def _write_binary_stl(path, points):
         fp.write(struct.pack('<I', n))
         fp.write(a.tobytes())
 
+def _write_obj(path, verts, faces):
+    with open(path, 'w') as fp:
+        for v in verts:
+            fp.write(f"v {v[0]:.6f} {v[1]:.6f} {v[2]:.6f}\n")
+        for f in faces + 1:
+            fp.write(f"f {f[0]} {f[1]} {f[2]}\n")
+
 def save(sdf_obj, path, bounds=((-1.5, -1.5, -1.5), (1.5, 1.5, 1.5)), samples=2**22, verbose=True):
     """
     Generates a mesh from an SDF object using the Marching Cubes algorithm and saves it to a file.
@@ -85,10 +92,13 @@ def save(sdf_obj, path, bounds=((-1.5, -1.5, -1.5), (1.5, 1.5, 1.5)), samples=2*
         
     verts += np.array(bounds[0]) # Offset vertices to correct world position
 
-    if path.lower().endswith('.stl'):
+    path_lower = path.lower()
+    if path_lower.endswith('.stl'):
         _write_binary_stl(path, verts[faces])
+    elif path_lower.endswith('.obj'):
+        _write_obj(path, verts, faces)
     else:
-        print(f"ERROR: Unsupported file format '{path}'. Only .stl is currently supported.")
+        print(f"ERROR: Unsupported file format '{path}'. Only .stl and .obj are currently supported.")
         return
 
     elapsed = time.time() - start_time

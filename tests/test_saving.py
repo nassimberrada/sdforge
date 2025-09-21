@@ -2,7 +2,7 @@ import pytest
 from sdforge import *
 import os
 import sys
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 def test_save_static_object(tmp_path):
     s = sphere(1.0) & box(1.5)
@@ -10,6 +10,29 @@ def test_save_static_object(tmp_path):
     s.save(str(output_file), samples=2**12, verbose=False)
     assert os.path.exists(output_file)
     assert os.path.getsize(output_file) > 84
+
+def test_save_obj_static_object(tmp_path):
+    s = sphere(1.0) & box(1.5)
+    output_file = tmp_path / "test_model.obj"
+    s.save(str(output_file), samples=2**12, verbose=False)
+    assert os.path.exists(output_file)
+    with open(output_file, 'r') as f:
+        content = f.read()
+        assert 'v ' in content
+        assert 'f ' in content
+
+@patch('sdforge.api.SDFObject.render')
+def test_save_frame_api(mock_render):
+    s = sphere()
+    cam = Camera()
+    s.save_frame('test.png', camera=cam, time=1.23)
+    mock_render.assert_called_once_with(
+        save_frame='test.png', 
+        camera=cam, 
+        light=None, 
+        watch=False, 
+        time=1.23
+    )
 
 def test_save_animated_object_fails(tmp_path):
     animated_sphere = sphere(r="0.5 + 0.2 * sin(u_time)")
@@ -36,7 +59,7 @@ def test_to_callable_forge_object_requires_deps(monkeypatch):
 
 def test_save_unsupported_format(tmp_path, capsys):
     s = sphere(1.0)
-    output_file = tmp_path / "test_model.obj"
+    output_file = tmp_path / "test_model.ply"
     s.save(str(output_file), verbose=False)
     captured = capsys.readouterr()
     assert "ERROR: Unsupported file format" in captured.err or "ERROR: Unsupported file format" in captured.out

@@ -46,7 +46,7 @@ def assemble_shader_code(sdf_obj) -> str:
 class NativeRenderer:
     """Handles the creation of a native window and renders the SDF."""
 
-    def __init__(self, sdf_obj, camera=None, light=None, watch=False, width=1280, height=720, record=None, bg_color=(0.1, 0.12, 0.15)):
+    def __init__(self, sdf_obj, camera=None, light=None, watch=False, width=1280, height=720, record=None, save_frame=None, bg_color=(0.1, 0.12, 0.15), **kwargs):
         self.sdf_obj = sdf_obj
         self.camera = camera
         self.light = light
@@ -54,6 +54,8 @@ class NativeRenderer:
         self.width = width
         self.height = height
         self.record_path = record
+        self.save_frame_path = save_frame
+        self.time = kwargs.get('time', 0.0)
         self.bg_color = bg_color
         self.window = None
         self.ctx = None
@@ -63,7 +65,7 @@ class NativeRenderer:
         self.script_path = os.path.abspath(sys.argv[0])
         self.reload_pending = False
 
-    def _init_window(self):
+    def _init_window(self, headless=False):
         import glfw
         try:
             if not glfw.init():
@@ -72,6 +74,8 @@ class NativeRenderer:
             glfw.window_hint(glfw.CONTEXT_VERSION_MINOR, 3)
             glfw.window_hint(glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE)
             glfw.window_hint(glfw.OPENGL_FORWARD_COMPAT, True)
+            if headless:
+                glfw.window_hint(glfw.VISIBLE, False)
             self.window = glfw.create_window(self.width, self.height, "SDF Forge Viewer", None, None)
             if not self.window:
                 glfw.terminate()
@@ -255,6 +259,44 @@ class NativeRenderer:
         import glfw
         import moderngl
 
+        if self.save_frame_path:
+            self._init_window(headless=True)
+            self._setup_gl()
+
+            try:
+                import imageio
+            except ImportError:
+                print("ERROR: 'imageio' is required for saving frames.\nPlease install it via: pip install sdforge[record]")
+                glfw.terminate()
+                return
+
+            width, height = self.width, self.height
+            self.ctx.viewport = (0, 0, width, height)
+
+            fbo = self.ctx.simple_framebuffer((width, height))
+            fbo.use()
+            fbo.clear(self.bg_color[0], self.bg_color[1], self.bg_color[2], 1.0)
+            
+            if self.program:
+                try: self.program['u_resolution'].value = (width, height)
+                except KeyError: pass
+                try: self.program['u_time'].value = self.time
+                except KeyError: pass
+                try: self.program['u_mouse'].value = (width / 2, height / 2, 0, 0)
+                except KeyError: pass
+
+            if self.vao:
+                self.vao.render(mode=moderngl.TRIANGLE_STRIP)
+            
+            frame_bytes = fbo.read(components=3, alignment=1)
+            frame_np = np.frombuffer(frame_bytes, dtype=np.uint8).reshape((height, width, 3))
+            imageio.imwrite(self.save_frame_path, np.flipud(frame_np))
+            print(f"INFO: Frame saved to '{self.save_frame_path}'.")
+            
+            fbo.release()
+            glfw.terminate()
+            return
+
         writer = None
         if self.record_path:
             try:
@@ -279,19 +321,20 @@ class NativeRenderer:
             width, height = glfw.get_framebuffer_size(self.window)
             self.ctx.viewport = (0, 0, width, height)
             
-            try: self.program['u_resolution'].value = (width, height)
-            except KeyError: pass
-            try: self.program['u_time'].value = glfw.get_time()
-            except KeyError: pass
-            try:
-                mx, my = glfw.get_cursor_pos(self.window)
-                self.program['u_mouse'].value = (mx, height - my, 0, 0)
-            except KeyError: pass
+            if self.program:
+                try: self.program['u_resolution'].value = (width, height)
+                except KeyError: pass
+                try: self.program['u_time'].value = glfw.get_time()
+                except KeyError: pass
+                try:
+                    mx, my = glfw.get_cursor_pos(self.window)
+                    self.program['u_mouse'].value = (mx, height - my, 0, 0)
+                except KeyError: pass
 
             self.vao.render(mode=moderngl.TRIANGLE_STRIP)
             
             if writer:
-                frame_bytes = self.ctx.fbo.read(components=3, alignment=1)
+                frame_bytes = self.ctx.screen.read(components=3, alignment=1)
                 frame_np = np.frombuffer(frame_bytes, dtype=np.uint8).reshape((height, width, 3))
                 writer.append_data(np.flipud(frame_np))
             
@@ -302,14 +345,19 @@ class NativeRenderer:
         print("INFO: Viewer window closed.")
         glfw.terminate()
 
-def render(sdf_obj, camera=None, light=None, watch=True, record=None, bg_color=(0.1, 0.12, 0.15), **kwargs):
-
+def render(sdf_obj, camera=None, light=None, watch=True, record=None, save_frame=None, bg_color=(0.1, 0.12, 0.15), **kwargs):
     try:
         import moderngl, glfw
     except ImportError:
         print("ERROR: Live rendering requires 'moderngl' and 'glfw'.", file=sys.stderr)
         print("Please install them via: pip install sdforge[full] or pip install moderngl glfw", file=sys.stderr)
         return
+
+    if save_frame:
+        watch = False # Override to non-interactive for saving
+        if record:
+            print("WARNING: `record` is ignored when `save_frame` is provided.")
+            record = None
         
-    renderer = NativeRenderer(sdf_obj, camera=camera, light=light, watch=watch, record=record, bg_color=bg_color, **kwargs)
+    renderer = NativeRenderer(sdf_obj, camera=camera, light=light, watch=watch, record=record, save_frame=save_frame, bg_color=bg_color, **kwargs)
     renderer.run()

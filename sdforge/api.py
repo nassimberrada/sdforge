@@ -95,15 +95,19 @@ class SDFObject:
     def __init__(self):
         self.uuid = uuid.uuid4()
 
-    def render(self, camera=None, light=None, watch=True, record=None, bg_color=(0.1, 0.12, 0.15), **kwargs):
-        """Renders the SDF object in a live-updating viewer."""
+    def render(self, camera=None, light=None, watch=True, record=None, save_frame=None, bg_color=(0.1, 0.12, 0.15), **kwargs):
+        """Renders the SDF object in a live-updating viewer or saves a single frame."""
         from .render import render as render_func
-        render_func(self, camera, light, watch, record, bg_color, **kwargs)
+        render_func(self, camera, light, watch, record, save_frame, bg_color, **kwargs)
 
     def save(self, path, bounds=((-1.5, -1.5, -1.5), (1.5, 1.5, 1.5)), samples=2**22, verbose=True):
-        """Generates a mesh and saves it to a file (e.g., '.stl')."""
+        """Generates a mesh and saves it to a file (e.g., '.stl', '.obj')."""
         from .mesh import save as save_func
         save_func(self, path, bounds, samples, verbose)
+
+    def save_frame(self, path, camera=None, light=None, **kwargs):
+        """Renders a single frame and saves it to an image file (e.g., '.png')."""
+        self.render(save_frame=path, camera=camera, light=light, watch=False, **kwargs)
     def to_glsl(self) -> str: raise NotImplementedError
     def to_callable(self): raise NotImplementedError
     def get_glsl_definitions(self) -> list: return []

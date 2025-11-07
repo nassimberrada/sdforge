@@ -28,6 +28,9 @@ class Material(SDFObject):
             self.material_id = len(materials)
             materials.append(self)
         self.child._collect_materials(materials)
+        
+    def _collect_uniforms(self, uniforms_dict):
+        self.child._collect_uniforms(uniforms_dict)
 
     def get_glsl_definitions(self) -> list:
         return self.child.get_glsl_definitions()
@@ -47,6 +50,7 @@ class Round(SDFObject):
         return lambda p: child_call(p) - self.radius
     def get_glsl_definitions(self) -> list: return [_get_glsl_content("operations.glsl")] + self.child.get_glsl_definitions()
     def _collect_materials(self, materials): self.child._collect_materials(materials)
+    def _collect_uniforms(self, uniforms_dict): self.child._collect_uniforms(uniforms_dict)
 
 class Bevel(SDFObject):
     """Creates a shell or outline of a child object."""
@@ -61,6 +65,7 @@ class Bevel(SDFObject):
         return lambda p: np.abs(child_call(p)) - self.thickness
     def get_glsl_definitions(self) -> list: return [_get_glsl_content("operations.glsl")] + self.child.get_glsl_definitions()
     def _collect_materials(self, materials): self.child._collect_materials(materials)
+    def _collect_uniforms(self, uniforms_dict): self.child._collect_uniforms(uniforms_dict)
 
 class Elongate(SDFObject):
     """Elongates a child object."""
@@ -77,6 +82,7 @@ class Elongate(SDFObject):
         return lambda p: child_call(p - np.clip(p, -self.h, self.h))
     def get_glsl_definitions(self): return [_get_glsl_content("transforms.glsl")] + self.child.get_glsl_definitions()
     def _collect_materials(self, materials): self.child._collect_materials(materials)
+    def _collect_uniforms(self, uniforms_dict): self.child._collect_uniforms(uniforms_dict)
 
 class Displace(SDFObject):
     """Displaces the surface of a child object."""
@@ -89,6 +95,15 @@ class Displace(SDFObject):
         raise TypeError("Cannot save mesh of an object with GLSL-based displacement.")
     def get_glsl_definitions(self) -> list: return [_get_glsl_content("operations.glsl")] + self.child.get_glsl_definitions()
     def _collect_materials(self, materials): self.child._collect_materials(materials)
+    def _collect_uniforms(self, uniforms_dict): self.child._collect_uniforms(uniforms_dict)
+
+class DisplaceByNoise(Displace):
+    """Displaces the surface using a procedural noise function."""
+    def __init__(self, child, scale, strength):
+        glsl_expr = f"snoise(p * {_glsl_format(scale)}) * {_glsl_format(strength)}"
+        super().__init__(child, glsl_expr)
+    def get_glsl_definitions(self) -> list:
+        return [_get_glsl_content("noise.glsl")] + super().get_glsl_definitions()
 
 class Extrude(SDFObject):
     """Extrudes a 2D SDF shape."""
@@ -109,6 +124,7 @@ class Extrude(SDFObject):
         return _callable
     def get_glsl_definitions(self) -> list: return [_get_glsl_content("operations.glsl")] + self.child.get_glsl_definitions()
     def _collect_materials(self, materials): self.child._collect_materials(materials)
+    def _collect_uniforms(self, uniforms_dict): self.child._collect_uniforms(uniforms_dict)
 
 class Revolve(SDFObject):
     """Revolves a 2D SDF shape around the Y-axis."""
@@ -138,3 +154,5 @@ class Revolve(SDFObject):
         return self.child.get_glsl_definitions()
     def _collect_materials(self, materials):
         self.child._collect_materials(materials)
+    def _collect_uniforms(self, uniforms_dict):
+        self.child._collect_uniforms(uniforms_dict)

@@ -3,6 +3,7 @@ import uuid
 from pathlib import Path
 from functools import lru_cache
 import sys
+import inspect
 
 # --- Constants ---
 X = np.array([1, 0, 0])
@@ -23,6 +24,9 @@ def _get_glsl_content(filename: str) -> str:
 # --- Helper for formatting GLSL parameters ---
 def _glsl_format(val):
     """Formats a Python value for injection into a GLSL string."""
+    from .ui import Param
+    if isinstance(val, Param):
+        return val.to_glsl()
     if isinstance(val, str):
         return val  # Assume it's a raw GLSL expression
     return f"{float(val)}"
@@ -83,6 +87,25 @@ class SDFObject:
     """Base class for all SDF objects, defining the core interface."""
     def __init__(self):
         self.uuid = uuid.uuid4()
+        self._init_args = self._capture_init_args()
+
+    def _capture_init_args(self):
+        """Helper to capture __init__ arguments for parameter traversal."""
+        # This is a bit of magic to get the arguments passed to a subclass's __init__
+        try:
+            frame = inspect.currentframe()
+            outer_frames = inspect.getouterframes(frame)
+            # Find the frame corresponding to the subclass __init__ call
+            for f in outer_frames:
+                if f.function == '__init__' and 'self' in f.frame.f_locals:
+                    instance = f.frame.f_locals['self']
+                    if isinstance(instance, self.__class__) and instance is self:
+                        args, _, _, values = inspect.getargvalues(f.frame)
+                        return {arg: values[arg] for arg in args if arg != 'self'}
+        except Exception:
+            pass # Fails gracefully if something goes wrong
+        return {}
+
 
     def render(self, camera=None, light=None, watch=True, record=None, save_frame=None, bg_color=(0.1, 0.12, 0.15), debug=None, **kwargs):
         """
@@ -189,6 +212,23 @@ class SDFObject:
     def to_callable(self): raise NotImplementedError
     def get_glsl_definitions(self) -> list: return []
     def _collect_materials(self, materials): pass
+    def _collect_uniforms(self, uniforms): pass
+    def _collect_params(self, params):
+        from .ui import Param
+        if hasattr(self, '_init_args'):
+            for arg_val in self._init_args.values():
+                if isinstance(arg_val, Param):
+                    params[arg_val.uniform_name] = arg_val
+                elif isinstance(arg_val, (list, tuple)):
+                    for item in arg_val:
+                        if isinstance(item, Param):
+                           params[item.uniform_name] = item
+        if hasattr(self, 'child'):
+            self.child._collect_params(params)
+        if hasattr(self, 'children'):
+            for child in self.children:
+                child._collect_params(params)
+
 
     def union(self, other, k=0.0):
         """Creates a union of this object and another, with optional smoothness."""
@@ -351,6 +391,20 @@ class SDFObject:
         """Displaces the surface of the object using a GLSL expression."""
         from .shaping import Displace
         return Displace(self, displacement_glsl)
+
+    def displace_by_noise(self, scale=10.0, strength=0.1):
+        """
+        Displaces the surface of the object using a procedural noise function.
+
+        Args:
+            scale (float or str, optional): The frequency/scale of the noise pattern.
+                                            Higher values result in smaller, more detailed patterns.
+                                            Defaults to 10.0.
+            strength (float or str, optional): The amplitude of the displacement.
+                                               Defaults to 0.1.
+        """
+        from .shaping import DisplaceByNoise
+        return DisplaceByNoise(self, scale, strength)
 
     def extrude(self, height):
         """Extrudes a 2D SDF shape along the Z-axis."""

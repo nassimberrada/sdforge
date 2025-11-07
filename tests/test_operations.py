@@ -72,6 +72,13 @@ def test_displace(shapes):
     assert isinstance(d, SDFObject)
     assert f"opDisplace({s.to_glsl()}, {disp})" in d.to_glsl()
 
+def test_displace_by_noise(shapes):
+    s, _ = shapes
+    d = s.displace_by_noise(scale=5.0, strength=0.2)
+    assert isinstance(d, SDFObject)
+    assert "snoise(p * 5.0) * 0.2" in d.to_glsl()
+    assert any("snoise" in definition for definition in d.get_glsl_definitions())
+
 def test_extrude():
     circle_2d = Forge("return length(p.xy) - 1.0;")
     extruded = circle_2d.extrude(0.5)

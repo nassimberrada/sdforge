@@ -22,6 +22,9 @@ setup(
         'record': [
             'imageio',
             'imageio-ffmpeg',
+        ],
+        'ui': [
+            'imgui[glfw]>=2.0.0'
         ]
     },
     classifiers=[

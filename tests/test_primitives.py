@@ -137,6 +137,18 @@ def test_forge():
     assert isinstance(f, SDFObject)
     assert "length(p) - 1.0" in f.glsl_code_body
 
+def test_forge_with_uniforms():
+    f = Forge("return length(p) - u_radius;", uniforms={'u_radius': 1.5})
+    assert isinstance(f, SDFObject)
+    assert 'u_radius' in f.uniforms
+    
+    glsl_defs = f.get_glsl_definitions()[0]
+    assert "uniform float u_radius;" in glsl_defs
+    assert "in float u_radius" in glsl_defs
+
+    # Check that the uniform is passed as an argument in the final call
+    assert f"({f.unique_id}(p, u_radius)" in f.to_glsl()
+
 # --- Numeric Accuracy Tests  ---
 
 def test_sphere_callable():
@@ -223,6 +235,11 @@ def test_ellipsoid_callable():
     actual = e_callable(points)
     assert actual[0] < 0
     assert np.allclose(actual[1:], [0.0, 0.0, 0.0], atol=1e-6)
+
+def test_forge_with_uniforms_fails_to_callable():
+    f = Forge("return length(p) - u_radius;", uniforms={'u_radius': 1.5})
+    with pytest.raises(TypeError, match="Cannot save mesh of a Forge object with uniforms"):
+        f.to_callable()
 
 # --- Equivalence Tests  ---
 

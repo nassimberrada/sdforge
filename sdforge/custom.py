@@ -16,27 +16,48 @@ except ImportError:
 
 class Forge(SDFObject):
     """
-    An SDF object defined by a raw GLSL code snippet.
+    An SDF object defined by a raw GLSL code snippet, with optional uniforms.
     """
-    def __init__(self, glsl_code_body: str):
+    def __init__(self, glsl_code_body: str, uniforms: dict = None):
         """
         Initializes the Forge object.
 
         Args:
             glsl_code_body (str): A string of GLSL code that returns a float.
                                   The point in space is available as the `vec3 p` variable.
-                                  Example: "return length(p) - 1.0;"
+                                  Example: "return length(p) - u_radius;"
+            uniforms (dict, optional): A dictionary of uniforms to be passed to the GLSL code.
+                                       Keys are the uniform names (e.g., 'u_radius') and values
+                                       are the floats to be uploaded. Defaults to None.
         """
         super().__init__()
         if "return" not in glsl_code_body:
             glsl_code_body = f"return {glsl_code_body};"
         self.glsl_code_body = glsl_code_body
+        self.uniforms = uniforms or {}
         self.unique_id = "forge_func_" + uuid.uuid4().hex[:8]
-    def to_glsl(self) -> str: return f"vec4({self.unique_id}(p), -1.0, 0.0, 0.0)"
+    
+    def to_glsl(self) -> str:
+        # Pass the uniforms as arguments to the generated function
+        uniform_args = "".join([f", {name}" for name in self.uniforms.keys()])
+        return f"vec4({self.unique_id}(p{uniform_args}), -1.0, 0.0, 0.0)"
+
     def get_glsl_definitions(self) -> list:
-        return [f"float {self.unique_id}(vec3 p){{ {self.glsl_code_body} }}"]
+        uniform_decls = "".join([f"uniform float {name};\n" for name in self.uniforms.keys()])
+        uniform_params = "".join([f", in float {name}" for name in self.uniforms.keys()])
+        
+        func_def = f"float {self.unique_id}(vec3 p{uniform_params}){{ {self.glsl_code_body} }}"
+        return [uniform_decls + func_def]
+
+    def _collect_uniforms(self, uniforms_dict):
+        uniforms_dict.update(self.uniforms)
+    
     def to_callable(self):
-        if not _MODERNGL_AVAILABLE: raise ImportError("To save meshes with Forge objects, 'moderngl' and 'glfw' are required.")
+        if not _MODERNGL_AVAILABLE:
+            raise ImportError("To save meshes with Forge objects, 'moderngl' and 'glfw' are required.")
+        if self.uniforms:
+            raise TypeError("Cannot save mesh of a Forge object with uniforms. GPU evaluation on CPU is not yet supported for custom uniforms.")
+
         cls = self.__class__
         if not hasattr(cls, '_mgl_context'):
             if not glfw.init(): raise RuntimeError("glfw.init() failed")

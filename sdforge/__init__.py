@@ -30,3 +30,6 @@ from .operations import Group
 
 # --- Custom GLSL ---
 from .custom import Forge
+
+# --- Interactive UI ---
+from .ui import Param

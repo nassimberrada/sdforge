@@ -8,6 +8,7 @@ from sdforge import *
 # Import internal modules for patching/testing
 from sdforge.core import _get_glsl_content
 from sdforge.custom import Forge
+from sdforge.primitives import RoundedBox, RoundedCylinder, Capsule, CappedCylinder
 
 # --- API Usage Tests  ---
 
@@ -24,10 +25,10 @@ def test_box():
     assert b_size.size == (1, 2, 3)
     b_uniform = box(size=2)
     assert b_uniform.size == (2, 2, 2)
-
-def test_rounded_box():
-    rb = rounded_box(size=(1, 2, 3), radius=0.2)
-    assert isinstance(rb, SDFObject)
+    
+    # Test rounded box unification
+    rb = box(size=(1, 2, 3), radius=0.2)
+    assert isinstance(rb, RoundedBox)
     assert rb.size == (1, 2, 3)
     assert rb.radius == 0.2
 
@@ -37,24 +38,44 @@ def test_torus():
     assert t.major == 2.0
     assert t.minor == 0.5
 
-def test_capsule():
-    c = capsule(a=(0, 0, 0), b=(0, 1, 0), radius=0.1)
-    assert isinstance(c, SDFObject)
+def test_line():
+    # Test capsule unification
+    c = line(a=(0, 0, 0), b=(0, 1, 0), radius=0.1)
+    assert isinstance(c, Capsule)
     assert np.array_equal(c.a, np.array([0, 0, 0]))
     assert np.array_equal(c.b, np.array([0, 1, 0]))
     assert c.radius == 0.1
+
+    # Test capped cylinder unification
+    cc = line(a=X, b=Y, radius=0.2, rounded_caps=False)
+    assert isinstance(cc, CappedCylinder)
+    assert np.array_equal(cc.a, X)
 
 def test_cylinder():
     c = cylinder(radius=0.5, height=2.0)
     assert isinstance(c, SDFObject)
     assert c.radius == 0.5
     assert c.height == 2.0
+    
+    # Test rounded cylinder unification
+    rc = cylinder(radius=0.5, height=1.5, round_radius=0.1)
+    assert isinstance(rc, RoundedCylinder)
+    assert rc.radius == 0.5
+    assert rc.round_radius == 0.1
+    assert rc.height == 1.5
 
 def test_cone():
-    c = cone(height=1.5, radius=0.7)
+    # Test standard cone
+    c = cone(height=1.5, radius1=0.7)
     assert isinstance(c, SDFObject)
     assert c.height == 1.5
-    assert c.radius == 0.7
+    assert c.radius1 == 0.7
+    assert c.radius2 == 0.0
+
+    # Test capped cone (frustum) unification
+    cc = cone(height=2.0, radius1=0.5, radius2=0.2)
+    assert isinstance(cc, SDFObject)
+    assert cc.radius2 == 0.2
 
 def test_plane():
     p = plane(normal=X, offset=1.0)
@@ -96,21 +117,6 @@ def test_link():
     assert l.length == 1.0
     assert l.radius1 == 0.4
 
-def test_capped_cylinder():
-    cc = capped_cylinder(a=X, b=Y, radius=0.2)
-    assert isinstance(cc, SDFObject)
-    assert np.array_equal(cc.a, X)
-
-def test_rounded_cylinder():
-    rc = rounded_cylinder(radius=0.5, round_radius=0.1, height=1.5)
-    assert isinstance(rc, SDFObject)
-    assert rc.radius == 0.5
-
-def test_capped_cone():
-    cc = capped_cone(height=2.0, radius1=0.5, radius2=0.2)
-    assert isinstance(cc, SDFObject)
-    assert cc.radius2 == 0.2
-
 def test_round_cone():
     rc = round_cone(radius1=0.6, radius2=0.1, height=1.0)
     assert isinstance(rc, SDFObject)
@@ -141,7 +147,7 @@ def test_box_callable():
     assert np.allclose(b_callable(points), expected)
 
 def test_rounded_box_callable():
-    rb_callable = rounded_box(size=2.0, radius=0.2).to_callable()
+    rb_callable = box(size=2.0, radius=0.2).to_callable()
     points = np.array([[0, 0, 0], [1.2, 0.5, 0]])
     expected = np.array([-0.2, 0.0])
     assert np.allclose(rb_callable(points), expected)
@@ -157,8 +163,9 @@ def test_torus_callable():
     expected = np.array([-0.2, 0.0, 0.1, 0.8])
     assert np.allclose(t_callable(points), expected)
 
-def test_capsule_callable():
-    c_callable = capsule(a=[0, -1, 0], b=[0, 1, 0], radius=0.5).to_callable()
+def test_line_callable():
+    # Test capsule
+    c_callable = line(a=[0, -1, 0], b=[0, 1, 0], radius=0.5).to_callable()
     points = np.array([
         [0, 0, 0],
         [0.5, 0, 0],

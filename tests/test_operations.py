@@ -34,19 +34,19 @@ def test_xor(shapes):
 
 def test_smooth_union(shapes):
     s, b = shapes
-    su = s.smooth_union(b, k=0.2)
+    su = s.union(b, k=0.2)
     assert isinstance(su, SDFObject)
     assert "sUnion(" in su.to_glsl()
 
 def test_smooth_intersection(shapes):
     s, b = shapes
-    si = s.smooth_intersection(b, k=0.2)
+    si = s.intersection(b, k=0.2)
     assert isinstance(si, SDFObject)
     assert "sIntersect(" in si.to_glsl()
 
 def test_smooth_difference(shapes):
     s, b = shapes
-    sd = s.smooth_difference(b, k=0.2)
+    sd = s.difference(b, k=0.2)
     assert isinstance(sd, SDFObject)
     assert "sDifference(" in sd.to_glsl()
 
@@ -135,7 +135,7 @@ def test_bevel_callable(shapes):
 
 def test_smooth_union_callable(shapes):
     s, b = shapes
-    su_callable = s.smooth_union(b, k=0.5).to_callable()
+    su_callable = s.union(b, k=0.5).to_callable()
     point = np.array([[0.875, 0, 0]])
     s_dist = s.to_callable()(point)
     b_dist = b.to_callable()(point)
@@ -144,7 +144,7 @@ def test_smooth_union_callable(shapes):
 def test_smooth_intersection_callable(shapes):
     s, b = shapes
     k = 0.5
-    si_callable = s.smooth_intersection(b, k=k).to_callable()
+    si_callable = s.intersection(b, k=k).to_callable()
     points = np.array([[0.8, 0, 0]])
     d1 = s.to_callable()(points)
     d2 = b.to_callable()(points)
@@ -155,7 +155,7 @@ def test_smooth_intersection_callable(shapes):
 def test_smooth_difference_callable(shapes):
     s, b = shapes
     k = 0.5
-    sd_callable = s.smooth_difference(b, k=k).to_callable()
+    sd_callable = s.difference(b, k=k).to_callable()
     points = np.array([[0.8, 0, 0]])
     d1 = s.to_callable()(points)
     d2 = -b.to_callable()(points)

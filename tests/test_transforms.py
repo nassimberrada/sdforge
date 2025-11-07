@@ -160,6 +160,18 @@ def test_twist_callable(shape):
     expected = shape.to_callable()(q)
     assert np.allclose(t_callable(point), expected)
 
+def test_shear_callable(shape):
+    shear = np.array([0.5, 0])
+    s_shape = shape.shear_xz(shear)
+    s_callable = s_shape.to_callable()
+    point = np.array([[0.1, 0.2, 0.3]])
+
+    q = point.copy()
+    q[:,0] += shear[0] * point[:,1]
+    q[:,2] += shear[1] * point[:,1]
+    expected = shape.to_callable()(q)
+    assert np.allclose(s_callable(point), expected)
+
 def test_bend_callable(shape):
     k = 0.5
     b_shape = shape.bend_y(k)

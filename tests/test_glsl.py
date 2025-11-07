@@ -56,7 +56,7 @@ OVERRIDES = {
     "capped_torus": lambda: sdforge.capped_torus((0.0, 1.0), 1.0, 0.25),
     "line": lambda: sdforge.line(a=(0,0,0), b=(1,0,0)),
     "plane": lambda: sdforge.plane(normal=(0,1,0)),
-    # If your project exposes other factories that need args, add them here.
+    "pyramid": lambda: sdforge.pyramid(height=1.0),
 }
 
 
@@ -276,15 +276,15 @@ def make_variations(factory_callable):
     # smooth ops with another small primitive
     other = sdforge.sphere(0.3)
     try:
-        variations.append(base.smooth_union(other, 0.2))
+        variations.append(base.union(other, k=0.2))
     except Exception:
         pass
     try:
-        variations.append(base.smooth_intersection(other, 0.2))
+        variations.append(base.intersection(other, k=0.2))
     except Exception:
         pass
     try:
-        variations.append(base.smooth_difference(other, 0.2))
+        variations.append(base.difference(other, k=0.2))
     except Exception:
         pass
 

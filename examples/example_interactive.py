@@ -2,9 +2,14 @@ from sdforge import *
 
 def main():
     """
-    This example demonstrates the use of interactive UI parameters.
-    The `Param` object creates a slider in the viewer window that
-    updates the shader in real-time.
+    Demonstrates creating real-time interactive models using UI parameters.
+
+    This example shows how to:
+    - Use the `Param` object to create a named parameter with a default
+      value and a min/max range.
+    - Use the `Param` object as a value for primitive or operator arguments.
+    - The renderer automatically creates UI sliders for each `Param`, allowing
+      real-time updates to the model in the viewer.
     """
 
     # Create interactive parameters for the box

@@ -2,9 +2,14 @@ from sdforge import *
 
 def main():
     """
-    This example demonstrates scene light controls.
-    The `main` function can return a tuple containing the sdf object,
-    a camera object, and a light object.
+    Demonstrates static and animated scene lighting controls.
+
+    This example shows how to:
+    - Return a tuple `(sdf_object, camera_object, light_object)` from the main function.
+    - Define a static light source with specific properties.
+    - Define an animated light source whose properties are GLSL expressions
+      using the `u_time` uniform.
+    - Control shadow softness and ambient light levels.
     """
 
     # A simple shape

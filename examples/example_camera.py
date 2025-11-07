@@ -2,8 +2,13 @@ from sdforge import *
 
 def main():
     """
-    This example demonstrates static and animated camera controls.
-    The `main` function can return a tuple: (sdf_object, camera_object).
+    Demonstrates static and animated camera controls.
+
+    This example shows how to:
+    - Return a tuple `(sdf_object, camera_object)` from the main function.
+    - Define a static camera with a fixed position and target.
+    - Define an animated camera whose properties are GLSL expressions
+      using the `u_time` uniform.
     """
 
     # A simple shape

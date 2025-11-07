@@ -1,6 +1,6 @@
 import pytest
 import numpy as np
-from sdforge import sphere, box, Group
+from sdforge import sphere, box, Group, Param, cylinder
 
 def test_estimate_bounds_simple():
     s = sphere(1.0)
@@ -51,3 +51,28 @@ def test_estimate_bounds_with_group():
     assert 2.4 < max_b[0] < 2.7
     assert -0.7 < min_b[1] < -0.4
     assert 0.4 < max_b[1] < 0.7
+
+def test_collect_params():
+    # Create params for different parts of a complex object
+    p_radius = Param("Radius", 0.5, 0.1, 1.0)
+    p_height = Param("Height", 1.0, 0.5, 2.0)
+    p_twist = Param("Twist", 5.0, 0.0, 10.0)
+    p_offset_x = Param("Offset X", 0.0, -1.0, 1.0)
+
+    # Build an object using these params
+    c = cylinder(radius=p_radius, height=p_height)
+    c = c.twist(p_twist)
+    c = c.translate(offset=(p_offset_x, 0, 0))
+    
+    params_dict = {}
+    c._collect_params(params_dict)
+
+    # Check that all params were found
+    assert len(params_dict) == 4
+    
+    # Check that the values in the dict are the original Param objects
+    uniform_names = [p.uniform_name for p in params_dict.values()]
+    assert p_radius.uniform_name in uniform_names
+    assert p_height.uniform_name in uniform_names
+    assert p_twist.uniform_name in uniform_names
+    assert p_offset_x.uniform_name in uniform_names

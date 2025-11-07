@@ -2,8 +2,13 @@ from sdforge import *
 
 def main():
     """
-    This function defines the SDF model.
-    For hot-reloading to work, it must return the final SDF object.
+    Demonstrates creating custom SDF shapes using inline GLSL code.
+
+    This example shows how to:
+    - Use the `Forge` object to define an SDF with a raw GLSL snippet.
+    - The GLSL code has access to `p`, a `vec3` representing the point
+      in space being sampled.
+    - Combine custom `Forge` objects with standard library primitives.
     """
     # A standard library primitive
     s = box(1.2)

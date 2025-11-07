@@ -1,5 +1,6 @@
 import numpy as np
 from .core import SDFObject, _glsl_format
+from .ui import Param
 
 # --- Primitives ---
 
@@ -27,7 +28,7 @@ class Box(SDFObject):
         super().__init__()
         if x is not None and y is not None and z is not None:
             size = (x, y, z)
-        if isinstance(size, (int, float, str)):
+        if isinstance(size, (int, float, str, Param)):
             size = (size, size, size)
         self.size = size
         self.radius = radius
@@ -212,41 +213,26 @@ class Cone(SDFObject):
         if isinstance(self.height, str) or isinstance(self.radius1, str) or isinstance(self.radius2, str):
             raise TypeError("Cannot save mesh of an object with animated (string) parameters.")
         h, r1, r2 = self.height, self.radius1, self.radius2
-        if self.radius2 > 0:
-             def _callable_capped(p):
-                q_x = np.linalg.norm(p[:, [0, 2]], axis=-1)
-                q = np.stack([q_x, p[:, 1]], axis=-1)
-                k1 = np.array([r2, h])
-                k2 = np.array([r2 - r1, 2.0 * h])
-                ca_x_min_operand = np.where(q[:, 1] < 0.0, r1, r2)
-                ca_x = q[:, 0] - np.minimum(q[:, 0], ca_x_min_operand)
-                ca_y = np.abs(q[:, 1]) - h
-                ca = np.stack([ca_x, ca_y], axis=-1)
-                k1_minus_q = k1 - q
-                dot_val = np.sum(k1_minus_q * k2, axis=-1)
-                dot2_k2 = np.dot(k2, k2)
-                clamp_val = np.clip(dot_val / dot2_k2, 0.0, 1.0)
-                cb = q - k1 + k2 * clamp_val[:, np.newaxis]
-                s = np.where((cb[:, 0] < 0.0) & (ca[:, 1] < 0.0), -1.0, 1.0)
-                dot2_ca = np.sum(ca * ca, axis=-1)
-                dot2_cb = np.sum(cb * cb, axis=-1)
-                return s * np.sqrt(np.minimum(dot2_ca, dot2_cb))
-             return _callable_capped
-        else: # True cone logic
-            def _callable_cone(p):
-                q = np.stack([np.linalg.norm(p[:, [0, 2]], axis=-1), p[:, 1]], axis=-1)
-                w = np.array([r1, h])
-                dot_q_w = np.sum(q * w, axis=-1)
-                dot_w_w = np.dot(w, w)
-                clamp_val = np.clip(dot_q_w / dot_w_w, 0.0, 1.0)
-                a = q - w * clamp_val[:, np.newaxis]
-                clamped_y = np.clip(q[:, 1], 0.0, h)
-                b = q - np.stack([np.zeros_like(clamped_y), clamped_y], axis=-1)
-                k = np.sign(r1)
-                d = np.minimum(np.sum(a*a, axis=-1), np.sum(b*b, axis=-1))
-                s = np.maximum(k * (q[:, 0]*w[1] - q[:, 1]*w[0]), k * (q[:, 1] - h))
-                return np.sqrt(d) * np.sign(s)
-            return _callable_cone
+        # Always use the robust capped cone logic, which also works for r2=0
+        def _callable_capped(p):
+            q_x = np.linalg.norm(p[:, [0, 2]], axis=-1)
+            q = np.stack([q_x, p[:, 1]], axis=-1)
+            k1 = np.array([r2, h])
+            k2 = np.array([r2 - r1, 2.0 * h])
+            ca_x_min_operand = np.where(q[:, 1] < 0.0, r1, r2)
+            ca_x = q[:, 0] - np.minimum(q[:, 0], ca_x_min_operand)
+            ca_y = np.abs(q[:, 1]) - h
+            ca = np.stack([ca_x, ca_y], axis=-1)
+            k1_minus_q = k1 - q
+            dot_val = np.sum(k1_minus_q * k2, axis=-1)
+            dot2_k2 = np.dot(k2, k2)
+            clamp_val = np.clip(dot_val / dot2_k2, 0.0, 1.0)
+            cb = q - k1 + k2 * clamp_val[:, np.newaxis]
+            s = np.where((cb[:, 0] < 0.0) & (ca[:, 1] < 0.0), -1.0, 1.0)
+            dot2_ca = np.sum(ca * ca, axis=-1)
+            dot2_cb = np.sum(cb * cb, axis=-1)
+            return s * np.sqrt(np.minimum(dot2_ca, dot2_cb))
+        return _callable_capped
 
 def cone(height=1.0, radius1=0.5, radius2=0.0) -> SDFObject:
     """Creates a cone or a frustum (capped cone).
@@ -283,21 +269,24 @@ class HexPrism(SDFObject):
     def __init__(self, radius=1.0, height=0.1):
         super().__init__()
         self.radius, self.height = radius, height
-    def to_glsl(self) -> str: return f"vec4(sdHexPrism(p, vec2({_glsl_format(self.radius)}, {_glsl_format(self.height)})), -1.0, 0.0, 0.0)"
+    def to_glsl(self) -> str: 
+        # Convert radius to apothem for the GLSL function
+        radius_str = f"({_glsl_format(self.radius)} * 0.8660254)"
+        return f"vec4(sdHexPrism(p, vec2({radius_str}, {_glsl_format(self.height)})), -1.0, 0.0, 0.0)"
     def to_callable(self):
         if isinstance(self.radius, str) or isinstance(self.height, str):
             raise TypeError("Cannot save mesh of an object with animated (string) parameters.")
-        h_x, h_y = self.radius, self.height
+        apothem, h_y = self.radius * 0.8660254, self.height # Convert radius to apothem
         k = np.array([-0.8660254, 0.5, 0.57735])
         def _callable(p):
             p = np.abs(p)
             dot_val = np.dot(p[:, :2], k[:2])
             min_dot = np.minimum(dot_val, 0.0)
             p[:, :2] -= 2.0 * min_dot[:, np.newaxis] * k[:2]
-            clamped_x = np.clip(p[:, 0], -k[2] * h_x, k[2] * h_x)
-            vec_to_len = p[:, :2] - np.stack([clamped_x, np.full_like(clamped_x, h_x)], axis=-1)
+            clamped_x = np.clip(p[:, 0], -k[2] * apothem, k[2] * apothem)
+            vec_to_len = p[:, :2] - np.stack([clamped_x, np.full_like(clamped_x, apothem)], axis=-1)
             len_val = np.linalg.norm(vec_to_len, axis=-1)
-            d_x = len_val * np.sign(p[:, 1] - h_x)
+            d_x = len_val * np.sign(p[:, 1] - apothem)
             d_y = p[:, 2] - h_y
             d = np.stack([d_x, d_y], axis=-1)
             max_d = np.maximum(d[:, 0], d[:, 1])
@@ -480,15 +469,19 @@ class RoundCone(SDFObject):
         r1, r2, h = self.radius1, self.radius2, self.height
         def _callable(p):
             b = (r1 - r2) / h
-            a = np.sqrt(1.0 - b * b)
             q = np.stack([np.linalg.norm(p[:, [0, 2]], axis=-1), p[:, 1]], axis=-1)
-            k = np.dot(q, np.array([-b, a]))
-            cond1 = k < 0.0
-            cond2 = k > a * h
-            dist1 = np.linalg.norm(q, axis=-1) - r1
-            dist2 = np.linalg.norm(q - np.array([0.0, h]), axis=-1) - r2
-            dist3 = np.dot(q, np.array([a, b])) - r1
-            return np.where(cond1, dist1, np.where(cond2, dist2, dist3))
+
+            # Robust region checks based on y-coordinates of tangency circles
+            in_bottom_cap = q[:, 1] < r1 * b
+            in_top_cap = q[:, 1] > h - r2 * b
+
+            dist_bottom_cap = np.linalg.norm(q, axis=-1) - r1
+            dist_top_cap = np.linalg.norm(q - np.array([0.0, h]), axis=-1) - r2
+
+            a = np.sqrt(1.0 - b * b)
+            dist_side = np.dot(q, np.array([a, b])) - r1
+            
+            return np.where(in_bottom_cap, dist_bottom_cap, np.where(in_top_cap, dist_top_cap, dist_side))
         return _callable
 
 def round_cone(radius1=0.5, radius2=0.2, height=1.0) -> SDFObject:
@@ -528,7 +521,12 @@ class Pyramid(SDFObject):
             b = m2 * (q[:, 0] + 0.5 * t)**2 + (q[:, 1] - m2 * t)**2
             cond = np.minimum(q[:, 1], -q[:, 0] * m2 - q[:, 1] * 0.5) > 0.0
             d2 = np.where(cond, 0.0, np.minimum(a, b))
-            return np.sqrt((d2 + q[:, 2]**2) / m2) * np.sign(np.maximum(q[:, 2], -p[:, 1]))
+            
+            dist_unsigned = np.sqrt((d2 + q[:, 2]**2) / m2)
+            dist_to_hull = np.maximum(q[:, 2], -p[:, 1])
+            # Fix sign calculation for points on the base plane (y=0)
+            # If distance to hull is <= 0, we are inside or on the surface.
+            return np.where(dist_to_hull <= 1e-6, -dist_unsigned, dist_unsigned)
         return _callable
 
 def pyramid(height=1.0) -> SDFObject:

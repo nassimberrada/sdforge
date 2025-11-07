@@ -2,7 +2,12 @@ from sdforge import *
 
 def main():
     """
-    Demonstrates the use of per-object materials.
+    Demonstrates applying per-object colors (materials).
+
+    This example shows how to:
+    - Use the `.color(r, g, b)` method to apply a material to an SDF object.
+    - Combine multiple colored objects using boolean operators.
+    - The color of the base object is preserved in difference operations.
     """
     # Define a red sphere and a blue box
     s = sphere(1.2).color(1, 0.2, 0.2)
@@ -24,5 +29,5 @@ def main():
 if __name__ == "__main__":
     model = main()
     if model:
-        # Render with a dark grey background
+        # Render with a white background
         model.render(watch=True, bg_color=(1, 1, 1))

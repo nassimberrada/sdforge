@@ -155,7 +155,7 @@ _PROPAGATED_METHODS = [
     'bend_x', 'bend_y', 'bend_z',
     'repeat', 'limited_repeat', 'polar_repeat', 'mirror',
     'round', 'shell', 'bevel', 'elongate', 'displace', 'extrude', 'revolve',
-    'color'
+    # 'color' # This is removed to allow a single material to wrap the whole group.
 ]
 
 def _make_propagated_method(name):

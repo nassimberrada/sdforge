@@ -2,7 +2,15 @@ from sdforge import *
 
 def main():
     """
-    Demonstrates advanced shaping operators like elongate, displace, and extrude.
+    Demonstrates advanced shaping operators.
+
+    This example shows how to use operators that modify the shape of an
+    SDF object in complex ways, including:
+    - `elongate`: Stretches a shape.
+    - `xor`: The exclusive-or boolean operation.
+    - `displace`: Modifies the surface with a procedural GLSL expression.
+    - `revolve`: Creates a 3D shape by revolving a 2D SDF profile.
+    - `limited_repeat`: Repeats a shape a fixed number of times.
     """
 
     # --- Elongate and XOR ---
@@ -30,13 +38,13 @@ def main():
     """)
     
     # Revolve the 2D profile to create a 3D object
-    revolved_shape = profile_2d.revolve() + (-X * 4)
+    revolved_shape = profile_2d.revolve().translate(-X * 4)
 
     # --- Limited Repetition ---
     # Create a base object and repeat it a limited number of times.
     base_obj = box((0.5, 2.0, 0.5), radius=0.1)
     repeated_obj = base_obj.limited_repeat(spacing=(0.8, 0, 0), limits=(3, 0, 0))
-    repeated_obj += (X * 4)
+    repeated_obj = repeated_obj.translate(X * 4)
 
     # Combine all the objects into one scene
     final_scene = displaced_shape | revolved_shape | repeated_obj

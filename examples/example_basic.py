@@ -2,8 +2,13 @@ from sdforge import *
 
 def main():
     """
-    This function defines the SDF model.
-    For hot-reloading to work, it must return the final SDF object.
+    Demonstrates the basic concepts of SDF modeling.
+
+    This example shows how to:
+    - Create primitive shapes like `sphere` and `box`.
+    - Combine shapes using boolean operators: intersection (`&`),
+      union (`|`), and difference (`-`).
+    - Apply transformations like `orient`.
     """
     # A sphere intersected with a box
     f = sphere(1) & box(1.5)

@@ -28,6 +28,9 @@ from .primitives import (
 # --- Operations and Grouping ---
 from .operations import Group
 
+# --- Shaping and Materials ---
+from .shaping import Material
+
 # --- Custom GLSL ---
 from .custom import Forge
 

@@ -2,8 +2,13 @@ from sdforge import *
 
 def main():
     """
-    This function defines the SDF model.
-    For hot-reloading to work, it must return the final SDF object.
+    Demonstrates injecting animated GLSL expressions into shape parameters.
+
+    This example shows how to:
+    - Pass a string containing a GLSL expression (e.g., using `u_time`)
+      as a parameter to a primitive like `box`.
+    - Animate properties of shapes over time.
+    - Note that models with animated parameters cannot be saved to a mesh file.
     """
     # Create a box whose size is a GLSL expression string.
     # This animates the size smoothly between 0.1 and 0.9.

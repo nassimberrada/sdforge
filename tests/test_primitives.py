@@ -236,6 +236,64 @@ def test_ellipsoid_callable():
     assert actual[0] < 0
     assert np.allclose(actual[1:], [0.0, 0.0, 0.0], atol=1e-6)
 
+def test_cone_callable():
+    c_callable = cone(height=2.0, radius1=1.0).to_callable()
+    points = np.array([
+        [0, 0, 0],       # Inside base center
+        [0, 2, 0],       # Tip
+        [1, 0, 0],       # On base edge
+        [0.5, 1, 0],     # On surface, halfway up
+        [0, 2.1, 0]      # Just above tip
+    ])
+    dists = c_callable(points)
+    assert dists[0] < 0
+    assert np.isclose(dists[1], 0.0)
+    assert np.isclose(dists[2], 0.0)
+    assert np.isclose(dists[3], 0.0)
+    assert dists[4] > 0
+
+def test_hex_prism_callable():
+    hp_callable = hex_prism(radius=1.0, height=0.2).to_callable()
+    points = np.array([
+        [0, 0, 0],       # Inside center
+        [1, 0, 0],       # On vertex edge
+        [0, 0, 0.2],     # On top face center
+        [0, 0, 0.3],     # Above top face
+    ])
+    dists = hp_callable(points)
+    assert dists[0] < 0
+    assert np.isclose(dists[1], 0.0)
+    assert np.isclose(dists[2], 0.0)
+    assert np.isclose(dists[3], 0.1)
+
+def test_round_cone_callable():
+    rc_callable = round_cone(radius1=0.5, radius2=0.2, height=1.0).to_callable()
+    points = np.array([
+        [0, 0, 0],      # Center of bottom sphere
+        [0.5, 0, 0],    # Surface of bottom sphere
+        [0, 1.0, 0],    # Center of top sphere
+        [0.2, 1.0, 0],  # Surface of top sphere
+    ])
+    dists = rc_callable(points)
+    assert np.isclose(dists[0], -0.5)
+    assert np.isclose(dists[1], 0.0)
+    assert np.isclose(dists[2], -0.2)
+    assert np.isclose(dists[3], 0.0)
+
+def test_pyramid_callable():
+    p_callable = pyramid(height=1.0).to_callable()
+    points = np.array([
+        [0, 0, 0],      # Inside, base center
+        [0, 1.0, 0],    # Tip
+        [0.5, 0, 0.5],  # On base corner
+        [0, 0.5, 0.25], # On a face
+    ])
+    dists = p_callable(points)
+    assert dists[0] < 0
+    assert np.isclose(dists[1], 0.0, atol=1e-7)
+    assert np.isclose(dists[2], 0.0, atol=1e-7)
+    assert np.isclose(dists[3], 0.0, atol=1e-7)
+
 def test_forge_with_uniforms_fails_to_callable():
     f = Forge("return length(p) - u_radius;", uniforms={'u_radius': 1.5})
     with pytest.raises(TypeError, match="Cannot save mesh of a Forge object with uniforms"):

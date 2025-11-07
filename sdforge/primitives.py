@@ -41,6 +41,15 @@ class Box(SDFObject):
             return np.linalg.norm(np.maximum(q, 0), axis=-1) + np.minimum(np.max(q, axis=-1), 0)
         return _callable
 
+def box(size=1.0) -> SDFObject:
+    """Creates a box.
+
+    Args:
+        size (float, tuple, or str, optional): The size of the box along each axis.
+                                               If a float, creates a uniform box. Defaults to 1.0.
+    """
+    return Box(size)
+
 class RoundedBox(SDFObject):
     """Represents a box with rounded edges."""
     def __init__(self, size=1.0, radius=0.1):
@@ -63,19 +72,14 @@ class RoundedBox(SDFObject):
             return np.linalg.norm(np.maximum(q, 0), axis=-1) - self.radius
         return _callable
 
-def box(size=1.0, radius=0.0) -> SDFObject:
-    """
-    Creates a box, optionally with rounded edges.
+def rounded_box(size=1.0, radius=0.1) -> SDFObject:
+    """Creates a box with rounded edges.
 
     Args:
-        size (float, tuple, or str, optional): The size of the box along each axis.
-                                               If a float, creates a uniform box. Defaults to 1.0.
-        radius (float or str, optional): The radius of the rounded edges. If > 0,
-                                         a rounded box is created. Defaults to 0.0.
+        size (float, tuple, or str, optional): The size of the box. Defaults to 1.0.
+        radius (float or str, optional): The radius of the rounded edges. Defaults to 0.1.
     """
-    if (isinstance(radius, str) and radius != "0.0") or (isinstance(radius, (int, float)) and radius > 0):
-        return RoundedBox(size, radius)
-    return Box(size)
+    return RoundedBox(size, radius)
 
 class Torus(SDFObject):
     """Represents a torus primitive."""
@@ -116,46 +120,15 @@ class Capsule(SDFObject):
             return np.linalg.norm(pa - ba * h[:, np.newaxis], axis=-1) - self.radius
         return _callable
 
-class CappedCylinder(SDFObject):
-    """Represents a cylinder defined by two end points."""
-    def __init__(self, a, b, radius):
-        super().__init__()
-        self.a, self.b, self.radius = np.array(a), np.array(b), radius
-    def to_glsl(self) -> str:
-        a, b, r = self.a, self.b, _glsl_format(self.radius)
-        return f"vec4(sdCappedCylinder(p, vec3({a[0]},{a[1]},{a[2]}), vec3({b[0]},{b[1]},{b[2]}), {r}), -1.0, 0.0, 0.0)"
-    def to_callable(self):
-        if isinstance(self.radius, str): raise TypeError("Cannot save mesh of an object with animated (string) parameters.")
-        a, b, r = self.a, self.b, self.radius
-        def _callable(p):
-            ba = b - a
-            pa = p - a
-            baba = np.dot(ba, ba)
-            paba = np.dot(pa, ba)
-            x = np.linalg.norm(pa * baba - ba * paba[:, np.newaxis], axis=-1) - r * baba
-            y = np.abs(paba - baba * 0.5) - baba * 0.5
-            x2 = x*x
-            y2 = y*y*baba
-            d_inner = np.where(np.maximum(x, y) < 0.0, -np.minimum(x2, y2), (np.where(x > 0.0, x2, 0.0) + np.where(y > 0.0, y2, 0.0)))
-            return np.sign(d_inner) * np.sqrt(np.abs(d_inner)) / baba
-        return _callable
-
-def line(a, b, radius=0.1, rounded_caps=True) -> SDFObject:
-    """
-    Creates a line segment with a radius, with either rounded or flat caps.
+def capsule(a, b, radius=0.1) -> SDFObject:
+    """Creates a capsule, a line segment with a radius.
 
     Args:
-        a (tuple or np.ndarray): The start point of the line's spine.
-        b (tuple or np.ndarray): The end point of the line's spine.
-        radius (float or str, optional): The radius of the line. Defaults to 0.1.
-        rounded_caps (bool, optional): If True, creates rounded ends (a capsule).
-                                       If False, creates flat ends (a capped cylinder).
-                                       Defaults to True.
+        a (tuple or np.ndarray): The start point of the capsule's spine.
+        b (tuple or np.ndarray): The end point of the capsule's spine.
+        radius (float or str, optional): The radius of the capsule. Defaults to 0.1.
     """
-    if rounded_caps:
-        return Capsule(a, b, radius)
-    else:
-        return CappedCylinder(a, b, radius)
+    return Capsule(a, b, radius)
 
 class Cylinder(SDFObject):
     """Represents a cylinder primitive."""
@@ -175,86 +148,53 @@ class Cylinder(SDFObject):
             return np.minimum(np.maximum(d[:, 0], d[:, 1]), 0.0) + np.linalg.norm(np.maximum(d, 0.0), axis=-1)
         return _callable
 
-class RoundedCylinder(SDFObject):
-    """Represents a cylinder with rounded edges."""
-    def __init__(self, radius, round_radius, height):
-        super().__init__()
-        self.radius, self.round_radius, self.height = radius, round_radius, height
-    def to_glsl(self) -> str:
-        ra = _glsl_format(self.radius)
-        rb = _glsl_format(self.round_radius)
-        h = _glsl_format(self.height)
-        return f"vec4(sdRoundedCylinder(p, {ra}, {rb}, {h}), -1.0, 0.0, 0.0)"
-    def to_callable(self):
-        if isinstance(self.radius, str) or isinstance(self.round_radius, str) or isinstance(self.height, str):
-            raise TypeError("Cannot save mesh of an object with animated (string) parameters.")
-        ra, rb, h = self.radius, self.round_radius, self.height
-        def _callable(p):
-            d_x = np.linalg.norm(p[:, [0, 2]], axis=-1) - 2.0 * ra + rb
-            d_y = np.abs(p[:, 1]) - h
-            d = np.stack([d_x, d_y], axis=-1)
-            return np.minimum(np.maximum(d[:, 0], d[:, 1]), 0.0) + np.linalg.norm(np.maximum(d, 0.0), axis=-1) - rb
-        return _callable
-
-def cylinder(radius=0.5, height=1.0, round_radius=0.0) -> SDFObject:
-    """
-    Creates a cylinder, optionally with rounded edges, oriented along the Y-axis.
+def cylinder(radius=0.5, height=1.0) -> SDFObject:
+    """Creates a cylinder oriented along the Y-axis.
 
     Args:
         radius (float or str, optional): The radius of the cylinder. Defaults to 0.5.
         height (float or str, optional): The total height of the cylinder. Defaults to 1.0.
-        round_radius (float or str, optional): The radius of the rounding. If > 0,
-                                              a rounded cylinder is created. Defaults to 0.0.
     """
-    if (isinstance(round_radius, str) and round_radius != "0.0") or (isinstance(round_radius, (int, float)) and round_radius > 0):
-        return RoundedCylinder(radius, round_radius, height)
     return Cylinder(radius, height)
 
 class Cone(SDFObject):
-    """Represents a cone with caps (a frustum)."""
-    def __init__(self, height=1.0, radius1=0.5, radius2=0.0):
+    """Represents a cone primitive."""
+    def __init__(self, height=1.0, radius=0.5):
         super().__init__()
-        self.height, self.radius1, self.radius2 = height, radius1, radius2
-    def to_glsl(self) -> str:
-        h = _glsl_format(self.height)
-        r1 = _glsl_format(self.radius1)
-        r2 = _glsl_format(self.radius2)
-        return f"vec4(sdCappedCone(p, {h}, {r1}, {r2}), -1.0, 0.0, 0.0)"
+        self.height, self.radius = height, radius
+    def to_glsl(self) -> str: return f"vec4(sdCone(p, vec2({_glsl_format(self.height)}, {_glsl_format(self.radius)})), -1.0, 0.0, 0.0)"
     def to_callable(self):
-        if isinstance(self.height, str) or isinstance(self.radius1, str) or isinstance(self.radius2, str):
+        if isinstance(self.height, str) or isinstance(self.radius, str):
             raise TypeError("Cannot save mesh of an object with animated (string) parameters.")
-        h, r1, r2 = self.height, self.radius1, self.radius2
+        h, r = self.height, self.radius
         def _callable(p):
-            q_x = np.linalg.norm(p[:, [0, 2]], axis=-1)
-            q = np.stack([q_x, p[:, 1]], axis=-1)
-            k1 = np.array([r2, h])
-            k2 = np.array([r2 - r1, 2.0 * h])
-            ca_x_min_operand = np.where(q[:, 1] < 0.0, r1, r2)
-            ca_x = q[:, 0] - np.minimum(q[:, 0], ca_x_min_operand)
-            ca_y = np.abs(q[:, 1]) - h
-            ca = np.stack([ca_x, ca_y], axis=-1)
-            k1_minus_q = k1 - q
-            dot_val = np.sum(k1_minus_q * k2, axis=-1)
-            dot2_k2 = np.dot(k2, k2)
-            clamp_val = np.clip(dot_val / dot2_k2, 0.0, 1.0)
-            cb = q - k1 + k2 * clamp_val[:, np.newaxis]
-            s = np.where((cb[:, 0] < 0.0) & (ca[:, 1] < 0.0), -1.0, 1.0)
-            dot2_ca = np.sum(ca * ca, axis=-1)
-            dot2_cb = np.sum(cb * cb, axis=-1)
-            return s * np.sqrt(np.minimum(dot2_ca, dot2_cb))
+            q = np.stack([np.linalg.norm(p[:, [0, 2]], axis=-1), p[:, 1]], axis=-1)
+            w = np.array([r, h])
+            
+            dot_q_w = np.sum(q * w, axis=-1)
+            dot_w_w = np.dot(w, w)
+            
+            clamp_val = np.clip(dot_q_w / dot_w_w, 0.0, 1.0)
+            a = q - w * clamp_val[:, np.newaxis]
+            
+            clamped_y = np.clip(q[:, 1], 0.0, h)
+            b = q - np.stack([np.zeros_like(clamped_y), clamped_y], axis=-1)
+            
+            k = np.sign(r)
+            d = np.minimum(np.sum(a*a, axis=-1), np.sum(b*b, axis=-1))
+            s = np.maximum(k * (q[:, 0]*w[1] - q[:, 1]*w[0]), k * (q[:, 1] - h))
+
+            return np.sqrt(d) * np.sign(s)
         return _callable
 
-def cone(height=1.0, radius1=0.5, radius2=0.0) -> SDFObject:
-    """
-    Creates a capped cone (a frustum).
+def cone(height=1.0, radius=0.5) -> SDFObject:
+    """Creates a cone oriented along the Y-axis.
 
     Args:
-        height (float, optional): The height of the cone. Defaults to 1.0.
-        radius1 (float, optional): The radius of the base at Y=0. Defaults to 0.5.
-        radius2 (float, optional): The radius of the top at Y=height. If 0, a standard
-                                   pointed cone is created. Defaults to 0.0.
+        height (float or str, optional): The height of the cone. Defaults to 1.0.
+        radius (float or str, optional): The radius of the cone's base. Defaults to 0.5.
     """
-    return Cone(height, radius1, radius2)
+    return Cone(height, radius)
 
 class Plane(SDFObject):
     """Represents an infinite plane."""
@@ -454,6 +394,115 @@ def link(length=1.0, radius1=0.3, radius2=0.1) -> SDFObject:
         radius2 (float, optional): The minor radius of the shape. Defaults to 0.1.
     """
     return Link(length, radius1, radius2)
+
+class CappedCylinder(SDFObject):
+    """Represents a cylinder defined by two end points."""
+    def __init__(self, a, b, radius):
+        super().__init__()
+        self.a, self.b, self.radius = np.array(a), np.array(b), radius
+    def to_glsl(self) -> str:
+        a, b, r = self.a, self.b, _glsl_format(self.radius)
+        return f"vec4(sdCappedCylinder(p, vec3({a[0]},{a[1]},{a[2]}), vec3({b[0]},{b[1]},{b[2]}), {r}), -1.0, 0.0, 0.0)"
+    def to_callable(self):
+        if isinstance(self.radius, str): raise TypeError("Cannot save mesh of an object with animated (string) parameters.")
+        a, b, r = self.a, self.b, self.radius
+        def _callable(p):
+            ba = b - a
+            pa = p - a
+            baba = np.dot(ba, ba)
+            paba = np.dot(pa, ba)
+            x = np.linalg.norm(pa * baba - ba * paba[:, np.newaxis], axis=-1) - r * baba
+            y = np.abs(paba - baba * 0.5) - baba * 0.5
+            x2 = x*x
+            y2 = y*y*baba
+            d_inner = np.where(np.maximum(x, y) < 0.0, -np.minimum(x2, y2), (np.where(x > 0.0, x2, 0.0) + np.where(y > 0.0, y2, 0.0)))
+            return np.sign(d_inner) * np.sqrt(np.abs(d_inner)) / baba
+        return _callable
+
+def capped_cylinder(a, b, radius=0.1) -> SDFObject:
+    """Creates a cylinder between two points.
+
+    Args:
+        a (tuple or np.ndarray): The start point of the cylinder.
+        b (tuple or np.ndarray): The end point of the cylinder.
+        radius (float, optional): The radius of the cylinder. Defaults to 0.1.
+    """
+    return CappedCylinder(a, b, radius)
+
+class RoundedCylinder(SDFObject):
+    """Represents a cylinder with rounded edges."""
+    def __init__(self, radius, round_radius, height):
+        super().__init__()
+        self.radius, self.round_radius, self.height = radius, round_radius, height
+    def to_glsl(self) -> str:
+        ra = _glsl_format(self.radius)
+        rb = _glsl_format(self.round_radius)
+        h = _glsl_format(self.height)
+        return f"vec4(sdRoundedCylinder(p, {ra}, {rb}, {h}), -1.0, 0.0, 0.0)"
+    def to_callable(self):
+        if isinstance(self.radius, str) or isinstance(self.round_radius, str) or isinstance(self.height, str):
+            raise TypeError("Cannot save mesh of an object with animated (string) parameters.")
+        ra, rb, h = self.radius, self.round_radius, self.height
+        def _callable(p):
+            d_x = np.linalg.norm(p[:, [0, 2]], axis=-1) - 2.0 * ra + rb
+            d_y = np.abs(p[:, 1]) - h
+            d = np.stack([d_x, d_y], axis=-1)
+            return np.minimum(np.maximum(d[:, 0], d[:, 1]), 0.0) + np.linalg.norm(np.maximum(d, 0.0), axis=-1) - rb
+        return _callable
+
+def rounded_cylinder(radius=1.0, round_radius=0.1, height=2.0) -> SDFObject:
+    """Creates a cylinder with rounded edges, oriented along the Y-axis.
+
+    Args:
+        radius (float, optional): The cylinder's radius. Defaults to 1.0.
+        round_radius (float, optional): The radius of the rounding. Defaults to 0.1.
+        height (float, optional): The height of the cylinder. Defaults to 2.0.
+    """
+    return RoundedCylinder(radius, round_radius, height)
+
+class CappedCone(SDFObject):
+    """Represents a cone with caps."""
+    def __init__(self, height, radius1, radius2):
+        super().__init__()
+        self.height, self.radius1, self.radius2 = height, radius1, radius2
+    def to_glsl(self) -> str:
+        h = _glsl_format(self.height)
+        r1 = _glsl_format(self.radius1)
+        r2 = _glsl_format(self.radius2)
+        return f"vec4(sdCappedCone(p, {h}, {r1}, {r2}), -1.0, 0.0, 0.0)"
+    def to_callable(self):
+        if isinstance(self.height, str) or isinstance(self.radius1, str) or isinstance(self.radius2, str):
+            raise TypeError("Cannot save mesh of an object with animated (string) parameters.")
+        h, r1, r2 = self.height, self.radius1, self.radius2
+        def _callable(p):
+            q_x = np.linalg.norm(p[:, [0, 2]], axis=-1)
+            q = np.stack([q_x, p[:, 1]], axis=-1)
+            k1 = np.array([r2, h])
+            k2 = np.array([r2 - r1, 2.0 * h])
+            ca_x_min_operand = np.where(q[:, 1] < 0.0, r1, r2)
+            ca_x = q[:, 0] - np.minimum(q[:, 0], ca_x_min_operand)
+            ca_y = np.abs(q[:, 1]) - h
+            ca = np.stack([ca_x, ca_y], axis=-1)
+            k1_minus_q = k1 - q
+            dot_val = np.sum(k1_minus_q * k2, axis=-1)
+            dot2_k2 = np.dot(k2, k2)
+            clamp_val = np.clip(dot_val / dot2_k2, 0.0, 1.0)
+            cb = q - k1 + k2 * clamp_val[:, np.newaxis]
+            s = np.where((cb[:, 0] < 0.0) & (ca[:, 1] < 0.0), -1.0, 1.0)
+            dot2_ca = np.sum(ca * ca, axis=-1)
+            dot2_cb = np.sum(cb * cb, axis=-1)
+            return s * np.sqrt(np.minimum(dot2_ca, dot2_cb))
+        return _callable
+
+def capped_cone(height=1.0, radius1=0.5, radius2=0.2) -> SDFObject:
+    """Creates a capped cone (a frustum).
+
+    Args:
+        height (float, optional): The height of the cone. Defaults to 1.0.
+        radius1 (float, optional): The radius of the base at Y=0. Defaults to 0.5.
+        radius2 (float, optional): The radius of the top at Y=height. Defaults to 0.2.
+    """
+    return CappedCone(height, radius1, radius2)
 
 class RoundCone(SDFObject):
     """Represents a cone with rounded edges."""

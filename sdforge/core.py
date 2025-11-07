@@ -197,50 +197,20 @@ class SDFObject:
         from .transforms import Mirror
         return Mirror(self, np.array(axes))
 
-    def union(self, other, k=0.0):
-        """
-        Creates a union of this object and another, with optional smoothing.
+    def smooth_union(self, other, k):
+        """Creates a smooth union between this object and another."""
+        from .operations import SmoothUnion
+        return SmoothUnion(self, other, k)
 
-        Args:
-            other (SDFObject): The other object to union with.
-            k (float or str, optional): The smoothness factor. If > 0, a smooth union is performed.
-                                        Defaults to 0.0 (a hard union).
-        """
-        if (isinstance(k, str) and k != "0.0") or (isinstance(k, (int, float)) and k > 0):
-            from .operations import SmoothUnion
-            return SmoothUnion(self, other, k)
-        from .operations import Union
-        return Union(self, other)
+    def smooth_intersection(self, other, k):
+        """Creates a smooth intersection between this object and another."""
+        from .operations import SmoothIntersection
+        return SmoothIntersection(self, other, k)
 
-    def intersection(self, other, k=0.0):
-        """
-        Creates an intersection of this object and another, with optional smoothing.
-
-        Args:
-            other (SDFObject): The other object to intersect with.
-            k (float or str, optional): The smoothness factor. If > 0, a smooth intersection is performed.
-                                        Defaults to 0.0 (a hard intersection).
-        """
-        if (isinstance(k, str) and k != "0.0") or (isinstance(k, (int, float)) and k > 0):
-            from .operations import SmoothIntersection
-            return SmoothIntersection(self, other, k)
-        from .operations import Intersection
-        return Intersection(self, other)
-
-    def difference(self, other, k=0.0):
-        """
-        Subtracts another object from this one, with optional smoothing.
-
-        Args:
-            other (SDFObject): The other object to subtract.
-            k (float or str, optional): The smoothness factor. If > 0, a smooth difference is performed.
-                                        Defaults to 0.0 (a hard difference).
-        """
-        if (isinstance(k, str) and k != "0.0") or (isinstance(k, (int, float)) and k > 0):
-            from .operations import SmoothDifference
-            return SmoothDifference(self, other, k)
-        from .operations import Difference
-        return Difference(self, other)
+    def smooth_difference(self, other, k):
+        """Creates a smooth difference between this object and another."""
+        from .operations import SmoothDifference
+        return SmoothDifference(self, other, k)
 
     def color(self, r, g, b):
         """Applies a color material to the object."""

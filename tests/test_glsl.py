@@ -48,10 +48,12 @@ def get_simple_factories():
 # Some factories require arguments (no defaults). Provide sensible overrides here.
 # Add other factories here as needed.
 OVERRIDES = {
-    "line": lambda: sdforge.line((0.0, 0.0, 0.0), (0.0, 1.0, 0.0), radius=0.15),
+    "capsule": lambda: sdforge.capsule((0.0, 0.0, 0.0), (0.0, 1.0, 0.0), radius=0.15),
     "ellipsoid": lambda: sdforge.ellipsoid((1.0, 0.6, 0.8)),
     "box_frame": lambda: sdforge.box_frame((1.0, 1.0, 1.0), edge_radius=0.08),
     "capped_torus": lambda: sdforge.capped_torus((0.0, 1.0), 1.0, 0.25),
+    "capped_cylinder": lambda: sdforge.capped_cylinder((0.0, 0.0, -0.5), (0.0, 0.0, 0.5), 0.1),
+    "capped_cone": lambda: sdforge.capped_cone(1.0, 0.5, 0.2),
     # If your project exposes other factories that need args, add them here.
 }
 
@@ -272,15 +274,15 @@ def make_variations(factory_callable):
     # smooth ops with another small primitive
     other = sdforge.sphere(0.3)
     try:
-        variations.append(base.union(other, k=0.2))
+        variations.append(base.smooth_union(other, 0.2))
     except Exception:
         pass
     try:
-        variations.append(base.intersection(other, k=0.2))
+        variations.append(base.smooth_intersection(other, 0.2))
     except Exception:
         pass
     try:
-        variations.append(base.difference(other, k=0.2))
+        variations.append(base.smooth_difference(other, 0.2))
     except Exception:
         pass
 

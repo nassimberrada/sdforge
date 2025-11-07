@@ -35,7 +35,7 @@ def main():
 
     # --- Limited Repetition ---
     # Create a base object and repeat it a limited number of times.
-    base_obj = box((0.5, 2.0, 0.5), radius=0.1)
+    base_obj = rounded_box((0.5, 2.0, 0.5), 0.1)
     repeated_obj = base_obj.limited_repeat(spacing=(0.8, 0, 0), limits=(3, 0, 0))
     repeated_obj = repeated_obj.translate(X * 4)
 

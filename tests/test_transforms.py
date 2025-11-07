@@ -1,6 +1,6 @@
 import pytest
-from sdforge import *
 import numpy as np
+from sdforge import SDFObject, box, sphere, X, Y, Z
 
 @pytest.fixture
 def shape():

@@ -1,8 +1,13 @@
-from .api import (
-    # Base class (for type hinting or extension)
+# --- Core Components ---
+from .core import (
     SDFObject,
+    Camera,
+    Light,
+    X, Y, Z,
+)
 
-    # Primitives
+# --- Primitives ---
+from .primitives import (
     sphere,
     box,
     rounded_box,
@@ -22,16 +27,7 @@ from .api import (
     capped_cone,
     round_cone,
     pyramid,
-
-    # Custom GLSL
-    Forge,
-
-    # Camera
-    Camera,
-
-    # Light
-    Light,
-
-    # Constants
-    X, Y, Z,
 )
+
+# --- Custom GLSL ---
+from .custom import Forge

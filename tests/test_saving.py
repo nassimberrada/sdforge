@@ -1,8 +1,7 @@
 import pytest
-from sdforge import *
 import os
-import sys
 from unittest.mock import MagicMock, patch
+from sdforge import sphere, box, Camera, Forge
 
 def test_save_static_object(tmp_path):
     s = sphere(1.0) & box(1.5)
@@ -21,7 +20,7 @@ def test_save_obj_static_object(tmp_path):
         assert 'v ' in content
         assert 'f ' in content
 
-@patch('sdforge.api.SDFObject.render')
+@patch('sdforge.core.SDFObject.render')
 def test_save_frame_api(mock_render):
     s = sphere()
     cam = Camera()
@@ -52,7 +51,7 @@ def test_to_callable_displaced_object_fails():
         displaced_sphere.to_callable()
 
 def test_to_callable_forge_object_requires_deps(monkeypatch):
-    monkeypatch.setattr('sdforge.api._MODERNGL_AVAILABLE', False)
+    monkeypatch.setattr('sdforge.custom._MODERNGL_AVAILABLE', False)
     f = Forge("return length(p) - 1.0;")
     with pytest.raises(ImportError, match="To save meshes with Forge objects"):
         f.to_callable()
@@ -72,16 +71,16 @@ def test_save_marching_cubes_failure(tmp_path, capsys):
     assert "ERROR: Marching cubes failed" in captured.err or "ERROR: Marching cubes failed" in captured.out
 
 def test_to_callable_forge_object_succeeds_with_deps(monkeypatch):
-    monkeypatch.delattr('sdforge.api.Forge._mgl_context', raising=False)
-    monkeypatch.setattr('sdforge.api._MODERNGL_AVAILABLE', True)
+    monkeypatch.delattr('sdforge.custom.Forge._mgl_context', raising=False)
+    monkeypatch.setattr('sdforge.custom._MODERNGL_AVAILABLE', True)
     
     mock_glfw = MagicMock()
     mock_mgl = MagicMock()
     
     mock_mgl.create_context.return_value = MagicMock()
 
-    monkeypatch.setattr('sdforge.api.glfw', mock_glfw)
-    monkeypatch.setattr('sdforge.api.moderngl', mock_mgl)
+    monkeypatch.setattr('sdforge.custom.glfw', mock_glfw)
+    monkeypatch.setattr('sdforge.custom.moderngl', mock_mgl)
     
     f = Forge("return length(p) - 1.0;")
     

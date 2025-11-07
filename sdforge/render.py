@@ -7,7 +7,7 @@ import numpy as np
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
-from .api import Camera, Light
+from .core import Camera, Light
 
 # The maximum number of unique materials supported in a scene.
 MAX_MATERIALS = 64

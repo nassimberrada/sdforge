@@ -1,6 +1,6 @@
 import pytest
-from sdforge import *
 import numpy as np
+from sdforge import SDFObject, sphere, box, Forge
 
 @pytest.fixture
 def shapes():
@@ -79,6 +79,7 @@ def test_color(shapes):
     s, _ = shapes
     colored_sphere = s.color(1, 0, 0)
     assert isinstance(colored_sphere, SDFObject)
+    # The color property is on the Material object, which wraps the sphere
     assert colored_sphere.color == (1, 0, 0)
 
 def test_union_callable(shapes):

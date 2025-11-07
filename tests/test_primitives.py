@@ -1,7 +1,13 @@
 import pytest
-from sdforge import *
 import numpy as np
 from unittest.mock import MagicMock
+
+# Import all primitives and core objects from the public API
+from sdforge import *
+
+# Import internal modules for patching/testing
+from sdforge.core import _get_glsl_content
+from sdforge.custom import Forge
 
 # --- API Usage Tests  ---
 
@@ -214,7 +220,7 @@ test_points = np.random.rand(1000, 3) * 4 - 2  # Points in a [-2, 2] cube
 
 PRIMITIVE_TEST_CASES = [
     (sphere(1.2), "sdSphere(p, 1.2)"),
-    (box(1.5), "sdBox(p, vec3(0.75))"),
+    (box(1.5), "sdBox(p, vec3(0.75, 0.75, 0.75))"),
     (box((1, 2, 3)), "sdBox(p, vec3(0.5, 1.0, 1.5))"),
     (torus(1.0, 0.25), "sdTorus(p, vec2(1.0, 0.25))"),
     (octahedron(1.3), "sdOctahedron(p, 1.3)"),
@@ -239,8 +245,9 @@ def test_primitive_equivalence(sdf_obj, glsl_expr, monkeypatch):
     """
     Tests that a primitive's to_callable() (NumPy) matches its GLSL equivalent.
     """
-    monkeypatch.delattr('sdforge.api.Forge._mgl_context', raising=False)
-    monkeypatch.setattr('sdforge.api._MODERNGL_AVAILABLE', True)
+    # Patch the modules inside the 'custom' module where Forge is defined
+    monkeypatch.delattr('sdforge.custom.Forge._mgl_context', raising=False)
+    monkeypatch.setattr('sdforge.custom._MODERNGL_AVAILABLE', True)
 
     mock_glfw = MagicMock()
     mock_mgl = MagicMock()
@@ -248,12 +255,11 @@ def test_primitive_equivalence(sdf_obj, glsl_expr, monkeypatch):
     mock_context = MagicMock()
     mock_mgl.create_context.return_value = mock_context
 
-    monkeypatch.setattr('sdforge.api.glfw', mock_glfw)
-    monkeypatch.setattr('sdforge.api.moderngl', mock_mgl)
+    monkeypatch.setattr('sdforge.custom.glfw', mock_glfw)
+    monkeypatch.setattr('sdforge.custom.moderngl', mock_mgl)
 
     numpy_distances = sdf_obj.to_callable()(test_points)
-
-    from sdforge.api import _get_glsl_content
+    
     primitives_glsl = _get_glsl_content("primitives.glsl")
     
     glsl_shape = Forge(f"""

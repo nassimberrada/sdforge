@@ -268,3 +268,14 @@ def test_empty_group():
     g = Group()
     assert "1e9" in g.to_glsl()
     assert g.to_callable()(np.array([[0,0,0]]))[0] > 1e8
+
+def test_bounded_by_is_intersection(shapes):
+    s, b = shapes
+    
+    bounded_shape = s.bounded_by(b)
+    intersect_shape = s & b
+
+    assert bounded_shape.to_glsl() == intersect_shape.to_glsl()
+    
+    points = np.array([[0.8, 0, 0], [1.2, 0, 0]])
+    assert np.allclose(bounded_shape.to_callable()(points), intersect_shape.to_callable()(points))

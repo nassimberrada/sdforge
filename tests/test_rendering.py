@@ -83,3 +83,57 @@ def test_hot_reloading_triggers_reload():
     other_event.src_path = os.path.abspath("other_file.py")
     handler.on_modified(other_event)
     assert mock_renderer.reload_pending is False
+
+@patch('sdforge.render.NativeRenderer._init_window')
+def test_render_with_debug_normals(mock_init):
+    s = sphere()
+    renderer = NativeRenderer(s, debug='normals')
+    
+    with patch('moderngl.create_context') as mock_create_context:
+        mock_ctx = MagicMock()
+        mock_create_context.return_value = mock_ctx
+        renderer.ctx = mock_ctx
+
+        renderer._compile_shader()
+
+        call_args, call_kwargs = mock_ctx.program.call_args
+        fragment_shader = call_kwargs.get('fragment_shader', '')
+        
+        assert "color = debugNormals(normal);" in fragment_shader
+        assert "color = material_color * diffuse * ao;" not in fragment_shader
+
+@patch('sdforge.render.NativeRenderer._init_window')
+def test_render_with_debug_steps(mock_init):
+    s = sphere()
+    renderer = NativeRenderer(s, debug='steps')
+    
+    with patch('moderngl.create_context') as mock_create_context:
+        mock_ctx = MagicMock()
+        mock_create_context.return_value = mock_ctx
+        renderer.ctx = mock_ctx
+
+        renderer._compile_shader()
+        
+        call_args, call_kwargs = mock_ctx.program.call_args
+        fragment_shader = call_kwargs.get('fragment_shader', '')
+
+        assert "color = debugSteps(hit.z, 100.0);" in fragment_shader
+        assert "debugNormals" in fragment_shader # The import is still there
+
+@patch('sdforge.render.NativeRenderer._init_window')
+def test_render_with_invalid_debug_mode(mock_init):
+    s = sphere()
+    renderer = NativeRenderer(s, debug='invalid_mode')
+    with patch('moderngl.create_context') as mock_create_context:
+        mock_ctx = MagicMock()
+        mock_create_context.return_value = mock_ctx
+        renderer.ctx = mock_ctx
+        
+        renderer._compile_shader()
+
+        call_args, call_kwargs = mock_ctx.program.call_args
+        fragment_shader = call_kwargs.get('fragment_shader', '')
+        
+        # Should fall back to standard lighting
+        assert "color = material_color * diffuse * ao;" in fragment_shader
+        assert "debugNormals" not in fragment_shader # Import should be skipped

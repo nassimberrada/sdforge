@@ -84,10 +84,22 @@ class SDFObject:
     def __init__(self):
         self.uuid = uuid.uuid4()
 
-    def render(self, camera=None, light=None, watch=True, record=None, save_frame=None, bg_color=(0.1, 0.12, 0.15), **kwargs):
-        """Renders the SDF object in a live-updating viewer or saves a single frame."""
+    def render(self, camera=None, light=None, watch=True, record=None, save_frame=None, bg_color=(0.1, 0.12, 0.15), debug=None, **kwargs):
+        """
+        Renders the SDF object in a live-updating viewer or saves a single frame.
+
+        Args:
+            camera (Camera, optional): A camera object for scene viewing. Defaults to a mouse-orbit camera.
+            light (Light, optional): A light object for the scene. Defaults to a headlight.
+            watch (bool, optional): If True, enables hot-reloading. Defaults to True.
+            record (str, optional): Path to save a video recording (e.g., "output.mp4"). Defaults to None.
+            save_frame (str, optional): Path to save a single frame image (e.g., "frame.png"). Defaults to None.
+            bg_color (tuple, optional): The background color as an (r, g, b) tuple. Defaults to (0.1, 0.12, 0.15).
+            debug (str, optional): Enables a debug visualization mode.
+                                   Options: 'normals', 'steps'. Defaults to None.
+        """
         from .render import render as render_func
-        render_func(self, camera, light, watch, record, save_frame, bg_color, **kwargs)
+        render_func(self, camera, light, watch, record, save_frame, bg_color, debug, **kwargs)
 
     def save(self, path, bounds=None, samples=2**22, verbose=True):
         """
@@ -192,6 +204,14 @@ class SDFObject:
         """Subtracts another object from this one, with optional smoothness."""
         from .operations import Difference
         return Difference(self, other, k=k)
+    
+    def bounded_by(self, bounding_shape):
+        """
+        Optimizes rendering by intersecting this object with a simpler bounding shape.
+        The raymarcher can take larger steps when outside the bounds.
+        This is an alias for intersection.
+        """
+        return self.intersection(bounding_shape)
 
     def __or__(self, other):
         """Creates a union of this object and another."""

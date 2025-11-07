@@ -6,11 +6,11 @@ vec4 raymarch(in vec3 ro, in vec3 rd) {
       vec3 p = ro + rd * t;
       vec4 res = Scene(p);
       float d = res.x;
-      if (d < 0.001) return vec4(t, res.y, res.z, res.w);
+      if (d < 0.001) return vec4(t, res.y, float(i), res.w); // Return step count 'i' in .z
       t += d;
       if (t > 100.0) break;
   }
-  return vec4(-1.0);
+  return vec4(-1.0, -1.0, 100.0, 0.0); // Return max steps on miss
 }
 
 vec3 estimateNormal(vec3 p) {

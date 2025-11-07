@@ -46,7 +46,7 @@ def assemble_shader_code(sdf_obj) -> str:
 class NativeRenderer:
     """Handles the creation of a native window and renders the SDF."""
 
-    def __init__(self, sdf_obj, camera=None, light=None, watch=False, width=1280, height=720, record=None, save_frame=None, bg_color=(0.1, 0.12, 0.15), **kwargs):
+    def __init__(self, sdf_obj, camera=None, light=None, watch=False, width=1280, height=720, record=None, save_frame=None, bg_color=(0.1, 0.12, 0.15), debug=None, **kwargs):
         self.sdf_obj = sdf_obj
         self.camera = camera
         self.light = light
@@ -57,6 +57,7 @@ class NativeRenderer:
         self.save_frame_path = save_frame
         self.time = kwargs.get('time', 0.0)
         self.bg_color = bg_color
+        self.debug_mode = debug
         self.window = None
         self.ctx = None
         self.program = None
@@ -129,6 +130,18 @@ class NativeRenderer:
 
         scene_code = assemble_shader_code(self.sdf_obj)
         
+        # --- Debug Logic ---
+        debug_imports_glsl = ""
+        final_color_logic = "color = material_color * diffuse * ao;"
+        if self.debug_mode:
+            debug_imports_glsl = get_glsl_content('scene/debug.glsl')
+            if self.debug_mode == 'normals':
+                final_color_logic = "color = debugNormals(normal);"
+            elif self.debug_mode == 'steps':
+                final_color_logic = "color = debugSteps(hit.z, 100.0);"
+            else:
+                print(f"WARNING: Unknown debug mode '{self.debug_mode}'. Ignoring.")
+
         full_fragment_shader = f"""
             #version 330 core
             
@@ -146,6 +159,7 @@ class NativeRenderer:
             {get_glsl_content('scene/camera.glsl')}
             {get_glsl_content('scene/raymarching.glsl')}
             {get_glsl_content('scene/light.glsl')}
+            {debug_imports_glsl}
             
             {scene_code}
 
@@ -157,25 +171,26 @@ class NativeRenderer:
                 vec3 color = u_bg_color;
                 vec4 hit = raymarch(ro, rd);
                 float t = hit.x;
-                int material_id = int(hit.y);
                 
                 if (t > 0.0) {{
                     vec3 p = ro + t * rd;
                     vec3 normal = estimateNormal(p);
+                    
+                    // Standard lighting path (variables still needed for some debug modes)
                     vec3 lightPos = {light_pos_str};
                     vec3 lightDir = normalize(lightPos - p);
-                    
                     float diffuse = max(dot(normal, lightDir), {ambient_strength_str});
                     float shadow = softShadow(p + normal * 0.01, lightDir, {shadow_softness_str});
                     diffuse *= shadow;
                     float ao = ambientOcclusion(p, normal, {ao_strength_str});
-                    
-                    vec3 material_color = vec3(0.8); // Default color if no material
+                    int material_id = int(hit.y);
+                    vec3 material_color = vec3(0.8);
                     if (material_id >= 0 && material_id < {len(materials)}) {{
                         material_color = u_materials[material_id].color;
                     }}
 
-                    color = material_color * diffuse * ao;
+                    // Final color determined by debug mode or standard lighting
+                    {final_color_logic}
                 }}
                 f_color = vec4(color, 1.0);
             }}
@@ -345,7 +360,7 @@ class NativeRenderer:
         print("INFO: Viewer window closed.")
         glfw.terminate()
 
-def render(sdf_obj, camera=None, light=None, watch=True, record=None, save_frame=None, bg_color=(0.1, 0.12, 0.15), **kwargs):
+def render(sdf_obj, camera=None, light=None, watch=True, record=None, save_frame=None, bg_color=(0.1, 0.12, 0.15), debug=None, **kwargs):
     try:
         import moderngl, glfw
     except ImportError:
@@ -359,5 +374,5 @@ def render(sdf_obj, camera=None, light=None, watch=True, record=None, save_frame
             print("WARNING: `record` is ignored when `save_frame` is provided.")
             record = None
         
-    renderer = NativeRenderer(sdf_obj, camera=camera, light=light, watch=watch, record=record, save_frame=save_frame, bg_color=bg_color, **kwargs)
+    renderer = NativeRenderer(sdf_obj, camera=camera, light=light, watch=watch, record=record, save_frame=save_frame, bg_color=bg_color, debug=debug, **kwargs)
     renderer.run()

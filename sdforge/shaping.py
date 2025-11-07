@@ -109,3 +109,32 @@ class Extrude(SDFObject):
         return _callable
     def get_glsl_definitions(self) -> list: return [_get_glsl_content("operations.glsl")] + self.child.get_glsl_definitions()
     def _collect_materials(self, materials): self.child._collect_materials(materials)
+
+class Revolve(SDFObject):
+    """Revolves a 2D SDF shape around the Y-axis."""
+    def __init__(self, child):
+        super().__init__()
+        self.child = child
+    def to_glsl(self) -> str:
+        # Replace 'p.xy' with the revolution expression
+        revolved_p_xy = "vec2(length(p.xz), p.y)"
+        child_glsl = self.child.to_glsl()
+        # A simple regex to replace 'p' but handle cases like 'p.xy' or 'p.x'
+        # This assumes the 2D SDF is written in terms of 'p.xy' or just 'p'
+        # A more robust solution might require analyzing the 2D GLSL
+        transformed_glsl = re.sub(r'\bp\.xy\b', revolved_p_xy, child_glsl)
+        # Fallback if they just used 'p'
+        if transformed_glsl == child_glsl:
+            transformed_glsl = re.sub(r'\bp\b', f"vec3({revolved_p_xy}, 0.0)", child_glsl)
+        return transformed_glsl
+    def to_callable(self):
+        child_call_2d = self.child.to_callable()
+        def _callable_3d(p_3d):
+            # Create a 2D point for the callable
+            p_2d = np.stack([np.linalg.norm(p_3d[:, [0, 2]], axis=-1), p_3d[:, 1], np.zeros(p_3d.shape[0])], axis=-1)
+            return child_call_2d(p_2d)
+        return _callable_3d
+    def get_glsl_definitions(self) -> list:
+        return self.child.get_glsl_definitions()
+    def _collect_materials(self, materials):
+        self.child._collect_materials(materials)

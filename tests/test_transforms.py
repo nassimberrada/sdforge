@@ -11,10 +11,22 @@ def test_translate(shape):
     assert isinstance(t, SDFObject)
     assert "opTranslate(" in t.to_glsl()
 
+def test_translate_operator(shape):
+    t1 = shape.translate((1, 2, 3))
+    t2 = shape + (1, 2, 3)
+    assert t1.to_glsl() == t2.to_glsl()
+
 def test_scale(shape):
     s = shape.scale(2.0)
     assert isinstance(s, SDFObject)
     assert "opScale(" in s.to_glsl()
+
+def test_scale_operator(shape):
+    s1 = shape.scale(2.0)
+    s2 = shape * 2.0
+    s3 = 2.0 * shape
+    assert s1.to_glsl() == s2.to_glsl()
+    assert s1.to_glsl() == s3.to_glsl()
 
 def test_orient(shape):
     o_x = shape.orient(X)
@@ -29,11 +41,24 @@ def test_orient(shape):
     assert isinstance(o_z, SDFObject)
     assert o_z.to_glsl() == shape.to_glsl()
 
+def test_orient_string_alias(shape):
+    o_x_vec = shape.orient(X)
+    o_x_str = shape.orient('x')
+    assert o_x_vec.to_glsl() == o_x_str.to_glsl()
+
+    o_y_vec = shape.orient(Y)
+    o_y_str = shape.orient('y')
+    assert o_y_vec.to_glsl() == o_y_str.to_glsl()
 
 def test_rotate(shape):
     r = shape.rotate(Y, np.pi / 2)
     assert isinstance(r, SDFObject)
     assert "opRotateY(" in r.to_glsl()
+
+def test_rotate_string_alias(shape):
+    r_y_vec = shape.rotate(Y, 0.5)
+    r_y_str = shape.rotate('y', 0.5)
+    assert r_y_vec.to_glsl() == r_y_str.to_glsl()
 
 def test_twist(shape):
     t = shape.twist(5.0)

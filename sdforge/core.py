@@ -102,25 +102,49 @@ class SDFObject:
     def get_glsl_definitions(self) -> list: return []
     def _collect_materials(self, materials): pass
 
+    def union(self, other, k=0.0):
+        """Creates a union of this object and another, with optional smoothness."""
+        from .operations import Union
+        return Union(self, other, k=k)
+
+    def intersection(self, other, k=0.0):
+        """Creates an intersection of this object and another, with optional smoothness."""
+        from .operations import Intersection
+        return Intersection(self, other, k=k)
+
+    def difference(self, other, k=0.0):
+        """Subtracts another object from this one, with optional smoothness."""
+        from .operations import Difference
+        return Difference(self, other, k=k)
+
     def __or__(self, other):
         """Creates a union of this object and another."""
-        from .operations import Union
-        return Union(self, other)
+        return self.union(other)
 
     def __and__(self, other):
         """Creates an intersection of this object and another."""
-        from .operations import Intersection
-        return Intersection(self, other)
+        return self.intersection(other)
 
     def __sub__(self, other):
         """Subtracts another object from this one."""
-        from .operations import Difference
-        return Difference(self, other)
+        return self.difference(other)
 
     def xor(self, other):
         """Creates an exclusive-or (XOR) of this object and another."""
         from .operations import Xor
         return Xor(self, other)
+
+    def __add__(self, offset):
+        """Moves the object in space using the '+' operator."""
+        return self.translate(offset)
+
+    def __mul__(self, factor):
+        """Scales the object using the '*' operator."""
+        return self.scale(factor)
+
+    def __rmul__(self, factor):
+        """Scales the object using the '*' operator (e.g., `2 * shape`)."""
+        return self.scale(factor)
 
     def translate(self, offset):
         """Moves the object in space."""
@@ -133,13 +157,19 @@ class SDFObject:
         return Scale(self, factor)
 
     def orient(self, axis):
-        """Orients the object along a primary axis (X, Y, or Z)."""
+        """Orients the object along a primary axis (e.g., 'x', 'y', 'z' or vector)."""
         from .transforms import Orient
+        axis_map = {'x': X, 'y': Y, 'z': Z}
+        if isinstance(axis, str) and axis.lower() in axis_map:
+            axis = axis_map[axis.lower()]
         return Orient(self, np.array(axis))
 
     def rotate(self, axis, angle):
         """Rotates the object around an axis by a given angle in radians."""
         from .transforms import Rotate
+        axis_map = {'x': X, 'y': Y, 'z': Z}
+        if isinstance(axis, str) and axis.lower() in axis_map:
+            axis = axis_map[axis.lower()]
         return Rotate(self, np.array(axis), angle)
 
     def twist(self, k):
@@ -197,21 +227,6 @@ class SDFObject:
         from .transforms import Mirror
         return Mirror(self, np.array(axes))
 
-    def smooth_union(self, other, k):
-        """Creates a smooth union between this object and another."""
-        from .operations import SmoothUnion
-        return SmoothUnion(self, other, k)
-
-    def smooth_intersection(self, other, k):
-        """Creates a smooth intersection between this object and another."""
-        from .operations import SmoothIntersection
-        return SmoothIntersection(self, other, k)
-
-    def smooth_difference(self, other, k):
-        """Creates a smooth difference between this object and another."""
-        from .operations import SmoothDifference
-        return SmoothDifference(self, other, k)
-
     def color(self, r, g, b):
         """Applies a color material to the object."""
         from .shaping import Material
@@ -222,10 +237,14 @@ class SDFObject:
         from .shaping import Round
         return Round(self, radius)
 
-    def bevel(self, thickness):
+    def shell(self, thickness):
         """Creates a shell or outline of the object with a given thickness."""
         from .shaping import Bevel
         return Bevel(self, thickness)
+
+    def bevel(self, thickness):
+        """Alias for .shell(). Creates an outline of the object."""
+        return self.shell(thickness)
 
     def elongate(self, h):
         """Elongates the object along its axes."""
@@ -241,3 +260,8 @@ class SDFObject:
         """Extrudes a 2D SDF shape along the Z-axis."""
         from .shaping import Extrude
         return Extrude(self, height)
+
+    def revolve(self):
+        """Revolves a 2D SDF shape around the Y-axis."""
+        from .shaping import Revolve
+        return Revolve(self)

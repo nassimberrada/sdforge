@@ -32,21 +32,21 @@ def test_xor(shapes):
     assert isinstance(x, SDFObject)
     assert "opX(" in x.to_glsl()
 
-def test_smooth_union(shapes):
+def test_smooth_union_method(shapes):
     s, b = shapes
-    su = s.smooth_union(b, k=0.2)
+    su = s.union(b, k=0.2)
     assert isinstance(su, SDFObject)
     assert "sUnion(" in su.to_glsl()
 
-def test_smooth_intersection(shapes):
+def test_smooth_intersection_method(shapes):
     s, b = shapes
-    si = s.smooth_intersection(b, k=0.2)
+    si = s.intersection(b, k=0.2)
     assert isinstance(si, SDFObject)
     assert "sIntersect(" in si.to_glsl()
 
-def test_smooth_difference(shapes):
+def test_smooth_difference_method(shapes):
     s, b = shapes
-    sd = s.smooth_difference(b, k=0.2)
+    sd = s.difference(b, k=0.2)
     assert isinstance(sd, SDFObject)
     assert "sDifference(" in sd.to_glsl()
 
@@ -56,11 +56,14 @@ def test_round(shapes):
     assert isinstance(r, SDFObject)
     assert "opRound(" in r.to_glsl()
 
-def test_bevel(shapes):
+def test_shell_and_bevel(shapes):
     s, _ = shapes
-    o = s.bevel(0.1)
+    o = s.shell(0.1)
     assert isinstance(o, SDFObject)
     assert "opBevel(" in o.to_glsl()
+    # Test alias
+    o2 = s.bevel(0.1)
+    assert o.to_glsl() == o2.to_glsl()
 
 def test_displace(shapes):
     s, _ = shapes
@@ -74,6 +77,13 @@ def test_extrude():
     extruded = circle_2d.extrude(0.5)
     assert isinstance(extruded, SDFObject)
     assert "opExtrude(" in extruded.to_glsl()
+
+def test_revolve():
+    profile_2d = Forge("return length(p.xy - vec2(1.0, 0.0)) - 0.2;")
+    revolved = profile_2d.revolve()
+    assert isinstance(revolved, SDFObject)
+    assert "vec2(length(p.xz), p.y)" in revolved.to_glsl()
+
 
 def test_color(shapes):
     s, _ = shapes
@@ -125,9 +135,9 @@ def test_round_callable(shapes):
     expected = np.array([-0.7, -0.2])
     assert np.allclose(r_callable(points), expected)
 
-def test_bevel_callable(shapes):
+def test_shell_callable(shapes):
     s = shapes[0]
-    o_callable = s.bevel(0.1).to_callable()
+    o_callable = s.shell(0.1).to_callable()
     points = np.array([[0.5, 0, 0], [1.0, 0, 0], [1.2, 0, 0]])
     s_dist = s.to_callable()(points)
     expected = np.abs(s_dist) - 0.1
@@ -135,7 +145,7 @@ def test_bevel_callable(shapes):
 
 def test_smooth_union_callable(shapes):
     s, b = shapes
-    su_callable = s.smooth_union(b, k=0.5).to_callable()
+    su_callable = s.union(b, k=0.5).to_callable()
     point = np.array([[0.875, 0, 0]])
     s_dist = s.to_callable()(point)
     b_dist = b.to_callable()(point)
@@ -144,7 +154,7 @@ def test_smooth_union_callable(shapes):
 def test_smooth_intersection_callable(shapes):
     s, b = shapes
     k = 0.5
-    si_callable = s.smooth_intersection(b, k=k).to_callable()
+    si_callable = s.intersection(b, k=k).to_callable()
     points = np.array([[0.8, 0, 0]])
     d1 = s.to_callable()(points)
     d2 = b.to_callable()(points)
@@ -155,7 +165,7 @@ def test_smooth_intersection_callable(shapes):
 def test_smooth_difference_callable(shapes):
     s, b = shapes
     k = 0.5
-    sd_callable = s.smooth_difference(b, k=k).to_callable()
+    sd_callable = s.difference(b, k=k).to_callable()
     points = np.array([[0.8, 0, 0]])
     d1 = s.to_callable()(points)
     d2 = -b.to_callable()(points)
@@ -184,3 +194,19 @@ def test_extrude_callable():
     w = np.stack([d, np.abs(points[:, 2]) - h], axis=-1)
     expected = np.minimum(np.maximum(w[:,0], w[:,1]), 0.0) + np.linalg.norm(np.maximum(w, 0.0), axis=-1)
     assert np.allclose(extruded_callable(points), expected)
+
+def test_revolve_callable():
+    profile_callable = lambda p: np.linalg.norm(p[:, [0, 1]] - np.array([1.0, 0.0]), axis=-1) - 0.2
+    class Profile2D(SDFObject):
+        def to_callable(self): return profile_callable
+        def to_glsl(self): return ""
+    
+    revolved_callable = Profile2D().revolve().to_callable()
+    
+    # Point on the surface of the revolved torus
+    point_3d = np.array([[1.2, 0.0, 0.0]])
+    # Corresponding 2D point for the profile
+    point_2d = np.array([[1.2, 0.0, 0.0]])
+
+    expected = profile_callable(point_2d) # Should be 0.0
+    assert np.allclose(revolved_callable(point_3d), expected)

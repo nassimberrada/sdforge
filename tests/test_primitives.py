@@ -149,6 +149,20 @@ def test_forge_with_uniforms():
     # Check that the uniform is passed as an argument in the final call
     assert f"({f.unique_id}(p, u_radius)" in f.to_glsl()
 
+def test_circle():
+    c = circle(r=2.0)
+    assert isinstance(c, SDFObject)
+    assert c.r == 2.0
+    assert "sdCircle(p.xy" in c.to_glsl()
+
+def test_rectangle():
+    r = rectangle(size=(1.0, 2.0))
+    assert isinstance(r, SDFObject)
+    assert r.size == (1.0, 2.0)
+    assert "sdRectangle(p.xy" in r.to_glsl()
+    r_uniform = rectangle(size=3.0)
+    assert r_uniform.size == (3.0, 3.0)
+
 # --- Numeric Accuracy Tests  ---
 
 def test_sphere_callable():
@@ -298,6 +312,19 @@ def test_forge_with_uniforms_fails_to_callable():
     f = Forge("return length(p) - u_radius;", uniforms={'u_radius': 1.5})
     with pytest.raises(TypeError, match="Cannot save mesh of a Forge object with uniforms"):
         f.to_callable()
+
+def test_circle_callable():
+    c_callable = circle(r=2.0).to_callable()
+    points = np.array([[0, 0, 10], [1, 0, 5], [2, 0, 0], [3, 0, -5]])
+    expected = np.array([-2.0, -1.0, 0.0, 1.0])
+    assert np.allclose(c_callable(points), expected)
+
+def test_rectangle_callable():
+    r_callable = rectangle(size=(2.0, 4.0)).to_callable()
+    points = np.array([[0, 0, 0], [1, 0, 0], [0, 2, 0], [1, 2, 0], [2, 2, 0]])
+    expected = np.array([-1.0, 0.0, 0.0, 0.0, 1.0])
+    assert np.allclose(r_callable(points), expected)
+
 
 # --- Equivalence Tests  ---
 

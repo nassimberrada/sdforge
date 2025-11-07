@@ -102,6 +102,9 @@ float sdRoundedCylinder(vec3 p, float ra, float rb, float h) { return 0.0; }
 float sdCappedCone(vec3 p, float h, float r1, float r2) { return 0.0; }
 float sdRoundCone(vec3 p, float r1, float r2, float h) { return 0.0; }
 float sdPyramid(vec3 p, float h) { return 0.0; }
+float sdCircle(vec2 p, float r) { return length(p) - r; }
+float sdRectangle(vec2 p, vec2 b) { return 0.0; }
+
 
 // Operation helpers (vec4-based SDF result: x=distance, y=material id, z,w reserved)
 vec4 opU(vec4 a, vec4 b) { return a; }

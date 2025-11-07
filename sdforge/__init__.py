@@ -23,6 +23,9 @@ from .primitives import (
     link,
     round_cone,
     pyramid,
+    # --- 2D Primitives ---
+    rectangle,
+    circle,
 )
 
 # --- Operations and Grouping ---

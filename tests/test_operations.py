@@ -1,6 +1,6 @@
 import pytest
 import numpy as np
-from sdforge import SDFObject, sphere, box, Forge, Group, Material
+from sdforge import SDFObject, sphere, box, circle, rectangle, Group, Material
 
 @pytest.fixture
 def shapes():
@@ -80,13 +80,13 @@ def test_displace_by_noise(shapes):
     assert any("snoise" in definition for definition in d.get_glsl_definitions())
 
 def test_extrude():
-    circle_2d = Forge("return length(p.xy) - 1.0;")
+    circle_2d = circle(1.0)
     extruded = circle_2d.extrude(0.5)
     assert isinstance(extruded, SDFObject)
     assert "opExtrude(" in extruded.to_glsl()
 
 def test_revolve():
-    profile_2d = Forge("return length(p.xy - vec2(1.0, 0.0)) - 0.2;")
+    profile_2d = rectangle((0.4, 1.0)).translate((1.0, 0, 0))
     revolved = profile_2d.revolve()
     assert isinstance(revolved, SDFObject)
     assert "vec2(length(p.xz), p.y)" in revolved.to_glsl()
@@ -181,15 +181,9 @@ def test_smooth_difference_callable(shapes):
     assert np.allclose(sd_callable(points), expected)
 
 def test_extrude_callable():
-    circle_callable = lambda p: np.linalg.norm(p[:, [0, 1]], axis=-1) - 1.0
-    class Circle2D(SDFObject):
-        def to_callable(self):
-            return circle_callable
-        def to_glsl(self):
-            return ""
-
+    circle_2d = circle(r=1.0)
     h = 0.5
-    extruded_callable = Circle2D().extrude(h).to_callable()
+    extruded_callable = circle_2d.extrude(h).to_callable()
     points = np.array([
         [0, 0, 0],
         [1, 0, 0],
@@ -197,25 +191,23 @@ def test_extrude_callable():
         [1, 0, 0.5],
         [0, 0, 1.0]
     ])
-    d = circle_callable(points)
+    d = circle_2d.to_callable()(points)
     w = np.stack([d, np.abs(points[:, 2]) - h], axis=-1)
     expected = np.minimum(np.maximum(w[:,0], w[:,1]), 0.0) + np.linalg.norm(np.maximum(w, 0.0), axis=-1)
     assert np.allclose(extruded_callable(points), expected)
 
 def test_revolve_callable():
-    profile_callable = lambda p: np.linalg.norm(p[:, [0, 1]] - np.array([1.0, 0.0]), axis=-1) - 0.2
-    class Profile2D(SDFObject):
-        def to_callable(self): return profile_callable
-        def to_glsl(self): return ""
+    profile_2d = rectangle((0.4, 1.0)).translate((1.0, 0.0, 0.0))
+    revolved_callable = profile_2d.revolve().to_callable()
     
-    revolved_callable = Profile2D().revolve().to_callable()
-    
-    # Point on the surface of the revolved torus
+    # Point on the surface of the revolved shape (a thick ring)
     point_3d = np.array([[1.2, 0.0, 0.0]])
-    # Corresponding 2D point for the profile
-    point_2d = np.array([[1.2, 0.0, 0.0]])
+    
+    # The callable should evaluate this 3D point against the original 2D profile
+    point_on_profile = np.array([[1.2, 0.0, 0.0]])
+    expected = profile_2d.to_callable()(point_on_profile)
 
-    expected = profile_callable(point_2d) # Should be 0.0
+    assert np.isclose(expected, 0.0)
     assert np.allclose(revolved_callable(point_3d), expected)
 
 def test_group_creation(shapes):

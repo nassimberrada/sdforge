@@ -536,3 +536,62 @@ def pyramid(height=1.0) -> SDFObject:
         height (float, optional): The height of the pyramid. Defaults to 1.0.
     """
     return Pyramid(height)
+
+# --- 2D Primitives ---
+
+class Circle(SDFObject):
+    """Represents a 2D circle primitive for extrusion or revolution."""
+    def __init__(self, r=1.0):
+        super().__init__()
+        self.r = r
+    def to_glsl(self) -> str:
+        return f"vec4(sdCircle(p.xy, {_glsl_format(self.r)}), -1.0, 0.0, 0.0)"
+    def to_callable(self):
+        if isinstance(self.r, str):
+            raise TypeError("Cannot save mesh of an object with animated (string) parameters.")
+        return lambda p: np.linalg.norm(p[:, :2], axis=-1) - self.r
+
+def circle(r=1.0) -> SDFObject:
+    """
+    Creates a 2D circle in the XY plane.
+
+    This shape is intended to be used with operators like `.extrude()` or
+    `.revolve()` to create 3D objects.
+
+    Args:
+        r (float or str, optional): The radius of the circle. Defaults to 1.0.
+    """
+    return Circle(r)
+
+class Rectangle(SDFObject):
+    """Represents a 2D rectangle primitive for extrusion or revolution."""
+    def __init__(self, size=1.0):
+        super().__init__()
+        if isinstance(size, (int, float, str, Param)):
+            size = (size, size)
+        self.size = size
+    def to_glsl(self) -> str:
+        s = [_glsl_format(v) for v in self.size]
+        size_vec = f"vec2({s[0]}/2.0, {s[1]}/2.0)"
+        return f"vec4(sdRectangle(p.xy, {size_vec}), -1.0, 0.0, 0.0)"
+    def to_callable(self):
+        if any(isinstance(v, str) for v in self.size):
+            raise TypeError("Cannot save mesh of an object with animated (string) parameters.")
+        size_arr = np.array(self.size)
+        def _callable(p):
+            q = np.abs(p[:, :2]) - size_arr / 2.0
+            return np.linalg.norm(np.maximum(q, 0.0), axis=-1) + np.minimum(np.maximum(q[:, 0], q[:, 1]), 0.0)
+        return _callable
+
+def rectangle(size=1.0) -> SDFObject:
+    """
+    Creates a 2D rectangle in the XY plane.
+
+    This shape is intended to be used with operators like `.extrude()` or
+    `.revolve()` to create 3D objects.
+
+    Args:
+        size (float or tuple, optional): The size of the rectangle (width, height).
+                                         If a float, creates a square. Defaults to 1.0.
+    """
+    return Rectangle(size)

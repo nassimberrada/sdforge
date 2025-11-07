@@ -24,10 +24,15 @@ def assemble_standalone_shader(sdf_obj) -> str:
     uniforms = {}
     sdf_obj._collect_uniforms(uniforms)
 
+    params = {}
+    sdf_obj._collect_params(params)
+
     # 2. Build Material and Uniform GLSL declarations
     material_struct_glsl = "struct MaterialInfo { vec3 color; };\n"
     material_uniform_glsl = f"uniform MaterialInfo u_materials[{max(1, len(materials))}];\n"
-    custom_uniforms_glsl = "\n".join([f"uniform float {name};" for name in uniforms.keys()])
+    
+    all_user_uniforms = list(uniforms.keys()) + [p.uniform_name for p in params.values()]
+    custom_uniforms_glsl = "\n".join([f"uniform float {name};" for name in all_user_uniforms])
 
     # 3. Assemble the core Scene(p) function from the SDF object
     scene_code = assemble_scene(sdf_obj)
@@ -50,7 +55,7 @@ uniform vec3 u_light_pos = vec3(4.0, 5.0, 6.0);
 uniform float u_ambient_strength = 0.1;
 uniform float u_shadow_softness = 8.0;
 
-// User-defined uniforms from Forge objects
+// User-defined uniforms from Forge and Param objects
 {custom_uniforms_glsl}
 
 // --- Materials ---

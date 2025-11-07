@@ -48,12 +48,14 @@ def get_simple_factories():
 # Some factories require arguments (no defaults). Provide sensible overrides here.
 # Add other factories here as needed.
 OVERRIDES = {
-    "capsule": lambda: sdforge.capsule((0.0, 0.0, 0.0), (0.0, 1.0, 0.0), radius=0.15),
-    "ellipsoid": lambda: sdforge.ellipsoid((1.0, 0.6, 0.8)),
-    "box_frame": lambda: sdforge.box_frame((1.0, 1.0, 1.0), edge_radius=0.08),
+    "line_as_capsule": lambda: sdforge.line((0.0, 0.0, 0.0), (0.0, 1.0, 0.0), radius=0.15, rounded_caps=True),
+    "line_as_capped_cylinder": lambda: sdforge.line((0.0, 0.0, -0.5), (0.0, 0.0, 0.5), radius=0.1, rounded_caps=False),
+    "cone_as_capped": lambda: sdforge.cone(height=1.0, radius1=0.5, radius2=0.2),
+    "ellipsoid": lambda: sdforge.ellipsoid(radii=(1.0, 0.6, 0.8)),
+    "box_frame": lambda: sdforge.box_frame(size=(1.0, 1.0, 1.0), edge_radius=0.08),
     "capped_torus": lambda: sdforge.capped_torus((0.0, 1.0), 1.0, 0.25),
-    "capped_cylinder": lambda: sdforge.capped_cylinder((0.0, 0.0, -0.5), (0.0, 0.0, 0.5), 0.1),
-    "capped_cone": lambda: sdforge.capped_cone(1.0, 0.5, 0.2),
+    "line": lambda: sdforge.line(a=(0,0,0), b=(1,0,0)),
+    "plane": lambda: sdforge.plane(normal=(0,1,0)),
     # If your project exposes other factories that need args, add them here.
 }
 

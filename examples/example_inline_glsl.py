@@ -18,7 +18,10 @@ def main():
         return length(q) - 1.5;
     """)
 
-    f = s - model
+    # The original operation `s - model` results in an empty shape because
+    # the box is entirely contained within the custom model.
+    # Subtracting the box from the model produces a visible result.
+    f = model - s
     
     # Return the final object for the renderer
     return f

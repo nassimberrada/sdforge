@@ -34,10 +34,21 @@ class Box(SDFObject):
     def to_glsl(self) -> str:
         s = []
         for v in self.size:
-            if isinstance(v, str): s.append(f"({v})")
-            else: s.append(_glsl_format(v / 2.0))
+            # _glsl_format handles str, Param, and float.
+            # Division by 2 for half-extents happens inside GLSL.
+            s.append(f"({_glsl_format(v)} / 2.0)")
+
         size_vec = f"vec3({s[0]}, {s[1]}, {s[2]})"
-        if self.radius > 0:
+        
+        # Check if radius is non-zero (statically or dynamically)
+        use_rounding = False
+        if isinstance(self.radius, (int, float)):
+            if self.radius > 0.0:
+                use_rounding = True
+        else:  # It's a Param or a string expression
+            use_rounding = True
+            
+        if use_rounding:
             r = _glsl_format(self.radius)
             return f"vec4(sdRoundedBox(p, {size_vec}, {r}), -1.0, 0.0, 0.0)"
         return f"vec4(sdBox(p, {size_vec}), -1.0, 0.0, 0.0)"

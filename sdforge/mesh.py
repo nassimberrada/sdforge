@@ -77,7 +77,8 @@ def _write_glb(path, verts, faces, vertex_colors):
     
     # Placeholder for vertex colors (currently not implemented)
     if vertex_colors:
-        print("WARNING: vertex_colors=True is not yet implemented for GLB export.", file=sys.stderr)
+        # The warning is now in the save function
+        pass
 
     gltf.meshes.append(pygltflib.Mesh(primitives=[primitive]))
     
@@ -147,6 +148,8 @@ def save(sdf_obj, path, bounds, samples, verbose, algorithm, adaptive, vertex_co
     elif path_lower.endswith('.obj'):
         _write_obj(path, verts, faces)
     elif path_lower.endswith('.glb') or path_lower.endswith('.gltf'):
+        if vertex_colors:
+            print("WARNING: vertex_colors=True is not yet implemented for GLB export.", file=sys.stderr)
         _write_glb(path, verts, faces, vertex_colors)
     else:
         print(f"ERROR: Unsupported file format '{path}'. Only .stl, .obj, .glb, and .gltf are currently supported.", file=sys.stderr)

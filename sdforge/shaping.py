@@ -100,6 +100,9 @@ class Displace(SDFObject):
 class DisplaceByNoise(Displace):
     """Displaces the surface using a procedural noise function."""
     def __init__(self, child, scale, strength):
+        # Store scale and strength so they can be discovered by _collect_params
+        self.scale = scale
+        self.strength = strength
         glsl_expr = f"snoise(p * {_glsl_format(scale)}) * {_glsl_format(strength)}"
         super().__init__(child, glsl_expr)
     def get_glsl_definitions(self) -> list:

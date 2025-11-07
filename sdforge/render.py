@@ -58,6 +58,7 @@ class NativeRenderer:
         self.time = kwargs.get('time', 0.0)
         self.bg_color = bg_color
         self.debug_mode = debug
+        self.params = {}
         self.window = None
         self.ctx = None
         self.program = None
@@ -90,14 +91,20 @@ class NativeRenderer:
     def _compile_shader(self):
         import moderngl
         
+        # --- Collect scene components ---
         materials = []
         self.sdf_obj._collect_materials(materials)
         if len(materials) > MAX_MATERIALS:
             print(f"WARNING: Exceeded maximum of {MAX_MATERIALS} materials. Truncating.")
             materials = materials[:MAX_MATERIALS]
+        
+        self.params = {}
+        self.sdf_obj._collect_params(self.params)
 
+        # --- Generate GLSL for components ---
         material_struct_glsl = "struct MaterialInfo { vec3 color; };\n"
         material_uniform_glsl = f"uniform MaterialInfo u_materials[{max(1, len(materials))}];\n"
+        param_uniform_glsl = "\n".join([f"uniform float {p.uniform_name};" for p in self.params.values()])
 
         # --- Light ---
         light_pos_str = "ro"
@@ -133,14 +140,14 @@ class NativeRenderer:
         # --- Debug Logic ---
         debug_imports_glsl = ""
         final_color_logic = "color = material_color * diffuse * ao;"
-        if self.debug_mode:
+        if self.debug_mode == 'normals':
             debug_imports_glsl = get_glsl_content('scene/debug.glsl')
-            if self.debug_mode == 'normals':
-                final_color_logic = "color = debugNormals(normal);"
-            elif self.debug_mode == 'steps':
-                final_color_logic = "color = debugSteps(hit.z, 100.0);"
-            else:
-                print(f"WARNING: Unknown debug mode '{self.debug_mode}'. Ignoring.")
+            final_color_logic = "color = debugNormals(normal);"
+        elif self.debug_mode == 'steps':
+            debug_imports_glsl = get_glsl_content('scene/debug.glsl')
+            final_color_logic = "color = debugSteps(hit.z, 100.0);"
+        elif self.debug_mode:
+            print(f"WARNING: Unknown debug mode '{self.debug_mode}'. Ignoring.")
 
         full_fragment_shader = f"""
             #version 330 core
@@ -152,6 +159,7 @@ class NativeRenderer:
             
             {material_struct_glsl}
             {material_uniform_glsl}
+            {param_uniform_glsl}
 
             out vec4 f_color;
             
@@ -208,7 +216,14 @@ class NativeRenderer:
             # Upload material data
             for i, mat in enumerate(materials):
                 program[f'u_materials[{i}].color'].value = mat.color
-            
+
+            # Upload initial param values
+            for p in self.params.values():
+                try:
+                    program[p.uniform_name].value = p.value
+                except KeyError:
+                    pass  # Uniform might be optimized out if unused
+
             program['u_bg_color'].value = self.bg_color
 
             return program
@@ -237,8 +252,14 @@ class NativeRenderer:
                 new_sdf_obj, new_cam_obj, new_light_obj = None, None, None
                 
                 if isinstance(result, tuple):
-                    new_sdf_obj = result[0]
-                    for item in result[1:]:
+                    # Check for SDFObject first to ensure it's always found
+                    for item in result:
+                        from .core import SDFObject
+                        if isinstance(item, SDFObject):
+                           new_sdf_obj = item
+                           break
+                    # Find other objects
+                    for item in result:
                         if isinstance(item, Camera):
                             new_cam_obj = item
                         elif isinstance(item, Light):
@@ -327,6 +348,10 @@ class NativeRenderer:
         self._setup_gl()
         
         if self.watching: self._start_watcher()
+
+        # NOTE: The UI slider rendering logic is not included in the provided files.
+        # This fix ensures the shader compiles and uses the default Param values.
+        # A UI library like Dear ImGui would be needed to update the uniforms interactively.
 
         while not glfw.window_should_close(self.window):
             if self.reload_pending:

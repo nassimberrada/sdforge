@@ -87,25 +87,11 @@ class SDFObject:
     """Base class for all SDF objects, defining the core interface."""
     def __init__(self):
         self.uuid = uuid.uuid4()
-        self._init_args = self._capture_init_args()
+        # The argument-capturing logic was brittle; it has been removed.
+        # Parameter collection now relies on attribute inspection and recursion.
+        self._init_args = {}
 
-    def _capture_init_args(self):
-        """Helper to capture __init__ arguments for parameter traversal."""
-        # This is a bit of magic to get the arguments passed to a subclass's __init__
-        try:
-            frame = inspect.currentframe()
-            outer_frames = inspect.getouterframes(frame)
-            # Find the frame corresponding to the subclass __init__ call
-            for f in outer_frames:
-                if f.function == '__init__' and 'self' in f.frame.f_locals:
-                    instance = f.frame.f_locals['self']
-                    if isinstance(instance, self.__class__) and instance is self:
-                        args, _, _, values = inspect.getargvalues(f.frame)
-                        return {arg: values[arg] for arg in args if arg != 'self'}
-        except Exception:
-            pass # Fails gracefully if something goes wrong
-        return {}
-
+    # The brittle _capture_init_args method has been removed.
 
     def render(self, camera=None, light=None, watch=True, record=None, save_frame=None, bg_color=(0.1, 0.12, 0.15), debug=None, **kwargs):
         """
@@ -236,14 +222,23 @@ class SDFObject:
                 child._collect_uniforms(uniforms)
     def _collect_params(self, params):
         from .ui import Param
-        if hasattr(self, '_init_args'):
-            for arg_val in self._init_args.values():
-                if isinstance(arg_val, Param):
-                    params[arg_val.uniform_name] = arg_val
-                elif isinstance(arg_val, (list, tuple)):
-                    for item in arg_val:
+        # New logic: inspect all public attributes of the current object.
+        for attr_name in dir(self):
+            # Skip private attributes and known non-parameter containers
+            if attr_name.startswith('_') or attr_name in ['uuid', 'children', 'child', 'main_object']:
+                continue
+            try:
+                attr_val = getattr(self, attr_name)
+                if isinstance(attr_val, Param):
+                    params[attr_val.uniform_name] = attr_val
+                elif isinstance(attr_val, (list, tuple, np.ndarray)):
+                    for item in attr_val:
                         if isinstance(item, Param):
-                           params[item.uniform_name] = item
+                            params[item.uniform_name] = item
+            except Exception:
+                continue  # Gracefully skip attributes that might fail getattr
+
+        # Recurse into children
         if hasattr(self, 'child'):
             self.child._collect_params(params)
         if hasattr(self, 'children'):

@@ -6,6 +6,7 @@ from sdforge import sphere, box, Camera, Forge
 def test_save_static_object(tmp_path):
     s = sphere(1.0) & box(1.5)
     output_file = tmp_path / "test_model.stl"
+    # Test auto-bounding
     s.save(str(output_file), samples=2**12, verbose=False)
     assert os.path.exists(output_file)
     assert os.path.getsize(output_file) > 84
@@ -66,7 +67,7 @@ def test_save_unsupported_format(tmp_path, capsys):
 def test_save_marching_cubes_failure(tmp_path, capsys):
     s = sphere(0.1).translate((10, 10, 10))
     output_file = tmp_path / "no_intersect.stl"
-    s.save(str(output_file), samples=2**10, verbose=False)
+    s.save(str(output_file), bounds=((-1, -1, -1), (1, 1, 1)), samples=2**10, verbose=False)
     captured = capsys.readouterr()
     assert "ERROR: Marching cubes failed" in captured.err or "ERROR: Marching cubes failed" in captured.out
 

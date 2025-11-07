@@ -99,3 +99,74 @@ class Xor(SDFObject):
     def _collect_materials(self, materials):
         self.a._collect_materials(materials)
         self.b._collect_materials(materials)
+
+
+# --- Grouping ---
+
+class Group(SDFObject):
+    """
+    Represents a group of SDF objects that can be transformed together.
+    Transforms applied to the group are propagated to all its children.
+    The group itself evaluates as the union of its children.
+    """
+    def __init__(self, *children):
+        super().__init__()
+        self.children = children
+
+    def to_glsl(self) -> str:
+        """Returns the GLSL representation of the union of all children."""
+        if not self.children:
+            return "vec4(1e9, -1.0, 0.0, 0.0)"  # Infinite distance for an empty group
+        return Union(*self.children).to_glsl()
+
+    def to_callable(self):
+        """Returns a callable for the union of all children."""
+        if not self.children:
+            return lambda p: np.full(p.shape[0] if p.ndim > 1 else 1, 1e9)
+        return Union(*self.children).to_callable()
+
+    def get_glsl_definitions(self) -> list:
+        """Collects GLSL definitions from all children."""
+        if not self.children:
+            return []
+        return Union(*self.children).get_glsl_definitions()
+
+    def _collect_materials(self, materials):
+        """Collects materials from all children."""
+        for c in self.children:
+            c._collect_materials(materials)
+
+    def _apply_to_children(self, method_name, *args, **kwargs):
+        """
+        Applies a method to each child and returns a new Group with the results.
+        """
+        new_children = []
+        for child in self.children:
+            method = getattr(child, method_name)
+            new_children.append(method(*args, **kwargs))
+        return Group(*new_children)
+
+# List of all methods on SDFObject that return a new transformed/shaped SDFObject.
+# These will be dynamically added to the Group class to propagate the operation
+# to all children.
+_PROPAGATED_METHODS = [
+    'translate', 'scale', 'orient', 'rotate', 'twist',
+    'shear_xy', 'shear_xz', 'shear_yz',
+    'bend_x', 'bend_y', 'bend_z',
+    'repeat', 'limited_repeat', 'polar_repeat', 'mirror',
+    'round', 'shell', 'bevel', 'elongate', 'displace', 'extrude', 'revolve',
+    'color'
+]
+
+def _make_propagated_method(name):
+    def method(self, *args, **kwargs):
+        return self._apply_to_children(name, *args, **kwargs)
+    # Preserve the original method's docstring for better help() output
+    try:
+        method.__doc__ = getattr(SDFObject, name).__doc__
+    except AttributeError:
+        pass
+    return method
+
+for method_name in _PROPAGATED_METHODS:
+    setattr(Group, method_name, _make_propagated_method(method_name))

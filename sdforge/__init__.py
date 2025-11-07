@@ -25,5 +25,8 @@ from .primitives import (
     pyramid,
 )
 
+# --- Operations and Grouping ---
+from .operations import Group
+
 # --- Custom GLSL ---
 from .custom import Forge

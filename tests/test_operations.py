@@ -1,6 +1,6 @@
 import pytest
 import numpy as np
-from sdforge import SDFObject, sphere, box, Forge
+from sdforge import SDFObject, sphere, box, Forge, Group
 
 @pytest.fixture
 def shapes():
@@ -169,7 +169,7 @@ def test_smooth_difference_callable(shapes):
     points = np.array([[0.8, 0, 0]])
     d1 = s.to_callable()(points)
     d2 = -b.to_callable()(points)
-    h = np.clip(0.5 + 0.5 * (d2 - d1) / k, 0.0, 1.0)
+    h = np.clip(0.5 - 0.5 * (d1 - d2) / k, 0.0, 1.0)
     expected = d1 * (1.0 - h) + d2 * h + k * h * (1.0 - h)
     assert np.allclose(sd_callable(points), expected)
 
@@ -210,3 +210,61 @@ def test_revolve_callable():
 
     expected = profile_callable(point_2d) # Should be 0.0
     assert np.allclose(revolved_callable(point_3d), expected)
+
+def test_group_creation(shapes):
+    s, b = shapes
+    g = Group(s, b)
+    assert isinstance(g, SDFObject)
+    assert len(g.children) == 2
+
+def test_group_to_glsl_is_union(shapes):
+    s, b = shapes
+    g = Group(s, b)
+    u = s | b
+    # Group GLSL should be equivalent to a Union
+    assert g.to_glsl() == u.to_glsl()
+
+def test_group_transform_propagation(shapes):
+    s, b = shapes
+    g = Group(s, b)
+    offset = (1, 2, 3)
+    
+    # Transform the group
+    g_translated = g.translate(offset)
+    
+    # Manually transform children and create a new group
+    s_translated = s.translate(offset)
+    b_translated = b.translate(offset)
+    expected_group = Group(s_translated, b_translated)
+    
+    assert isinstance(g_translated, Group)
+    assert g_translated.to_glsl() == expected_group.to_glsl()
+
+def test_group_chaining_transforms(shapes):
+    s, b = shapes
+    g = Group(s, b)
+    
+    g_transformed = g.translate((1,0,0)).scale(2.0)
+    
+    s_transformed = s.translate((1,0,0)).scale(2.0)
+    b_transformed = b.translate((1,0,0)).scale(2.0)
+    expected_group = Group(s_transformed, b_transformed)
+    
+    assert g_transformed.to_glsl() == expected_group.to_glsl()
+
+def test_group_shaping_propagation(shapes):
+    s, b = shapes
+    g = Group(s, b)
+    
+    g_rounded = g.round(0.1)
+    
+    s_rounded = s.round(0.1)
+    b_rounded = b.round(0.1)
+    expected_group = Group(s_rounded, b_rounded)
+    
+    assert g_rounded.to_glsl() == expected_group.to_glsl()
+
+def test_empty_group():
+    g = Group()
+    assert "1e9" in g.to_glsl()
+    assert g.to_callable()(np.array([[0,0,0]]))[0] > 1e8

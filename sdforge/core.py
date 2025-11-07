@@ -2,6 +2,7 @@ import numpy as np
 import uuid
 from pathlib import Path
 from functools import lru_cache
+import sys
 
 # --- Constants ---
 X = np.array([1, 0, 0])
@@ -88,14 +89,89 @@ class SDFObject:
         from .render import render as render_func
         render_func(self, camera, light, watch, record, save_frame, bg_color, **kwargs)
 
-    def save(self, path, bounds=((-1.5, -1.5, -1.5), (1.5, 1.5, 1.5)), samples=2**22, verbose=True):
-        """Generates a mesh and saves it to a file (e.g., '.stl', '.obj')."""
+    def save(self, path, bounds=None, samples=2**22, verbose=True):
+        """
+        Generates a mesh and saves it to a file (e.g., '.stl', '.obj').
+        
+        Args:
+            path (str): The file path to save to.
+            bounds (tuple, optional): The bounding box to mesh within. If None,
+                                      it will be automatically estimated.
+            samples (int, optional): The number of points to sample in the volume.
+            verbose (bool, optional): Whether to print progress information.
+        """
+        if bounds is None:
+            if verbose:
+                print("INFO: No bounds provided to .save(), estimating automatically.", file=sys.stderr)
+            bounds = self.estimate_bounds(verbose=verbose)
         from .mesh import save as save_func
         save_func(self, path, bounds, samples, verbose)
 
     def save_frame(self, path, camera=None, light=None, **kwargs):
         """Renders a single frame and saves it to an image file (e.g., '.png')."""
         self.render(save_frame=path, camera=camera, light=light, watch=False, **kwargs)
+
+    def estimate_bounds(self, resolution=64, search_bounds=((-2, -2, -2), (2, 2, 2)), padding=0.1, verbose=True):
+        """
+        Estimates the bounding box of the SDF object by sampling a grid.
+
+        This method is useful for automatically framing a camera or setting the
+        meshing bounds for the `.save()` method.
+
+        Args:
+            resolution (int, optional): The number of points to sample along each axis.
+                                        Higher values are more accurate but slower. Defaults to 64.
+            search_bounds (tuple, optional): The initial cube volume to search for the object.
+                                             Defaults to ((-2, -2, -2), (2, 2, 2)).
+            padding (float, optional): A padding factor to add to the estimated bounds,
+                                       proportional to the object's size. Defaults to 0.1.
+            verbose (bool, optional): If True, prints progress information to the console. Defaults to True.
+
+        Returns:
+            tuple: A tuple of ((min_x, min_y, min_z), (max_x, max_y, max_z)) representing the bounds,
+                   or the original search_bounds if the object is not found.
+        """
+        from .mesh import _cartesian_product
+        if verbose:
+            print(f"INFO: Estimating bounds with {resolution**3} samples...", file=sys.stderr)
+
+        try:
+            sdf_callable = self.to_callable()
+        except (TypeError, NotImplementedError, ImportError) as e:
+            if verbose:
+                print(f"ERROR: Could not estimate bounds. The object may contain animated or un-callable parts. {e}", file=sys.stderr)
+            raise
+
+        # Create the grid points
+        axes = [np.linspace(search_bounds[0][i], search_bounds[1][i], resolution) for i in range(3)]
+        points_grid = _cartesian_product(*axes).astype('f4')
+
+        # Evaluate SDF and find points inside the surface
+        distances = sdf_callable(points_grid)
+        inside_mask = distances <= 1e-4 # Use a small epsilon to catch the surface
+        inside_points = points_grid[inside_mask]
+
+        if inside_points.shape[0] < 2: # Need at least 2 points to define a non-zero volume
+            if verbose:
+                print(f"WARNING: No object surface found within the search bounds {search_bounds}. Returning search_bounds.", file=sys.stderr)
+            return search_bounds
+
+        # Find min and max coordinates
+        min_coords = np.min(inside_points, axis=0)
+        max_coords = np.max(inside_points, axis=0)
+        
+        # Add padding
+        size = max_coords - min_coords
+        # Handle case where a dimension is flat
+        size[size < 1e-6] = padding 
+        min_coords -= size * padding
+        max_coords += size * padding
+
+        bounds = (tuple(min_coords), tuple(max_coords))
+        if verbose:
+            print(f"SUCCESS: Estimated bounds: {bounds}", file=sys.stderr)
+            
+        return bounds
         
     def to_glsl(self) -> str: raise NotImplementedError
     def to_callable(self): raise NotImplementedError

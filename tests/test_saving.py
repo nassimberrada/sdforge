@@ -21,6 +21,29 @@ def test_save_obj_static_object(tmp_path):
         assert 'v ' in content
         assert 'f ' in content
 
+@patch('sdforge.mesh._write_glb')
+def test_save_glb_calls_writer(mock_write_glb, tmp_path):
+    s = sphere(1.0)
+    output_file = tmp_path / "test_model.glb"
+    s.save(str(output_file), samples=2**10, verbose=False)
+    mock_write_glb.assert_called_once()
+
+def test_save_with_advanced_meshing_warns(tmp_path, capsys):
+    s = sphere(1.0)
+    output_file = tmp_path / "test.stl"
+    s.save(str(output_file), samples=2**10, verbose=False, algorithm='dual_contouring', adaptive=True)
+    captured = capsys.readouterr()
+    assert "WARNING: Algorithm 'dual_contouring' is not supported." in captured.err
+    assert "WARNING: Adaptive meshing is not yet implemented." in captured.err
+
+def test_save_with_vertex_colors_warns(tmp_path, capsys):
+    s = sphere(1.0)
+    output_file = tmp_path / "test.glb"
+    with patch('sdforge.mesh._write_glb'): # Mock to prevent pygltflib error if not installed
+        s.save(str(output_file), samples=2**10, verbose=False, vertex_colors=True)
+    captured = capsys.readouterr()
+    assert "WARNING: vertex_colors=True is not yet implemented for GLB export." in captured.err
+
 @patch('sdforge.core.SDFObject.render')
 def test_save_frame_api(mock_render):
     s = sphere()

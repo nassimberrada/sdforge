@@ -18,13 +18,21 @@ setup(
         'glfw',
     ],
     extras_require={
-        'gpu': [],
         'record': [
             'imageio',
             'imageio-ffmpeg',
         ],
         'ui': [
             'imgui[glfw]>=2.0.0'
+        ],
+        'export': [
+            'pygltflib'
+        ],
+        'full': [
+            'imageio',
+            'imageio-ffmpeg',
+            'imgui[glfw]>=2.0.0',
+            'pygltflib'
         ]
     },
     classifiers=[

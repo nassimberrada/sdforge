@@ -124,27 +124,43 @@ class SDFObject:
         from .render import render as render_func
         render_func(self, camera, light, watch, record, save_frame, bg_color, debug, **kwargs)
 
-    def save(self, path, bounds=None, samples=2**22, verbose=True):
+    def save(self, path, bounds=None, samples=2**22, verbose=True, algorithm='marching_cubes', adaptive=False, vertex_colors=False):
         """
-        Generates a mesh and saves it to a file (e.g., '.stl', '.obj').
-        
+        Generates a mesh and saves it to a file.
+
         Args:
-            path (str): The file path to save to.
-            bounds (tuple, optional): The bounding box to mesh within. If None,
-                                      it will be automatically estimated.
+            path (str): The file path to save to (e.g., 'model.stl', 'model.glb').
+            bounds (tuple, optional): The bounding box to mesh within. If None, it will be automatically estimated.
             samples (int, optional): The number of points to sample in the volume.
             verbose (bool, optional): Whether to print progress information.
+            algorithm (str, optional): Meshing algorithm to use. Currently only 'marching_cubes' is supported.
+            adaptive (bool, optional): Whether to use adaptive meshing. Not currently implemented.
+            vertex_colors (bool, optional): Whether to include vertex colors in the export (for .glb/.gltf). Not currently implemented.
         """
         if bounds is None:
             if verbose:
                 print("INFO: No bounds provided to .save(), estimating automatically.", file=sys.stderr)
             bounds = self.estimate_bounds(verbose=verbose)
+
         from .mesh import save as save_func
-        save_func(self, path, bounds, samples, verbose)
+        save_func(self, path, bounds, samples, verbose, algorithm, adaptive, vertex_colors)
 
     def save_frame(self, path, camera=None, light=None, **kwargs):
         """Renders a single frame and saves it to an image file (e.g., '.png')."""
         self.render(save_frame=path, camera=camera, light=light, watch=False, **kwargs)
+
+    def export_shader(self, path):
+        """
+        Exports the complete, self-contained GLSL fragment shader for the current scene.
+        
+        Args:
+            path (str): The file path to save the GLSL shader to (e.g., 'my_scene.glsl').
+        """
+        from .export import assemble_standalone_shader
+        shader_code = assemble_standalone_shader(self)
+        with open(path, 'w') as f:
+            f.write(shader_code)
+        print(f"SUCCESS: Shader exported to '{path}'.")
 
     def estimate_bounds(self, resolution=64, search_bounds=((-2, -2, -2), (2, 2, 2)), padding=0.1, verbose=True):
         """
@@ -212,7 +228,12 @@ class SDFObject:
     def to_callable(self): raise NotImplementedError
     def get_glsl_definitions(self) -> list: return []
     def _collect_materials(self, materials): pass
-    def _collect_uniforms(self, uniforms): pass
+    def _collect_uniforms(self, uniforms):
+        if hasattr(self, 'child'):
+            self.child._collect_uniforms(uniforms)
+        if hasattr(self, 'children'):
+            for child in self.children:
+                child._collect_uniforms(uniforms)
     def _collect_params(self, params):
         from .ui import Param
         if hasattr(self, '_init_args'):

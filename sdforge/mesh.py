@@ -1,6 +1,7 @@
 import numpy as np
 import time
 import struct
+import sys
 from skimage import measure
 
 def _cartesian_product(*arrays):
@@ -41,10 +42,58 @@ def _write_obj(path, verts, faces):
         for f in faces + 1:
             fp.write(f"f {f[0]} {f[1]} {f[2]}\n")
 
-def save(sdf_obj, path, bounds=((-1.5, -1.5, -1.5), (1.5, 1.5, 1.5)), samples=2**22, verbose=True):
+def _write_glb(path, verts, faces, vertex_colors):
+    try:
+        import pygltflib
+    except ImportError:
+        print("ERROR: Exporting to .glb requires 'pygltflib'.", file=sys.stderr)
+        print("Please install it via: pip install sdforge[export] or pip install pygltflib", file=sys.stderr)
+        return
+
+    # Convert verts and faces to GLB format
+    verts_binary = verts.astype('f4').tobytes()
+    faces_binary = faces.astype('u2').tobytes()
+
+    buffer_data = verts_binary + faces_binary
+    
+    gltf = pygltflib.GLTF2()
+    gltf.scenes.append(pygltflib.Scene(nodes=[0]))
+    gltf.nodes.append(pygltflib.Node(mesh=0))
+    gltf.buffers.append(pygltflib.Buffer(byteLength=len(buffer_data)))
+    gltf.bufferViews.extend([
+        pygltflib.BufferView(buffer=0, byteOffset=0, byteLength=len(verts_binary), target=pygltflib.ARRAY_BUFFER),
+        pygltflib.BufferView(buffer=0, byteOffset=len(verts_binary), byteLength=len(faces_binary), target=pygltflib.ELEMENT_ARRAY_BUFFER),
+    ])
+
+    min_pos = np.min(verts, axis=0).tolist()
+    max_pos = np.max(verts, axis=0).tolist()
+    
+    gltf.accessors.extend([
+        pygltflib.Accessor(bufferView=0, componentType=pygltflib.FLOAT, count=len(verts), type=pygltflib.VEC3, min=min_pos, max=max_pos),
+        pygltflib.Accessor(bufferView=1, componentType=pygltflib.UNSIGNED_SHORT, count=len(faces.ravel()), type=pygltflib.SCALAR),
+    ])
+
+    primitive = pygltflib.Primitive(attributes=pygltflib.Attributes(POSITION=0), indices=1)
+    
+    # Placeholder for vertex colors (currently not implemented)
+    if vertex_colors:
+        print("WARNING: vertex_colors=True is not yet implemented for GLB export.", file=sys.stderr)
+
+    gltf.meshes.append(pygltflib.Mesh(primitives=[primitive]))
+    
+    gltf.set_binary_blob(buffer_data)
+    gltf.save(path)
+
+
+def save(sdf_obj, path, bounds, samples, verbose, algorithm, adaptive, vertex_colors):
     """
     Generates a mesh from an SDF object using the Marching Cubes algorithm and saves it to a file.
     """
+    if algorithm != 'marching_cubes':
+        print(f"WARNING: Algorithm '{algorithm}' is not supported. Falling back to 'marching_cubes'.", file=sys.stderr)
+    if adaptive:
+        print("WARNING: Adaptive meshing is not yet implemented. Using uniform grid.", file=sys.stderr)
+
     start_time = time.time()
     if verbose:
         print(f"INFO: Generating mesh for '{path}'...")
@@ -97,8 +146,10 @@ def save(sdf_obj, path, bounds=((-1.5, -1.5, -1.5), (1.5, 1.5, 1.5)), samples=2*
         _write_binary_stl(path, verts[faces])
     elif path_lower.endswith('.obj'):
         _write_obj(path, verts, faces)
+    elif path_lower.endswith('.glb') or path_lower.endswith('.gltf'):
+        _write_glb(path, verts, faces, vertex_colors)
     else:
-        print(f"ERROR: Unsupported file format '{path}'. Only .stl and .obj are currently supported.")
+        print(f"ERROR: Unsupported file format '{path}'. Only .stl, .obj, .glb, and .gltf are currently supported.", file=sys.stderr)
         return
 
     elapsed = time.time() - start_time

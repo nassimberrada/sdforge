@@ -1,3 +1,4 @@
+import sys
 from sdforge import sphere, box, cylinder, torus, cone
 
 def sphere_example():
@@ -23,8 +24,7 @@ def cone_example():
 
 def main():
     """
-    Renders a default example when the script is run directly.
-    Change the `example_name` here to view different examples.
+    Renders an example based on a command-line argument.
     """
     print("--- SDForge Primitive Examples ---")
     
@@ -36,23 +36,27 @@ def main():
         "cone": cone_example,
     }
     
-    # --- Select the example to render ---
-    example_name = "box"  # <-- CHANGE THIS VALUE
-    # ------------------------------------
-    
-    print(f"Rendering: {example_name.title()} Example")
+    if len(sys.argv) < 2:
+        print("\nPlease provide the name of an example to run.")
+        print("Available examples:")
+        for key in examples:
+            print(f"  - {key}")
+        print(f"\nUsage: python {sys.argv[0]} <example_name>")
+        return
+
+    example_name = sys.argv[1]
     scene_func = examples.get(example_name)
     
-    if scene_func:
-        scene = scene_func()
-    else:
-        scene = None
-        print(f"Example '{example_name}' not found.")
+    if not scene_func:
+        print(f"\nError: Example '{example_name}' not found.")
+        print("Available examples are:")
+        for key in examples:
+            print(f"  - {key}")
+        return
 
-    if scene:
-        scene.render()
-    else:
-        print("The selected example is not yet implemented or not found.")
+    print(f"Rendering: {example_name.replace('_', ' ').title()} Example")
+    scene = scene_func()
+    scene.render()
 
 
 if __name__ == "__main__":

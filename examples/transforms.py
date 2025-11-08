@@ -1,3 +1,4 @@
+import sys
 import numpy as np
 from sdforge import box, sphere, X, Y, Z
 
@@ -75,8 +76,7 @@ def mirror_example():
 
 def main():
     """
-    Renders a default example when the script is run directly.
-    Change the `example_name` here to view different examples.
+    Renders an example based on a command-line argument.
     """
     print("--- SDForge Transform Examples ---")
     
@@ -93,22 +93,27 @@ def main():
         "mirror": mirror_example,
     }
     
-    # --- Select the example to render ---
-    example_name = "polar_repeat"  # <-- CHANGE THIS VALUE
-    # ------------------------------------
+    if len(sys.argv) < 2:
+        print("\nPlease provide the name of an example to run.")
+        print("Available examples:")
+        for key in examples:
+            print(f"  - {key}")
+        print(f"\nUsage: python {sys.argv[0]} <example_name>")
+        return
 
-    print("\nAvailable examples:")
-    for key in examples:
-        print(f"  - {key}")
-    print(f"\nRendering: '{example_name}'")
-
+    example_name = sys.argv[1]
     scene_func = examples.get(example_name)
 
-    if scene_func:
-        scene = scene_func()
-        scene.render()
-    else:
-        print(f"Example '{example_name}' not found.")
+    if not scene_func:
+        print(f"\nError: Example '{example_name}' not found.")
+        print("Available examples are:")
+        for key in examples:
+            print(f"  - {key}")
+        return
+
+    print(f"Rendering: {example_name.replace('_', ' ').title()} Example")
+    scene = scene_func()
+    scene.render()
 
 
 if __name__ == "__main__":

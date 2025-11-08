@@ -42,6 +42,14 @@ class GLSLContext:
 
 class SDFNode(ABC):
     """Abstract base class for all SDF objects in the scene graph."""
+    
+    glsl_dependencies = set() # Default empty set
+
+    def __init__(self):
+        super().__init__()
+        # Special case for Revolve, which has no child in __init__
+        if not hasattr(self, 'child'):
+            self.child = None
 
     @abstractmethod
     def to_glsl(self, ctx: GLSLContext) -> str:
@@ -157,6 +165,45 @@ class SDFNode(ABC):
         """Mirrors the object across one or more axes (e.g., X, Y, X|Z)."""
         from .api.transforms import Mirror
         return Mirror(self, axes)
+
+    # --- Shaping Operations ---
+    def round(self, radius: float) -> 'SDFNode':
+        """Rounds all edges of the object by a given radius."""
+        from .api.shaping import Round
+        return Round(self, radius)
+
+    def shell(self, thickness: float) -> 'SDFNode':
+        """Creates a shell or outline of the object with a given thickness."""
+        from .api.shaping import Bevel
+        return Bevel(self, thickness)
+
+    def bevel(self, thickness: float) -> 'SDFNode':
+        """Alias for .shell(). Creates an outline of the object."""
+        return self.shell(thickness)
+
+    def extrude(self, height: float) -> 'SDFNode':
+        """Extrudes a 2D SDF shape along the Z-axis."""
+        from .api.shaping import Extrude
+        return Extrude(self, height)
+
+    def revolve(self) -> 'SDFNode':
+        """Revolves a 2D SDF shape around the Y-axis."""
+        from .api.shaping import Revolve
+        # Revolve is special: it becomes the parent of the current node
+        r = Revolve()
+        r.child = self
+        return r
+
+    # --- Surface Displacement ---
+    def displace(self, displacement_glsl: str) -> 'SDFNode':
+        """Displaces the surface of the object using a GLSL expression."""
+        from .api.noise import Displace
+        return Displace(self, displacement_glsl)
+
+    def displace_by_noise(self, scale: float = 10.0, strength: float = 0.1) -> 'SDFNode':
+        """Displaces the surface using a procedural noise function."""
+        from .api.noise import DisplaceByNoise
+        return DisplaceByNoise(self, scale, strength)
 
     # --- Stubs for future functionality ---
     def color(self, r, g, b): raise NotImplementedError("Materials not implemented yet.")

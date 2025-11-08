@@ -171,6 +171,19 @@ class SDFNode(ABC):
             
         return bounds
 
+    def export_shader(self, path: str):
+        """
+        Exports a complete, self-contained GLSL fragment shader for the current scene.
+        
+        Args:
+            path (str): The file path to save the GLSL shader to (e.g., 'my_scene.glsl').
+        """
+        from .export import assemble_standalone_shader
+        shader_code = assemble_standalone_shader(self)
+        with open(path, 'w') as f:
+            f.write(shader_code)
+        print(f"SUCCESS: Shader exported to '{path}'.")
+
     def _collect_uniforms(self, uniforms: dict):
         """Recursively collects uniforms from the scene graph."""
         if hasattr(self, 'child') and self.child:

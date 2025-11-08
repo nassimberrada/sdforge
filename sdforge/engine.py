@@ -1,8 +1,21 @@
 import sys
+import os
+import time
+from pathlib import Path
+import importlib.util
 import numpy as np
 from .core import SDFNode, GLSLContext
 from .loader import get_glsl_definitions
 from .api.camera import Camera
+
+# NEW: Add watchdog imports
+try:
+    from watchdog.observers import Observer
+    from watchdog.events import FileSystemEventHandler
+    WATCHDOG_AVAILABLE = True
+except ImportError:
+    WATCHDOG_AVAILABLE = False
+
 
 class SceneCompiler:
     """Compiles an SDFNode tree into a complete GLSL Scene function."""
@@ -24,40 +37,81 @@ vec4 Scene(in vec3 p) {{
 
 class NativeRenderer:
     """A minimal renderer for displaying the raw SDF distance field."""
-    def __init__(self, sdf_obj: SDFNode, camera: Camera = None, width=1280, height=720):
+    def __init__(self, sdf_obj: SDFNode, camera: Camera = None, watch=True, width=1280, height=720, **kwargs):
         self.sdf_obj = sdf_obj
         self.camera = camera
+        self.watching = watch and WATCHDOG_AVAILABLE
         self.width = width
         self.height = height
         self.window = None
         self.ctx = None
         self.program = None
         self.vao = None
+        self.vbo = None # NEW: Make VBO an instance attribute
         self.uniforms = {}
+        # NEW ATTRIBUTES for hot-reloading
+        self.script_path = os.path.abspath(sys.argv[0])
+        self.reload_pending = False
         
-    def run(self):
-        import glfw
-        import moderngl
+    def _reload_script(self):
+        """Dynamically reloads the user's script and updates the scene."""
+        print(f"INFO: Change detected in '{Path(self.script_path).name}'. Reloading...")
+        try:
+            spec = importlib.util.spec_from_file_location("user_script", self.script_path)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            if hasattr(module, 'main') and callable(module.main):
+                result = module.main()
+                new_sdf_obj, new_cam_obj = None, None
 
-        if not glfw.init():
-            raise RuntimeError("Could not initialize GLFW")
+                if isinstance(result, SDFNode):
+                    new_sdf_obj = result
+                elif isinstance(result, tuple):
+                    for item in result:
+                        if isinstance(item, SDFNode): new_sdf_obj = item
+                        if isinstance(item, Camera): new_cam_obj = item
+                
+                if new_sdf_obj:
+                    self.sdf_obj = new_sdf_obj
+                    self.camera = new_cam_obj
+                    # Re-compile shader and vertex array
+                    self.program = self._compile_shader()
+                    if self.program:
+                        self.vao = self.ctx.simple_vertex_array(self.program, self.vbo, 'in_vert')
+            else:
+                print("WARNING: No valid `main` function found in script. Cannot reload.")
+        except Exception as e:
+            print(f"ERROR: Failed to reload script: {e}")
 
-        self.window = glfw.create_window(self.width, self.height, "SDF Forge", None, None)
-        if not self.window:
-            glfw.terminate()
-            raise RuntimeError("Could not create GLFW window.")
-        glfw.make_context_current(self.window)
+    def _start_watcher(self):
+        """Initializes and starts the watchdog file observer."""
+        if not self.watching:
+            if not WATCHDOG_AVAILABLE:
+                print("INFO: Hot-reloading disabled. `watchdog` not installed. Run 'pip install watchdog'.")
+            return
+
+        class ChangeHandler(FileSystemEventHandler):
+            def __init__(self, renderer_instance):
+                self.renderer = renderer_instance
+            def on_modified(self, event):
+                if event.src_path == self.renderer.script_path:
+                    self.renderer.reload_pending = True
         
-        self.ctx = moderngl.create_context()
+        observer = Observer()
+        observer.schedule(ChangeHandler(self), str(Path(self.script_path).parent), recursive=False)
+        observer.daemon = True
+        observer.start()
+        print(f"INFO: Watching '{Path(self.script_path).name}' for changes...")
         
-        # --- Collect Uniforms ---
+    def _compile_shader(self):
+        """Compiles the full fragment shader for the current scene."""
+        # This helper function encapsulates the shader string generation
+        self.uniforms = {}
         self.sdf_obj._collect_uniforms(self.uniforms)
         
-        # --- Shader Generation ---
         scene_code = SceneCompiler().compile(self.sdf_obj)
         camera_code = get_glsl_definitions(frozenset(['camera']))
 
-        # Determine which camera function to use in GLSL
         if self.camera:
             cam = self.camera
             pos = f"vec3({float(cam.position[0])}, {float(cam.position[1])}, {float(cam.position[2])})"
@@ -73,7 +127,7 @@ class NativeRenderer:
             in vec2 in_vert;
             void main() { gl_Position = vec4(in_vert, 0.0, 1.0); }
         """
-        
+
         fragment_shader = f"""
             #version 330 core
             uniform vec2 u_resolution;
@@ -129,37 +183,58 @@ class NativeRenderer:
         """
         
         try:
-            self.program = self.ctx.program(
+            new_program = self.ctx.program(
                 vertex_shader=vertex_shader, fragment_shader=fragment_shader
             )
+            print("INFO: Shader compiled successfully.")
+            return new_program
         except Exception as e:
-            print(f"ERROR: Shader compilation failed:\n{e}", file=sys.stderr)
+            print(f"ERROR: Shader compilation failed. Keeping previous shader. Details:\n{e}", file=sys.stderr)
+            return self.program # Return old program on failure
+
+    def run(self):
+        import glfw
+        import moderngl
+
+        if not glfw.init():
+            raise RuntimeError("Could not initialize GLFW")
+
+        self.window = glfw.create_window(self.width, self.height, "SDF Forge", None, None)
+        if not self.window:
             glfw.terminate()
-            return
-            
-        vertices = np.array([-1.0, -1.0, -1.0, 1.0, 1.0, -1.0, 1.0, 1.0], dtype='f4')
-        vbo = self.ctx.buffer(vertices)
-        self.vao = self.ctx.simple_vertex_array(self.program, vbo, 'in_vert')
+            raise RuntimeError("Could not create GLFW window.")
+        glfw.make_context_current(self.window)
         
+        self.ctx = moderngl.create_context()
+        self.program = self._compile_shader()
+        
+        vertices = np.array([-1.0, -1.0, -1.0, 1.0, 1.0, -1.0, 1.0, 1.0], dtype='f4')
+        self.vbo = self.ctx.buffer(vertices) # Assign to instance
+        self.vao = self.ctx.simple_vertex_array(self.program, self.vbo, 'in_vert')
+        
+        self._start_watcher() # NEW: Start the file watcher
+
         while not glfw.window_should_close(self.window):
+            # NEW: Check for reload flag at start of loop
+            if self.reload_pending:
+                self._reload_script()
+                self.reload_pending = False
+
             width, height = glfw.get_framebuffer_size(self.window)
             self.ctx.viewport = (0, 0, width, height)
             
             try: self.program['u_resolution'].value = (width, height)
             except KeyError: pass
             
-            if not self.camera: # Only update mouse uniform for orbit camera
+            if not self.camera:
                 try:
                     mx, my = glfw.get_cursor_pos(self.window)
                     self.program['u_mouse'].value = (mx, my, 0, 0)
                 except KeyError: pass
             
-            # Upload custom uniforms
             for name, value in self.uniforms.items():
-                try:
-                    self.program[name].value = float(value)
-                except KeyError:
-                    pass # Uniform may have been optimized out by the GLSL compiler
+                try: self.program[name].value = float(value)
+                except KeyError: pass
 
             self.ctx.clear(0.1, 0.12, 0.15)
             self.vao.render(mode=moderngl.TRIANGLE_STRIP)
@@ -168,12 +243,13 @@ class NativeRenderer:
 
         glfw.terminate()
 
-def render(sdf_obj: SDFNode, camera: Camera = None, **kwargs):
+def render(sdf_obj: SDFNode, camera: Camera = None, watch=True, **kwargs):
     """Public API to launch the renderer."""
     try:
         import moderngl, glfw
     except ImportError:
         print("ERROR: Live rendering requires 'moderngl' and 'glfw'.", file=sys.stderr)
         return
-    renderer = NativeRenderer(sdf_obj, camera=camera, **kwargs)
+    # Pass `watch` parameter to the renderer
+    renderer = NativeRenderer(sdf_obj, camera=camera, watch=watch, **kwargs)
     renderer.run()

@@ -240,21 +240,44 @@ class Cone(SDFNode):
             raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
             
         h, r1, r2 = self.height, self.radius1, self.radius2
-        def _callable_capped(points: np.ndarray) -> np.ndarray:
-            q_x = np.linalg.norm(points[:, [0, 2]], axis=-1)
-            q = np.stack([q_x, points[:, 1]], axis=-1)
-            k1 = np.array([r2, h])
-            k2 = np.array([r2 - r1, 2.0 * h])
-            ca_x_min = np.where(q[:, 1] < 0.0, r1, r2)
-            ca_x = q[:, 0] - np.minimum(q[:, 0], ca_x_min)
-            ca_y = np.abs(q[:, 1]) - h
-            ca = np.stack([ca_x, ca_y], axis=-1)
-            k1_q = k1 - q
-            clamp_val = np.clip(np.sum(k1_q * k2, axis=-1) / np.dot(k2, k2), 0.0, 1.0)
-            cb = q - k1 + k2 * clamp_val[:, np.newaxis]
-            s = np.where((cb[:, 0] < 0.0) & (ca[:, 1] < 0.0), -1.0, 1.0)
-            return s * np.sqrt(np.minimum(np.sum(ca * ca, axis=-1), np.sum(cb * cb, axis=-1)))
-        return _callable_capped
+
+        use_capped = False
+        if isinstance(r2, (int, float)):
+            if r2 > 1e-6:
+                use_capped = True
+        else: # Should already be caught by is_dynamic check, but for safety
+            use_capped = True
+
+        if use_capped:
+            def _callable_capped(points: np.ndarray) -> np.ndarray:
+                q_x = np.linalg.norm(points[:, [0, 2]], axis=-1)
+                q = np.stack([q_x, points[:, 1]], axis=-1)
+                k1 = np.array([r2, h])
+                k2 = np.array([r2 - r1, 2.0 * h])
+                ca_x_min = np.where(q[:, 1] < 0.0, r1, r2)
+                ca_x = q[:, 0] - np.minimum(q[:, 0], ca_x_min)
+                ca_y = np.abs(q[:, 1]) - h
+                ca = np.stack([ca_x, ca_y], axis=-1)
+                k1_q = k1 - q
+                dot_k2k2 = np.dot(k2, k2)
+                # Add epsilon to prevent division by zero if h=0 and r1=r2
+                clamp_val = np.clip(np.sum(k1_q * k2, axis=-1) / (dot_k2k2 + 1e-9), 0.0, 1.0)
+                cb = q - k1 + k2 * clamp_val[:, np.newaxis]
+                s = np.where((cb[:, 0] < 0.0) & (ca[:, 1] < 0.0), -1.0, 1.0)
+                return s * np.sqrt(np.minimum(np.sum(ca * ca, axis=-1), np.sum(cb * cb, axis=-1)))
+            return _callable_capped
+        else: # Sharp cone logic
+            def _callable_sharp(points: np.ndarray) -> np.ndarray:
+                q = np.stack([np.linalg.norm(points[:, [0, 2]], axis=-1), points[:, 1]], axis=-1)
+                w = np.array([r1, h])
+                a = q - w * np.clip(np.dot(q, w) / np.dot(w, w), 0.0, 1.0)[:, np.newaxis]
+                b = q - np.stack([np.zeros(len(q)), np.clip(q[:, 1], 0.0, h)], axis=-1)
+                k = np.sign(r1)
+                d = np.minimum(np.sum(a*a, axis=-1), np.sum(b*b, axis=-1))
+                s = np.maximum(k * (q[:, 0] * w[1] - q[:, 1] * w[0]), k * (q[:, 1] - h))
+                return np.sqrt(d) * np.sign(s)
+            return _callable_sharp
+
 
 def cone(height: float = 1.0, radius1: float = 0.5, radius2: float = 0.0) -> SDFNode:
     """Creates a cone or a frustum (capped cone)."""

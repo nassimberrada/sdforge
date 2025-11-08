@@ -58,8 +58,13 @@ def main():
         return
 
     print(f"Rendering: {example_name.replace('_', ' ').title()} Example")
-    scene = scene_func()
-    scene.render()
+    result = scene_func()
+    if isinstance(result, tuple):
+        scene, cam = result
+        scene.render(camera=cam)
+    else:
+        scene = result
+        scene.render()
 
 if __name__ == "__main__":
     main()

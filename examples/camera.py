@@ -1,39 +1,36 @@
 import sys
-from sdforge import sphere, box, cylinder, torus, cone
+from sdforge import box, sphere, Camera
 
-def sphere_example():
-    """Returns a simple sphere scene."""
-    s = sphere(r=1.0)
-    return s
-
-def box_example():
-    """Returns a simple box scene."""
-    return box(size=(1.5, 1.0, 0.5), radius=0.1)
-
-def cylinder_example():
-    """Returns a simple cylinder scene."""
-    return cylinder(radius=0.5, height=1.5)
-
-def torus_example():
-    """Returns a simple torus scene."""
-    return torus(major=1.0, minor=0.25)
+def static_camera_example():
+    """
+    Returns a scene and a fixed Camera object.
+    The renderer will use this camera's position and target.
+    """
+    scene = box(1.5, radius=0.1) | sphere(1.2)
     
-def cone_example():
-    """Returns a frustum (capped cone) scene."""
-    return cone(height=1.2, radius1=0.6, radius2=0.2)
+    # Define a camera positioned at (4, 3, 4), looking at the origin.
+    cam = Camera(position=(4, 3, 4), target=(0, 0, 0), zoom=1.5)
+    
+    return scene, cam
+
+def interactive_camera_example():
+    """
+    Returns only a scene.
+    When no camera is provided to the render function, it defaults
+    to an interactive orbit camera controlled by the mouse.
+    """
+    scene = box(1.5, radius=0.1) | sphere(1.2)
+    return scene
 
 def main():
     """
     Renders an example based on a command-line argument.
     """
-    print("--- SDForge Primitive Examples ---")
+    print("--- SDForge Camera Examples ---")
     
     examples = {
-        "sphere": sphere_example,
-        "box": box_example,
-        "cylinder": cylinder_example,
-        "torus": torus_example,
-        "cone": cone_example,
+        "static": static_camera_example,
+        "interactive": interactive_camera_example,
     }
     
     if len(sys.argv) < 2:
@@ -56,13 +53,14 @@ def main():
 
     print(f"Rendering: {example_name.replace('_', ' ').title()} Example")
     result = scene_func()
+    
+    # Handle both return types: (scene, camera) or just scene
     if isinstance(result, tuple):
         scene, cam = result
         scene.render(camera=cam)
     else:
         scene = result
-        scene.render()
-
+        scene.render() # camera=None, defaults to interactive
 
 if __name__ == "__main__":
     main()

@@ -2,23 +2,14 @@ import sys
 import numpy as np
 from .core import SDFNode, GLSLContext
 from .loader import get_glsl_definitions
+from .api.camera import Camera
 
 class SceneCompiler:
     """Compiles an SDFNode tree into a complete GLSL Scene function."""
     def compile(self, root_node: SDFNode) -> str:
-        """
-        Generates the complete GLSL code for the scene, including all
-        dependencies and the main Scene(p) function.
-        """
         ctx = GLSLContext(compiler=self)
-        
-        # This call populates ctx.statements and ctx.dependencies
         result_var = root_node.to_glsl(ctx)
-
-        # Get the GLSL source for all required library functions
         library_code = get_glsl_definitions(frozenset(ctx.dependencies))
-
-        # Assemble the body of the Scene(p) function
         function_body = "\n    ".join(ctx.statements)
         
         scene_function = f"""
@@ -31,8 +22,9 @@ vec4 Scene(in vec3 p) {{
 
 class NativeRenderer:
     """A minimal renderer for displaying the raw SDF distance field."""
-    def __init__(self, sdf_obj: SDFNode, width=1280, height=720):
+    def __init__(self, sdf_obj: SDFNode, camera: Camera = None, width=1280, height=720):
         self.sdf_obj = sdf_obj
+        self.camera = camera
         self.width = width
         self.height = height
         self.window = None
@@ -57,6 +49,16 @@ class NativeRenderer:
         
         # --- Shader Generation ---
         scene_code = SceneCompiler().compile(self.sdf_obj)
+        camera_code = get_glsl_definitions(frozenset(['camera']))
+
+        # Determine which camera function to use in GLSL
+        if self.camera:
+            cam = self.camera
+            pos = f"vec3({float(cam.position[0])}, {float(cam.position[1])}, {float(cam.position[2])})"
+            tgt = f"vec3({float(cam.target[0])}, {float(cam.target[1])}, {float(cam.target[2])})"
+            camera_logic_glsl = f"cameraStatic(st, {pos}, {tgt}, {float(cam.zoom)}, ro, rd);"
+        else:
+            camera_logic_glsl = "cameraOrbit(st, u_mouse.xy, u_resolution, 1.0, ro, rd);"
 
         vertex_shader = """
             #version 330 core
@@ -67,11 +69,12 @@ class NativeRenderer:
         fragment_shader = f"""
             #version 330 core
             uniform vec2 u_resolution;
+            uniform vec4 u_mouse;
             out vec4 f_color;
             
+            {camera_code}
             {scene_code}
 
-            // Simple raymarcher
             float raymarch(vec3 ro, vec3 rd) {{
                 float t = 0.0;
                 for (int i = 0; i < 100; i++) {{
@@ -83,26 +86,33 @@ class NativeRenderer:
                 }}
                 return -1.0;
             }}
+            
+            vec3 estimateNormal(vec3 p) {{
+                float eps = 0.001;
+                vec2 e = vec2(1.0, -1.0) * 0.5773 * eps;
+                return normalize(
+                    e.xyy * Scene(p + e.xyy).x +
+                    e.yyx * Scene(p + e.yyx).x +
+                    e.yxy * Scene(p + e.yxy).x +
+                    e.xxx * Scene(p + e.xxx).x
+                );
+            }}
 
             void main() {{
                 vec2 st = (2.0 * gl_FragCoord.xy - u_resolution.xy) / u_resolution.y;
-                
-                // --- THIS IS THE CORRECTED CAMERA LOGIC ---
-                vec3 ro = vec3(2.5, 2.0, 2.5);
-                vec3 target = vec3(0.0, 0.0, 0.0);
-                float zoom = 1.5;
-                
-                vec3 f = normalize(target - ro); // forward vector
-                vec3 r = normalize(cross(vec3(0.0, 1.0, 0.0), f)); // right vector
-                vec3 u = cross(f, r); // up vector
-                vec3 rd = normalize(st.x * r + st.y * u + zoom * f); // final ray direction
+                vec3 ro, rd;
+                {camera_logic_glsl}
                 
                 float t = raymarch(ro, rd);
                 
-                // Simple black and white visualization based on hit
-                vec3 color = vec3(0.1); // Background color
+                vec3 color = vec3(0.1, 0.12, 0.15); // Background color
                 if (t > 0.0) {{
-                    color = vec3(0.9); // Object color
+                    vec3 p = ro + t * rd;
+                    vec3 normal = estimateNormal(p);
+                    // Simple diffuse lighting from a fixed point
+                    vec3 lightDir = normalize(vec3(0.8, 0.7, 0.6));
+                    float diffuse = max(dot(normal, lightDir), 0.2);
+                    color = vec3(0.9) * diffuse;
                 }}
                 
                 f_color = vec4(color, 1.0);
@@ -113,7 +123,6 @@ class NativeRenderer:
             self.program = self.ctx.program(
                 vertex_shader=vertex_shader, fragment_shader=fragment_shader
             )
-            self.program['u_resolution'].value = (self.width, self.height)
         except Exception as e:
             print(f"ERROR: Shader compilation failed:\n{e}", file=sys.stderr)
             glfw.terminate()
@@ -124,19 +133,31 @@ class NativeRenderer:
         self.vao = self.ctx.simple_vertex_array(self.program, vbo, 'in_vert')
         
         while not glfw.window_should_close(self.window):
-            self.ctx.clear(0.1, 0.1, 0.1)
+            width, height = glfw.get_framebuffer_size(self.window)
+            self.ctx.viewport = (0, 0, width, height)
+            
+            try: self.program['u_resolution'].value = (width, height)
+            except KeyError: pass
+            
+            if not self.camera: # Only update mouse uniform for orbit camera
+                try:
+                    mx, my = glfw.get_cursor_pos(self.window)
+                    self.program['u_mouse'].value = (mx, my, 0, 0)
+                except KeyError: pass
+
+            self.ctx.clear(0.1, 0.12, 0.15)
             self.vao.render(mode=moderngl.TRIANGLE_STRIP)
             glfw.swap_buffers(self.window)
             glfw.poll_events()
 
         glfw.terminate()
 
-def render(sdf_obj: SDFNode, **kwargs):
+def render(sdf_obj: SDFNode, camera: Camera = None, **kwargs):
     """Public API to launch the renderer."""
     try:
         import moderngl, glfw
     except ImportError:
         print("ERROR: Live rendering requires 'moderngl' and 'glfw'.", file=sys.stderr)
         return
-    renderer = NativeRenderer(sdf_obj, **kwargs)
+    renderer = NativeRenderer(sdf_obj, camera=camera, **kwargs)
     renderer.run()

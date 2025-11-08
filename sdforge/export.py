@@ -17,21 +17,35 @@ def assemble_standalone_shader(sdf_obj) -> str:
     """
     from .engine import SceneCompiler
 
-    # 1. Collect user-defined Uniforms and Params from the SDF tree
+    # 1. Collect Materials, Uniforms, and Params
+    materials = []
+    sdf_obj._collect_materials(materials)
+
     uniforms = {}
     sdf_obj._collect_uniforms(uniforms)
     
     params = {}
     sdf_obj._collect_params(params)
     
+    # 2. Build GLSL declarations
     all_user_uniforms = list(uniforms.keys()) + [p.uniform_name for p in params.values()]
     custom_uniforms_glsl = "\n".join([f"uniform float {name};" for name in all_user_uniforms])
 
-    # 2. Compile the core Scene(p) function and its dependencies
+    material_struct_glsl = "struct MaterialInfo { vec3 color; };\n"
+    material_uniform_glsl = f"uniform MaterialInfo u_materials[{max(1, len(materials))}];\n"
+    material_lookup_glsl = """
+        int material_id = int(hit.y);
+        vec3 material_color = vec3(0.8); // Default color
+        if (material_id >= 0 && material_id < {material_count}) {{
+            material_color = u_materials[material_id].color;
+        }}
+    """.format(material_count=len(materials))
+
+    # 3. Compile the core Scene(p) function and its dependencies
     scene_compiler = SceneCompiler()
     scene_code = scene_compiler.compile(sdf_obj)
     
-    # 3. Assemble the final shader string using a template
+    # 4. Assemble the final shader string using a template
     shader = f"""
 #version 330 core
 
@@ -53,7 +67,14 @@ uniform float u_ao_strength = 3.0;
 // User-defined uniforms from Forge and Param objects
 {custom_uniforms_glsl}
 
+// --- Materials ---
+{material_struct_glsl}
+{material_uniform_glsl}
+
 out vec4 f_color; // Output fragment color
+
+// Forward declare Scene() so renderer functions can find it.
+vec4 Scene(in vec3 p);
 
 // --- SDForge GLSL Library ---
 {_get_glsl_from_lib('camera.glsl')}
@@ -80,15 +101,16 @@ void main() {{
         // 3. We hit something, calculate surface properties
         vec3 p = ro + t * rd;
         vec3 normal = estimateNormal(p);
-        vec3 lightDir = normalize(u_light_pos - p);
         
         // 4. Calculate lighting and shadows
+        vec3 lightDir = normalize(u_light_pos - p);
         float diffuse = max(dot(normal, lightDir), u_ambient_strength);
         float shadow = softShadow(p + normal * 0.01, lightDir, u_shadow_softness);
         float ao = ambientOcclusion(p, normal, u_ao_strength);
         
-        // 5. Apply lighting to a default material color
-        color = vec3(0.9) * diffuse * shadow * ao;
+        // 5. Look up material color and apply lighting
+        {material_lookup_glsl}
+        color = material_color * diffuse * shadow * ao;
     }}
     
     f_color = vec4(color, 1.0);

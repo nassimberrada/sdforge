@@ -17,6 +17,7 @@ try:
 except ImportError:
     WATCHDOG_AVAILABLE = False
 
+MAX_MATERIALS = 64
 
 class SceneCompiler:
     """Compiles an SDFNode tree into a complete GLSL Scene function."""
@@ -112,6 +113,13 @@ class NativeRenderer:
         
     def _compile_shader(self):
         """Compiles the full fragment shader for the current scene."""
+        # --- Collect scene components ---
+        materials = []
+        self.sdf_obj._collect_materials(materials)
+        if len(materials) > MAX_MATERIALS:
+            print(f"WARNING: Exceeded maximum of {MAX_MATERIALS} materials. Truncating.")
+            materials = materials[:MAX_MATERIALS]
+
         self.uniforms = {}
         self.sdf_obj._collect_uniforms(self.uniforms)
         
@@ -139,6 +147,18 @@ class NativeRenderer:
         light = self.light or Light()
         light_pos_str = f"vec3({light.position[0]}, {light.position[1]}, {light.position[2]})" if light.position else "ro"
         
+        # --- Material Logic ---
+        material_struct_glsl = "struct MaterialInfo { vec3 color; };\n"
+        material_uniform_glsl = f"uniform MaterialInfo u_materials[{max(1, len(materials))}];\n"
+        material_lookup_glsl = """
+            int material_id = int(hit.y);
+            vec3 material_color = vec3(0.8); // Default color
+            if (material_id >= 0 && material_id < {material_count}) {{
+                material_color = u_materials[material_id].color;
+            }}
+        """.format(material_count=len(materials))
+
+
         # --- Debug Logic ---
         final_color_logic = """
             vec3 lightPos = {light_pos};
@@ -147,12 +167,14 @@ class NativeRenderer:
             float shadow = softShadow(p + normal * 0.01, lightDir, {shadow_softness});
             diffuse *= shadow;
             float ao = ambientOcclusion(p, normal, {ao_strength});
-            color = vec3(0.9) * diffuse * ao;
+            {material_lookup}
+            color = material_color * diffuse * ao;
         """.format(
             light_pos=light_pos_str,
             ambient=light.ambient_strength,
             shadow_softness=light.shadow_softness,
-            ao_strength=light.ao_strength
+            ao_strength=light.ao_strength,
+            material_lookup=material_lookup_glsl
         )
         if self.debug:
             if self.debug.mode == 'normals':
@@ -176,6 +198,8 @@ class NativeRenderer:
             uniform vec2 u_resolution;
             uniform vec4 u_mouse;
             {custom_uniforms_glsl}
+            {material_struct_glsl}
+            {material_uniform_glsl}
             out vec4 f_color;
 
             // Forward declare Scene() so renderer functions can find it.
@@ -208,6 +232,11 @@ class NativeRenderer:
                 vertex_shader=vertex_shader, fragment_shader=fragment_shader
             )
             print("INFO: Shader compiled successfully.")
+            
+            # Upload material data
+            for i, mat in enumerate(materials):
+                new_program[f'u_materials[{i}].color'].value = mat.color
+
             return new_program
         except Exception as e:
             print(f"ERROR: Shader compilation failed. Keeping previous shader. Details:\n{e}", file=sys.stderr)

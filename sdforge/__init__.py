@@ -3,6 +3,7 @@ from .core import SDFNode, X, Y, Z
 from .debug import Debug
 from .api.camera import Camera
 from .api.light import Light
+from .api.material import Material
 
 # --- Primitives ---
 from .api.primitives import (

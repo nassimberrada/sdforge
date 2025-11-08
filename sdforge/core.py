@@ -80,6 +80,14 @@ class SDFNode(ABC):
             for child in self.children:
                 child._collect_params(params)
     
+    def _collect_materials(self, materials: list):
+        """Recursively collects Material objects from the scene graph."""
+        if hasattr(self, 'child') and self.child:
+            self.child._collect_materials(materials)
+        if hasattr(self, 'children'):
+            for child in self.children:
+                child._collect_materials(materials)
+
     @abstractmethod
     def to_glsl(self, ctx: GLSLContext) -> str:
         """
@@ -219,7 +227,13 @@ class SDFNode(ABC):
     def __sub__(self, other):
         """Operator overload for a simple difference: `shape1 - shape2`."""
         return self.difference(other)
-        
+
+    # --- Material ---
+    def color(self, r: float, g: float, b: float) -> 'SDFNode':
+        """Applies a color material to the object."""
+        from .api.material import Material
+        return Material(self, (r, g, b))
+
     # --- Transformations ---
     def translate(self, offset) -> 'SDFNode':
         """Moves the object in space."""
@@ -324,6 +338,3 @@ class SDFNode(ABC):
         """Displaces the surface using a procedural noise function."""
         from .api.noise import DisplaceByNoise
         return DisplaceByNoise(self, scale, strength)
-
-    # --- Stubs for future functionality ---
-    def color(self, r, g, b): raise NotImplementedError("Materials not implemented yet.")

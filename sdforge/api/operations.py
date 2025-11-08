@@ -140,3 +140,7 @@ class Difference(SDFNode):
                 h = np.clip(0.5 - 0.5 * (d1 - d2) / k, 0.0, 1.0)
                 return d1 * (1.0 - h) + d2 * h + k * h * (1.0 - h)
             return _callable_smooth
+
+    def _collect_materials(self, materials: list):
+        self.a._collect_materials(materials)
+        self.b._collect_materials(materials)

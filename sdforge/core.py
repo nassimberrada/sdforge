@@ -55,6 +55,31 @@ class SDFNode(ABC):
         if not hasattr(self, 'child'):
             self.child = None
 
+    def _collect_params(self, params: dict):
+        """Recursively collects Param objects from the scene graph."""
+        from .params import Param
+        # Inspect all public attributes of the current object.
+        for attr_name in dir(self):
+            if attr_name.startswith('_') or attr_name in ['child', 'children']:
+                continue
+            try:
+                attr_val = getattr(self, attr_name)
+                if isinstance(attr_val, Param):
+                    params[attr_val.uniform_name] = attr_val
+                elif isinstance(attr_val, (list, tuple, np.ndarray)):
+                    for item in attr_val:
+                        if isinstance(item, Param):
+                            params[item.uniform_name] = item
+            except Exception:
+                continue # Gracefully skip attributes that might fail
+
+        # Recurse into children
+        if hasattr(self, 'child') and self.child:
+            self.child._collect_params(params)
+        if hasattr(self, 'children'):
+            for child in self.children:
+                child._collect_params(params)
+    
     @abstractmethod
     def to_glsl(self, ctx: GLSLContext) -> str:
         """

@@ -60,23 +60,23 @@ vec3 opShearYZ(vec3 p, vec2 shear) {
 
 vec3 opBendX(vec3 p, float k) {
     // Inverse bend
-    float c = cos(-k * p.x);
-    float s = sin(-k * p.x);
-    return vec3(p.x, c * p.y - s * p.z, s * p.y + c * p.z);
+    float c = cos(k * p.x);
+    float s = sin(k * p.x);
+    return vec3(p.x, c * p.y + s * p.z, -s * p.y + c * p.z);
 }
 
 vec3 opBendY(vec3 p, float k) {
     // Inverse bend
-    float c = cos(-k * p.y);
-    float s = sin(-k * p.y);
-    return vec3(c * p.x + s * p.z, p.y, -s * p.x + c * p.z);
+    float c = cos(k * p.y);
+    float s = sin(k * p.y);
+    return vec3(c * p.x - s * p.z, p.y, s * p.x + c * p.z);
 }
 
 vec3 opBendZ(vec3 p, float k) {
     // Inverse bend
-    float c = cos(-k * p.z);
-    float s = sin(-k * p.z);
-    return vec3(c * p.x - s * p.y, s * p.x + c * p.y, p.z);
+    float c = cos(k * p.z);
+    float s = sin(k * p.z);
+    return vec3(c * p.x + s * p.y, -s * p.x + c * p.y, p.z);
 }
 
 // --- Domain Repetition ---

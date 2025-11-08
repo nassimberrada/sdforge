@@ -1,6 +1,8 @@
 import numpy as np
 import re
 from ..core import SDFNode, GLSLContext
+from ..utils import _glsl_format
+from ..params import Param
 
 class Round(SDFNode):
     """Rounds the edges of a child object."""
@@ -12,9 +14,11 @@ class Round(SDFNode):
     def to_glsl(self, ctx: GLSLContext) -> str:
         ctx.dependencies.update(self.glsl_dependencies)
         child_var = self.child.to_glsl(ctx)
-        result_expr = f"opRound({child_var}, {float(self.radius)})"
+        result_expr = f"opRound({child_var}, {_glsl_format(self.radius)})"
         return ctx.new_variable('vec4', result_expr)
     def to_callable(self):
+        if isinstance(self.radius, (str, Param)):
+            raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
         child_callable = self.child.to_callable()
         return lambda p: child_callable(p) - self.radius
 
@@ -28,9 +32,11 @@ class Bevel(SDFNode):
     def to_glsl(self, ctx: GLSLContext) -> str:
         ctx.dependencies.update(self.glsl_dependencies)
         child_var = self.child.to_glsl(ctx)
-        result_expr = f"opBevel({child_var}, {float(self.thickness)})"
+        result_expr = f"opBevel({child_var}, {_glsl_format(self.thickness)})"
         return ctx.new_variable('vec4', result_expr)
     def to_callable(self):
+        if isinstance(self.thickness, (str, Param)):
+            raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
         child_callable = self.child.to_callable()
         return lambda p: np.abs(child_callable(p)) - self.thickness
 
@@ -44,9 +50,11 @@ class Extrude(SDFNode):
     def to_glsl(self, ctx: GLSLContext) -> str:
         ctx.dependencies.update(self.glsl_dependencies)
         child_var = self.child.to_glsl(ctx)
-        result_expr = f"opExtrude({child_var}, {ctx.p}, {float(self.height)})"
+        result_expr = f"opExtrude({child_var}, {ctx.p}, {_glsl_format(self.height)})"
         return ctx.new_variable('vec4', result_expr)
     def to_callable(self):
+        if isinstance(self.height, (str, Param)):
+            raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
         child_callable_2d = self.child.to_callable()
         h = self.height
         def _callable(p_3d):

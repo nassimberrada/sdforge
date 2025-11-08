@@ -1,6 +1,8 @@
 import numpy as np
 from functools import reduce
 from ..core import SDFNode, GLSLContext
+from ..utils import _glsl_format
+from ..params import Param
 
 class Union(SDFNode):
     """Represents the union of multiple SDF objects."""
@@ -16,8 +18,15 @@ class Union(SDFNode):
         
         child_vars = [c.to_glsl(ctx) for c in self.children]
         
-        if self.k > 1e-6:
-            op = lambda a, b: f"sUnion({a}, {b}, {float(self.k)})"
+        use_smooth = False
+        if isinstance(self.k, (int, float)):
+            if self.k > 1e-6:
+                use_smooth = True
+        else: # Param or string
+            use_smooth = True
+
+        if use_smooth:
+            op = lambda a, b: f"sUnion({a}, {b}, {_glsl_format(self.k)})"
         else:
             op = lambda a, b: f"opU({a}, {b})"
         
@@ -25,6 +34,9 @@ class Union(SDFNode):
         return ctx.new_variable('vec4', result_expr)
 
     def to_callable(self):
+        if isinstance(self.k, (str, Param)):
+            raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
+        
         child_callables = [c.to_callable() for c in self.children]
         k = self.k
 
@@ -55,14 +67,25 @@ class Intersection(SDFNode):
     def to_glsl(self, ctx: GLSLContext) -> str:
         ctx.dependencies.update(self.glsl_dependencies)
         child_vars = [c.to_glsl(ctx) for c in self.children]
-        if self.k > 1e-6:
-            op = lambda a, b: f"sIntersect({a}, {b}, {float(self.k)})"
+        
+        use_smooth = False
+        if isinstance(self.k, (int, float)):
+            if self.k > 1e-6:
+                use_smooth = True
+        else: # Param or string
+            use_smooth = True
+
+        if use_smooth:
+            op = lambda a, b: f"sIntersect({a}, {b}, {_glsl_format(self.k)})"
         else:
             op = lambda a, b: f"opI({a}, {b})"
         result_expr = reduce(op, child_vars)
         return ctx.new_variable('vec4', result_expr)
 
     def to_callable(self):
+        if isinstance(self.k, (str, Param)):
+            raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
+        
         child_callables = [c.to_callable() for c in self.children]
         k = self.k
         if k <= 1e-6:
@@ -89,13 +112,24 @@ class Difference(SDFNode):
     def to_glsl(self, ctx: GLSLContext) -> str:
         ctx.dependencies.update(self.glsl_dependencies)
         a_var, b_var = self.a.to_glsl(ctx), self.b.to_glsl(ctx)
-        if self.k > 1e-6:
-            result_expr = f"sDifference({a_var}, {b_var}, {float(self.k)})"
+        
+        use_smooth = False
+        if isinstance(self.k, (int, float)):
+            if self.k > 1e-6:
+                use_smooth = True
+        else: # Param or string
+            use_smooth = True
+        
+        if use_smooth:
+            result_expr = f"sDifference({a_var}, {b_var}, {_glsl_format(self.k)})"
         else:
             result_expr = f"opS({a_var}, {b_var})"
         return ctx.new_variable('vec4', result_expr)
 
     def to_callable(self):
+        if isinstance(self.k, (str, Param)):
+            raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
+            
         a_call, b_call = self.a.to_callable(), self.b.to_callable()
         k = self.k
         if k <= 1e-6:

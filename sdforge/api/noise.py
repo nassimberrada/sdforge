@@ -1,4 +1,6 @@
 from ..core import SDFNode, GLSLContext
+from ..utils import _glsl_format
+from ..params import Param
 
 class Displace(SDFNode):
     """Displaces the surface of a child object using a raw GLSL expression."""
@@ -24,5 +26,14 @@ class DisplaceByNoise(Displace):
     glsl_dependencies = {"shaping", "noise"}
 
     def __init__(self, child: SDFNode, scale: float = 10.0, strength: float = 0.1):
-        glsl_expr = f"snoise(p * {float(scale)}) * {float(strength)}"
+        glsl_expr = f"snoise(p * {_glsl_format(scale)}) * {_glsl_format(strength)}"
         super().__init__(child, glsl_expr)
+        self.scale = scale
+        self.strength = strength
+
+    def to_callable(self):
+        is_dynamic = isinstance(self.scale, (str, Param)) or isinstance(self.strength, (str, Param))
+        if is_dynamic:
+            raise TypeError("Cannot create a callable for an object with animated or interactive parameters.")
+        # Even with static values, noise is GPU-only and has no NumPy equivalent.
+        raise TypeError("Cannot create a callable for an object with procedural noise displacement.")

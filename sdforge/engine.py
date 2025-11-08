@@ -8,7 +8,6 @@ from .core import SDFNode, GLSLContext
 from .loader import get_glsl_definitions
 from .api.camera import Camera
 
-# NEW: Add watchdog imports
 try:
     from watchdog.observers import Observer
     from watchdog.events import FileSystemEventHandler
@@ -47,9 +46,9 @@ class NativeRenderer:
         self.ctx = None
         self.program = None
         self.vao = None
-        self.vbo = None # NEW: Make VBO an instance attribute
+        self.vbo = None
         self.uniforms = {}
-        # NEW ATTRIBUTES for hot-reloading
+        self.params = {}
         self.script_path = os.path.abspath(sys.argv[0])
         self.reload_pending = False
         
@@ -105,9 +104,11 @@ class NativeRenderer:
         
     def _compile_shader(self):
         """Compiles the full fragment shader for the current scene."""
-        # This helper function encapsulates the shader string generation
         self.uniforms = {}
         self.sdf_obj._collect_uniforms(self.uniforms)
+        
+        self.params = {}
+        self.sdf_obj._collect_params(self.params)
         
         scene_code = SceneCompiler().compile(self.sdf_obj)
         camera_code = get_glsl_definitions(frozenset(['camera']))
@@ -119,9 +120,10 @@ class NativeRenderer:
             camera_logic_glsl = f"cameraStatic(st, {pos}, {tgt}, {float(cam.zoom)}, ro, rd);"
         else:
             camera_logic_glsl = "cameraOrbit(st, u_mouse.xy, u_resolution, 1.0, ro, rd);"
-            
-        custom_uniforms_glsl = "\n".join([f"uniform float {name};" for name in self.uniforms.keys()])
-
+        
+        all_uniforms = list(self.uniforms.keys()) + [p.uniform_name for p in self.params.values()]
+        custom_uniforms_glsl = "\n".join([f"uniform float {name};" for name in all_uniforms])
+        
         vertex_shader = """
             #version 330 core
             in vec2 in_vert;
@@ -212,10 +214,9 @@ class NativeRenderer:
         self.vbo = self.ctx.buffer(vertices) # Assign to instance
         self.vao = self.ctx.simple_vertex_array(self.program, self.vbo, 'in_vert')
         
-        self._start_watcher() # NEW: Start the file watcher
+        self._start_watcher()
 
         while not glfw.window_should_close(self.window):
-            # NEW: Check for reload flag at start of loop
             if self.reload_pending:
                 self._reload_script()
                 self.reload_pending = False
@@ -234,6 +235,11 @@ class NativeRenderer:
             
             for name, value in self.uniforms.items():
                 try: self.program[name].value = float(value)
+                except KeyError: pass
+            
+            # NEW: Upload Param uniforms
+            for p in self.params.values():
+                try: self.program[p.uniform_name].value = p.value
                 except KeyError: pass
 
             self.ctx.clear(0.1, 0.12, 0.15)

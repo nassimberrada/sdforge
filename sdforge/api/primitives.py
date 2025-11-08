@@ -1,5 +1,7 @@
 import numpy as np
 from ..core import SDFNode, GLSLContext
+from ..utils import _glsl_format
+from ..params import Param
 
 class Sphere(SDFNode):
     """Represents a sphere primitive."""
@@ -11,10 +13,12 @@ class Sphere(SDFNode):
 
     def to_glsl(self, ctx: GLSLContext) -> str:
         ctx.dependencies.update(self.glsl_dependencies)
-        dist_expr = f"sdSphere({ctx.p}, {float(self.r)})"
+        dist_expr = f"sdSphere({ctx.p}, {_glsl_format(self.r)})"
         return ctx.new_variable('vec4', f"vec4({dist_expr}, -1.0, 0.0, 0.0)")
 
     def to_callable(self):
+        if isinstance(self.r, (str, Param)):
+            raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
         r_val = self.r
         def _callable(points: np.ndarray) -> np.ndarray:
             return np.linalg.norm(points, axis=-1) - r_val
@@ -30,24 +34,40 @@ class Box(SDFNode):
 
     def __init__(self, size: tuple = (1.0, 1.0, 1.0), radius: float = 0.0):
         super().__init__()
-        self.size = np.array(size, dtype=float)
-        self.radius = float(radius)
+        self.size = size
+        self.radius = radius
 
     def to_glsl(self, ctx: GLSLContext) -> str:
         ctx.dependencies.update(self.glsl_dependencies)
         
-        half_size = self.size / 2.0
-        size_vec = f"vec3({half_size[0]}, {half_size[1]}, {half_size[2]})"
+        s = []
+        for v in self.size:
+            if isinstance(v, (int, float)):
+                s.append(_glsl_format(v / 2.0))
+            else:
+                s.append(f"({_glsl_format(v)} / 2.0)")
+        size_vec = f"vec3({s[0]}, {s[1]}, {s[2]})"
         
-        if self.radius > 1e-6:
-            dist_expr = f"sdRoundedBox({ctx.p}, {size_vec}, {self.radius})"
+        use_rounding = False
+        if isinstance(self.radius, (int, float)):
+            if self.radius > 1e-6:
+                use_rounding = True
+        else: # Param or string
+            use_rounding = True
+        
+        if use_rounding:
+            dist_expr = f"sdRoundedBox({ctx.p}, {size_vec}, {_glsl_format(self.radius)})"
         else:
             dist_expr = f"sdBox({ctx.p}, {size_vec})"
             
         return ctx.new_variable('vec4', f"vec4({dist_expr}, -1.0, 0.0, 0.0)")
 
     def to_callable(self):
-        half_size = self.size / 2.0
+        is_dynamic = any(isinstance(v, (str, Param)) for v in self.size) or isinstance(self.radius, (str, Param))
+        if is_dynamic:
+            raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
+        
+        half_size = np.array(self.size) / 2.0
         radius = self.radius
         
         def _callable(points: np.ndarray) -> np.ndarray:
@@ -64,7 +84,7 @@ def box(size=1.0, radius: float = 0.0, x: float = None, y: float = None, z: floa
     """Creates a box, optionally with rounded edges."""
     if x is not None and y is not None and z is not None:
         size = (x, y, z)
-    elif isinstance(size, (int, float)):
+    elif isinstance(size, (int, float, str, Param)):
         size = (size, size, size)
     return Box(size=tuple(size), radius=radius)
 
@@ -78,10 +98,12 @@ class Torus(SDFNode):
         
     def to_glsl(self, ctx: GLSLContext) -> str:
         ctx.dependencies.update(self.glsl_dependencies)
-        dist_expr = f"sdTorus({ctx.p}, vec2({float(self.major)}, {float(self.minor)}))"
+        dist_expr = f"sdTorus({ctx.p}, vec2({_glsl_format(self.major)}, {_glsl_format(self.minor)}))"
         return ctx.new_variable('vec4', f"vec4({dist_expr}, -1.0, 0.0, 0.0)")
 
     def to_callable(self):
+        if isinstance(self.major, (str, Param)) or isinstance(self.minor, (str, Param)):
+            raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
         major, minor = self.major, self.minor
         def _callable(points: np.ndarray) -> np.ndarray:
             q = np.array([np.linalg.norm(points[:, [0, 2]], axis=-1) - major, points[:, 1]]).T
@@ -103,7 +125,7 @@ class Line(SDFNode):
 
     def to_glsl(self, ctx: GLSLContext) -> str:
         ctx.dependencies.update(self.glsl_dependencies)
-        a, b, r = self.a, self.b, float(self.radius)
+        a, b, r = self.a, self.b, _glsl_format(self.radius)
         a_str = f"vec3({a[0]},{a[1]},{a[2]})"
         b_str = f"vec3({b[0]},{b[1]},{b[2]})"
         func = "sdCapsule" if self.rounded_caps else "sdCappedCylinder"
@@ -111,6 +133,8 @@ class Line(SDFNode):
         return ctx.new_variable('vec4', f"vec4({dist_expr}, -1.0, 0.0, 0.0)")
 
     def to_callable(self):
+        if isinstance(self.radius, (str, Param)):
+            raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
         a, b, r = self.a, self.b, self.radius
         if self.rounded_caps:
             def _callable(points: np.ndarray) -> np.ndarray:
@@ -146,13 +170,26 @@ class Cylinder(SDFNode):
 
     def to_glsl(self, ctx: GLSLContext) -> str:
         ctx.dependencies.update(self.glsl_dependencies)
-        if self.round_radius > 1e-6:
-            dist_expr = f"sdRoundedCylinder({ctx.p}, {float(self.radius)}, {float(self.round_radius)}, {float(self.height)})"
+        
+        use_rounding = False
+        if isinstance(self.round_radius, (int, float)):
+            if self.round_radius > 1e-6:
+                use_rounding = True
+        else: # Param or string
+            use_rounding = True
+
+        if use_rounding:
+            dist_expr = f"sdRoundedCylinder({ctx.p}, {_glsl_format(self.radius)}, {_glsl_format(self.round_radius)}, {_glsl_format(self.height)})"
         else:
-            dist_expr = f"sdCylinder({ctx.p}, vec2({float(self.radius)}, {float(self.height) / 2.0}))"
+            h_half = _glsl_format(self.height / 2.0) if not isinstance(self.height, (str, Param)) else f"({_glsl_format(self.height)})/2.0"
+            dist_expr = f"sdCylinder({ctx.p}, vec2({_glsl_format(self.radius)}, {h_half}))"
         return ctx.new_variable('vec4', f"vec4({dist_expr}, -1.0, 0.0, 0.0)")
 
     def to_callable(self):
+        is_dynamic = isinstance(self.radius, (str, Param)) or isinstance(self.height, (str, Param)) or isinstance(self.round_radius, (str, Param))
+        if is_dynamic:
+            raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
+
         radius, height, round_radius = self.radius, self.height, self.round_radius
         if round_radius > 1e-6:
             def _callable_rounded(points: np.ndarray) -> np.ndarray:
@@ -182,14 +219,26 @@ class Cone(SDFNode):
         
     def to_glsl(self, ctx: GLSLContext) -> str:
         ctx.dependencies.update(self.glsl_dependencies)
-        h, r1, r2 = float(self.height), float(self.radius1), float(self.radius2)
-        if r2 > 1e-6:
-            dist_expr = f"sdCappedCone({ctx.p}, {h}, {r1}, {r2})"
+        h, r1 = _glsl_format(self.height), _glsl_format(self.radius1)
+        
+        use_capped = False
+        if isinstance(self.radius2, (int, float)):
+            if self.radius2 > 1e-6:
+                use_capped = True
+        else:
+            use_capped = True
+            
+        if use_capped:
+            dist_expr = f"sdCappedCone({ctx.p}, {h}, {r1}, {_glsl_format(self.radius2)})"
         else:
             dist_expr = f"sdCone({ctx.p}, vec2({h}, {r1}))"
         return ctx.new_variable('vec4', f"vec4({dist_expr}, -1.0, 0.0, 0.0)")
 
     def to_callable(self):
+        is_dynamic = isinstance(self.height, (str, Param)) or isinstance(self.radius1, (str, Param)) or isinstance(self.radius2, (str, Param))
+        if is_dynamic:
+            raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
+            
         h, r1, r2 = self.height, self.radius1, self.radius2
         def _callable_capped(points: np.ndarray) -> np.ndarray:
             q_x = np.linalg.norm(points[:, [0, 2]], axis=-1)
@@ -222,10 +271,12 @@ class Plane(SDFNode):
     def to_glsl(self, ctx: GLSLContext) -> str:
         ctx.dependencies.update(self.glsl_dependencies)
         n = self.normal
-        dist_expr = f"sdPlane({ctx.p}, vec4({n[0]}, {n[1]}, {n[2]}, {float(self.offset)}))"
+        dist_expr = f"sdPlane({ctx.p}, vec4({n[0]}, {n[1]}, {n[2]}, {_glsl_format(self.offset)}))"
         return ctx.new_variable('vec4', f"vec4({dist_expr}, -1.0, 0.0, 0.0)")
 
     def to_callable(self):
+        if isinstance(self.offset, (str, Param)):
+            raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
         normal, offset = self.normal, self.offset
         def _callable(points: np.ndarray) -> np.ndarray:
             return np.dot(points, normal) + offset
@@ -245,10 +296,12 @@ class Octahedron(SDFNode):
         
     def to_glsl(self, ctx: GLSLContext) -> str:
         ctx.dependencies.update(self.glsl_dependencies)
-        dist_expr = f"sdOctahedron({ctx.p}, {float(self.size)})"
+        dist_expr = f"sdOctahedron({ctx.p}, {_glsl_format(self.size)})"
         return ctx.new_variable('vec4', f"vec4({dist_expr}, -1.0, 0.0, 0.0)")
 
     def to_callable(self):
+        if isinstance(self.size, (str, Param)):
+            raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
         size = self.size
         def _callable(points: np.ndarray) -> np.ndarray:
             return (np.sum(np.abs(points), axis=-1) - size) * 0.57735027
@@ -268,11 +321,13 @@ class Ellipsoid(SDFNode):
         
     def to_glsl(self, ctx: GLSLContext) -> str:
         ctx.dependencies.update(self.glsl_dependencies)
-        r = self.radii
+        r = [_glsl_format(v) for v in self.radii]
         dist_expr = f"sdEllipsoid({ctx.p}, vec3({r[0]}, {r[1]}, {r[2]}))"
         return ctx.new_variable('vec4', f"vec4({dist_expr}, -1.0, 0.0, 0.0)")
 
     def to_callable(self):
+        if any(isinstance(v, (str, Param)) for v in self.radii):
+            raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
         radii = self.radii
         def _callable(points: np.ndarray) -> np.ndarray:
             k0 = np.linalg.norm(points / radii, axis=-1)
@@ -296,10 +351,12 @@ class Circle(SDFNode):
 
     def to_glsl(self, ctx: GLSLContext) -> str:
         ctx.dependencies.update(self.glsl_dependencies)
-        dist_expr = f"sdCircle({ctx.p}.xy, {float(self.r)})"
+        dist_expr = f"sdCircle({ctx.p}.xy, {_glsl_format(self.r)})"
         return ctx.new_variable('vec4', f"vec4({dist_expr}, -1.0, 0.0, 0.0)")
 
     def to_callable(self):
+        if isinstance(self.r, (str, Param)):
+            raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
         r_val = self.r
         def _callable(points: np.ndarray) -> np.ndarray:
             return np.linalg.norm(points[:, :2], axis=-1) - r_val
@@ -319,12 +376,14 @@ class Rectangle(SDFNode):
 
     def to_glsl(self, ctx: GLSLContext) -> str:
         ctx.dependencies.update(self.glsl_dependencies)
-        half_size = self.size / 2.0
-        size_vec = f"vec2({half_size[0]}, {half_size[1]})"
+        s = [_glsl_format(v) for v in self.size]
+        size_vec = f"vec2({s[0]}/2.0, {s[1]}/2.0)"
         dist_expr = f"sdRectangle({ctx.p}.xy, {size_vec})"
         return ctx.new_variable('vec4', f"vec4({dist_expr}, -1.0, 0.0, 0.0)")
 
     def to_callable(self):
+        if any(isinstance(v, (str, Param)) for v in self.size):
+            raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
         half_size = self.size / 2.0
         def _callable(points: np.ndarray) -> np.ndarray:
             q = np.abs(points[:, :2]) - half_size
@@ -333,6 +392,6 @@ class Rectangle(SDFNode):
 
 def rectangle(size=1.0) -> SDFNode:
     """Creates a 2D rectangle in the XY plane."""
-    if isinstance(size, (int, float)):
+    if isinstance(size, (int, float, str, Param)):
         size = (size, size)
     return Rectangle(tuple(size))

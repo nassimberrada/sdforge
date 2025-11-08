@@ -19,3 +19,6 @@ from .api.primitives import (
 
 # --- Custom GLSL ---
 from .api.forge import Forge
+
+# --- Interactive UI ---
+from .params import Param

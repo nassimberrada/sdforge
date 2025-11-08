@@ -50,7 +50,9 @@ def test_save_frame_api(mock_render):
     s.save_frame('test.png', time=1.23)
     mock_render.assert_called_once_with(
         save_frame='test.png', 
-        watch=False, 
+        watch=False,
+        camera=None,
+        light=None,
         time=1.23
     )
 

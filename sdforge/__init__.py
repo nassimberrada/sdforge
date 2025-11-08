@@ -1,5 +1,5 @@
 # --- Core Components ---
-from .core import SDFNode
+from .core import SDFNode, X, Y, Z
 
 # --- Primitives ---
 from .api.primitives import (

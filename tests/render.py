@@ -2,7 +2,7 @@ import pytest
 import os
 from unittest.mock import MagicMock, patch
 from sdforge import sphere
-from sdforge.engine import NativeRenderer
+from sdforge.render import NativeRenderer
 from sdforge.api.primitives import Sphere 
 
 # We need the actual event handler class for one of the tests
@@ -49,7 +49,7 @@ def test_change_handler_sets_reload_flag():
 
 
 # THE FIX: Remove the patch decorator for simple_vertex_array
-@patch('sdforge.engine.NativeRenderer._compile_shader')
+@patch('sdforge.render.NativeRenderer._compile_shader')
 def test_reload_logic_updates_scene(mock_compile, tmp_path):
     """
     Tests the _reload_script method to ensure it correctly loads a new

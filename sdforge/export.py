@@ -15,7 +15,7 @@ def assemble_standalone_shader(sdf_obj) -> str:
     Assembles a complete, self-contained GLSL fragment shader for an SDF object.
     The resulting shader can be used in other applications like Godot or Three.js.
     """
-    from .engine import SceneCompiler
+    from .render import SceneCompiler
 
     # 1. Collect Materials, Uniforms, and Params
     materials = []

@@ -1,6 +1,6 @@
 import pytest
 from sdforge import sphere
-from sdforge.engine import SceneCompiler
+from sdforge.render import SceneCompiler
 from tests.conftest import requires_glsl_validator
 
 # --- API and Compilation Tests ---

@@ -1,7 +1,7 @@
 import pytest
 import numpy as np
 from sdforge import SDFNode, sphere, box, torus, line, cylinder, cone, plane, octahedron, ellipsoid, circle, rectangle
-from sdforge.engine import SceneCompiler
+from sdforge.render import SceneCompiler
 from tests.conftest import requires_glsl_validator
 
 # Import example functions and their expected return types for parametrization

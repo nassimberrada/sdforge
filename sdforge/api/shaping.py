@@ -2,7 +2,7 @@ import numpy as np
 import re
 from ..core import SDFNode, GLSLContext
 from ..utils import _glsl_format
-from ..params import Param
+from .params import Param
 
 class Round(SDFNode):
     """Rounds the edges of a child object."""

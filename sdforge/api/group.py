@@ -2,7 +2,7 @@ import numpy as np
 from functools import reduce
 from ..core import SDFNode, GLSLContext
 from ..utils import _glsl_format
-from ..params import Param
+from .params import Param
 from .operations import Union
 
 class Group(SDFNode):

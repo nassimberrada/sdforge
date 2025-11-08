@@ -57,7 +57,7 @@ class SDFNode(ABC):
 
     def _collect_params(self, params: dict):
         """Recursively collects Param objects from the scene graph."""
-        from .params import Param
+        from .api.params import Param
         # Inspect all public attributes of the current object.
         for attr_name in dir(self):
             if attr_name.startswith('_') or attr_name in ['child', 'children']:
@@ -106,7 +106,7 @@ class SDFNode(ABC):
 
     def render(self, camera=None, light=None, debug=None, **kwargs):
         """Renders the SDF object in a live-updating viewer."""
-        from .engine import render as render_func
+        from .render import render as render_func
         render_func(self, camera=camera, light=light, debug=debug, **kwargs)
 
     def save(self, path, bounds=None, samples=2**22, verbose=True, algorithm='marching_cubes', adaptive=False, vertex_colors=False):

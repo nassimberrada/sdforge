@@ -1,7 +1,7 @@
 import pytest
 import numpy as np
 from sdforge import sphere, box, X, Y, Z
-from sdforge.engine import SceneCompiler
+from sdforge.render import SceneCompiler
 from tests.conftest import requires_glsl_validator
 
 @pytest.fixture

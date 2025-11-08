@@ -1,6 +1,6 @@
 from ..core import SDFNode, GLSLContext
 from ..utils import _glsl_format
-from ..params import Param
+from .params import Param
 
 class Displace(SDFNode):
     """Displaces the surface of a child object using a raw GLSL expression."""

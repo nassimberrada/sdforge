@@ -24,7 +24,7 @@ from .api.primitives import (
 from .api.forge import Forge
 
 # --- Interactive UI ---
-from .params import Param
+from .api.params import Param
 
 # --- Operations and Grouping ---
 from .api.group import Group

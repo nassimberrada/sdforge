@@ -32,7 +32,7 @@ class _Transform(SDFNode):
 
 class Translate(_Transform):
     """Translates a child object."""
-    glsl_dependencies = {"opTranslate"}
+    glsl_dependencies = {"transforms"}
 
     def __init__(self, child: SDFNode, offset: tuple):
         super().__init__(child)
@@ -50,7 +50,7 @@ class Translate(_Transform):
         
 class Scale(SDFNode):
     """Scales a child object."""
-    glsl_dependencies = {"opScale"}
+    glsl_dependencies = {"transforms"}
 
     def __init__(self, child: SDFNode, factor):
         super().__init__()
@@ -84,7 +84,7 @@ class Scale(SDFNode):
 
 class Rotate(_Transform):
     """Rotates a child object around a cardinal axis."""
-    glsl_dependencies = {"opRotateX", "opRotateY", "opRotateZ"}
+    glsl_dependencies = {"transforms"}
 
     def __init__(self, child: SDFNode, axis: tuple, angle: float):
         super().__init__(child)
@@ -130,7 +130,7 @@ class Orient(_Transform):
 
 class Twist(_Transform):
     """Twists a child object."""
-    glsl_dependencies = {"opTwist"}
+    glsl_dependencies = {"transforms"}
     def __init__(self, child: SDFNode, k: float):
         super().__init__(child)
         self.k = k
@@ -147,7 +147,7 @@ class Twist(_Transform):
 
 class Bend(_Transform):
     """Bends a child object along a cardinal axis."""
-    glsl_dependencies = {"opBendX", "opBendY", "opBendZ"}
+    glsl_dependencies = {"transforms"}
     def __init__(self, child: SDFNode, axis: np.ndarray, k: float):
         super().__init__(child)
         self.axis = axis
@@ -182,7 +182,7 @@ class Bend(_Transform):
 
 class Repeat(_Transform):
     """Repeats a child object infinitely."""
-    glsl_dependencies = {"opRepeat"}
+    glsl_dependencies = {"transforms"}
     def __init__(self, child, spacing):
         super().__init__(child)
         self.spacing = np.array(spacing)
@@ -202,7 +202,7 @@ class Repeat(_Transform):
 
 class LimitedRepeat(_Transform):
     """Repeats a child object a limited number of times."""
-    glsl_dependencies = {"opLimitedRepeat"}
+    glsl_dependencies = {"transforms"}
     def __init__(self, child, spacing, limits):
         super().__init__(child)
         self.spacing = np.array(spacing)
@@ -229,7 +229,7 @@ class LimitedRepeat(_Transform):
 
 class PolarRepeat(_Transform):
     """Repeats a child object in a circle."""
-    glsl_dependencies = {"opPolarRepeat"}
+    glsl_dependencies = {"transforms"}
     def __init__(self, child, repetitions):
         super().__init__(child)
         self.repetitions = repetitions
@@ -248,7 +248,7 @@ class PolarRepeat(_Transform):
 
 class Mirror(_Transform):
     """Mirrors a child object."""
-    glsl_dependencies = {"opMirror"}
+    glsl_dependencies = {"transforms"}
     def __init__(self, child, axes):
         super().__init__(child)
         self.axes = np.array(axes)

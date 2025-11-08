@@ -2,7 +2,7 @@ from ..core import SDFNode, GLSLContext
 
 class Displace(SDFNode):
     """Displaces the surface of a child object using a raw GLSL expression."""
-    glsl_dependencies = {"opDisplace"}
+    glsl_dependencies = {"shaping"}
 
     def __init__(self, child: SDFNode, displacement_glsl: str):
         super().__init__()
@@ -21,7 +21,7 @@ class Displace(SDFNode):
 
 class DisplaceByNoise(Displace):
     """Displaces the surface of a child object using a procedural noise function."""
-    glsl_dependencies = {"opDisplace", "snoise"}
+    glsl_dependencies = {"shaping", "noise"}
 
     def __init__(self, child: SDFNode, scale: float = 10.0, strength: float = 0.1):
         glsl_expr = f"snoise(p * {float(scale)}) * {float(strength)}"

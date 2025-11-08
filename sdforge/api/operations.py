@@ -4,7 +4,7 @@ from ..core import SDFNode, GLSLContext
 
 class Union(SDFNode):
     """Represents the union of multiple SDF objects."""
-    glsl_dependencies = {"opU", "sUnion"}
+    glsl_dependencies = {"operations"}
 
     def __init__(self, children: list, k: float = 0.0):
         super().__init__()
@@ -14,10 +14,8 @@ class Union(SDFNode):
     def to_glsl(self, ctx: GLSLContext) -> str:
         ctx.dependencies.update(self.glsl_dependencies)
         
-        # Recursively get the GLSL variable names for all children
         child_vars = [c.to_glsl(ctx) for c in self.children]
         
-        # Fold the operation over the children
         if self.k > 1e-6:
             op = lambda a, b: f"sUnion({a}, {b}, {float(self.k)})"
         else:
@@ -32,12 +30,10 @@ class Union(SDFNode):
 
         if k <= 1e-6:
             def _callable(points: np.ndarray) -> np.ndarray:
-                # Simple minimum for standard union
                 return reduce(np.minimum, [c(points) for c in child_callables])
             return _callable
         else:
             def _callable_smooth(points: np.ndarray) -> np.ndarray:
-                # Smooth union logic
                 dists = [c(points) for c in child_callables]
                 res = dists[0]
                 for i in range(1, len(dists)):
@@ -49,7 +45,7 @@ class Union(SDFNode):
 
 class Intersection(SDFNode):
     """Represents the intersection of multiple SDF objects."""
-    glsl_dependencies = {"opI", "sIntersect"}
+    glsl_dependencies = {"operations"}
 
     def __init__(self, children: list, k: float = 0.0):
         super().__init__()
@@ -84,7 +80,7 @@ class Intersection(SDFNode):
 
 class Difference(SDFNode):
     """Represents the subtraction of one SDF object from another."""
-    glsl_dependencies = {"opS", "sDifference", "opI"} # opI is used by opS
+    glsl_dependencies = {"operations"}
 
     def __init__(self, a: SDFNode, b: SDFNode, k: float = 0.0):
         super().__init__()

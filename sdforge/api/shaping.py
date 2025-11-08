@@ -4,7 +4,7 @@ from ..core import SDFNode, GLSLContext
 
 class Round(SDFNode):
     """Rounds the edges of a child object."""
-    glsl_dependencies = {"opRound"}
+    glsl_dependencies = {"shaping"}
     def __init__(self, child: SDFNode, radius: float):
         super().__init__()
         self.child = child
@@ -20,7 +20,7 @@ class Round(SDFNode):
 
 class Bevel(SDFNode):
     """Creates a shell or outline of a child object."""
-    glsl_dependencies = {"opBevel"}
+    glsl_dependencies = {"shaping"}
     def __init__(self, child: SDFNode, thickness: float):
         super().__init__()
         self.child = child
@@ -36,7 +36,7 @@ class Bevel(SDFNode):
 
 class Extrude(SDFNode):
     """Extrudes a 2D SDF shape."""
-    glsl_dependencies = {"opExtrude"}
+    glsl_dependencies = {"shaping"}
     def __init__(self, child: SDFNode, height: float):
         super().__init__()
         self.child = child

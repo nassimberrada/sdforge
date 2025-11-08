@@ -1,59 +1,32 @@
-import re
 from pathlib import Path
 from functools import lru_cache
 
-# A dictionary to hold all parsed GLSL functions, mapping name -> full_code
-GLSL_FUNCTIONS = {}
-
-def parse_glsl_file(content: str):
-    """Parses a GLSL file into a dictionary of functions."""
-    # Regex to find function signatures (return type, name, args) and their bodies.
-    # This is more robust against comments and newlines than the previous version.
-    # Group 1: Return type and function name (e.g., "float sdSphere")
-    # Group 2: Arguments (e.g., "in vec3 p, in float r")
-    # Group 3: Function body
-    func_pattern = re.compile(
-        # Catches `return_type name`
-        r"([ \t\w]+[ \t]+(\w+)\s*"
-        # Catches `(args)`
-        r"\([^)]*\))\s*"
-        # Catches `{body}`
-        r"\{([\s\S]*?)\}", re.MULTILINE
-    )
-    for match in func_pattern.finditer(content):
-        signature = match.group(1).strip()
-        name = match.group(2)
-        body = match.group(3).strip()
-        
-        # Skip lines that are just comments, a potential failure mode for simple regex
-        if signature.strip().startswith(('//', '/*')):
-            continue
-
-        full_code = f"{signature} {{\n    {body}\n}}"
-        GLSL_FUNCTIONS[name] = full_code
+# A dictionary to hold all loaded GLSL file contents, mapping stem -> full_code
+GLSL_SOURCES = {}
 
 def load_all_glsl():
-    """Finds and parses all .glsl files in the glsl/ directory."""
+    """Finds and loads all .glsl files into a dictionary."""
+    if GLSL_SOURCES:  # Only load once
+        return
+
     glsl_dir = Path(__file__).parent / 'glsl'
     if not glsl_dir.exists(): return
 
     for glsl_file in glsl_dir.glob('*.glsl'):
         with open(glsl_file, 'r') as f:
-            parse_glsl_file(f.read())
+            # Key is the filename without extension (e.g., 'noise')
+            GLSL_SOURCES[glsl_file.stem] = f.read()
 
 @lru_cache(maxsize=None)
-def get_glsl_definitions(required_names: frozenset) -> str:
+def get_glsl_definitions(required_files: frozenset) -> str:
     """
-    Given a set of required function names, returns a single string
-    containing all necessary GLSL function definitions.
+    Given a set of required file stems, returns a single string
+    containing all necessary GLSL code blocks.
     """
-    if not GLSL_FUNCTIONS:
+    if not GLSL_SOURCES:
         load_all_glsl()
-
-    # In the future, this is where transitive dependency resolution would happen.
-    # For now, it's a direct lookup.
     
     code_blocks = [
-        GLSL_FUNCTIONS[name] for name in required_names if name in GLSL_FUNCTIONS
+        GLSL_SOURCES[stem] for stem in required_files if stem in GLSL_SOURCES
     ]
     return "\n\n".join(code_blocks)

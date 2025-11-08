@@ -3,8 +3,7 @@ from ..core import SDFNode, GLSLContext
 
 class Sphere(SDFNode):
     """Represents a sphere primitive."""
-    
-    glsl_dependencies = {"sdSphere"}
+    glsl_dependencies = {"primitives"}
 
     def __init__(self, r: float = 1.0):
         super().__init__()
@@ -27,7 +26,7 @@ def sphere(r: float = 1.0) -> SDFNode:
 
 class Box(SDFNode):
     """Represents a box primitive, possibly with rounded edges."""
-    glsl_dependencies = {"sdBox", "sdRoundedBox"}
+    glsl_dependencies = {"primitives"}
 
     def __init__(self, size: tuple = (1.0, 1.0, 1.0), radius: float = 0.0):
         super().__init__()
@@ -71,7 +70,7 @@ def box(size=1.0, radius: float = 0.0, x: float = None, y: float = None, z: floa
 
 class Torus(SDFNode):
     """Represents a torus primitive."""
-    glsl_dependencies = {"sdTorus"}
+    glsl_dependencies = {"primitives"}
 
     def __init__(self, major: float = 1.0, minor: float = 0.25):
         super().__init__()
@@ -95,7 +94,7 @@ def torus(major: float = 1.0, minor: float = 0.25) -> SDFNode:
 
 class Line(SDFNode):
     """Represents a line segment primitive with a radius."""
-    glsl_dependencies = {"sdCapsule", "sdCappedCylinder"}
+    glsl_dependencies = {"primitives"}
 
     def __init__(self, a, b, radius: float = 0.1, rounded_caps: bool = True):
         super().__init__()
@@ -139,7 +138,7 @@ def line(a, b, radius: float = 0.1, rounded_caps: bool = True) -> SDFNode:
 
 class Cylinder(SDFNode):
     """Represents a cylinder primitive, possibly with rounded edges."""
-    glsl_dependencies = {"sdCylinder", "sdRoundedCylinder"}
+    glsl_dependencies = {"primitives"}
 
     def __init__(self, radius: float = 0.5, height: float = 1.0, round_radius: float = 0.0):
         super().__init__()
@@ -175,7 +174,7 @@ def cylinder(radius: float = 0.5, height: float = 1.0, round_radius: float = 0.0
 
 class Cone(SDFNode):
     """Represents a cone or frustum primitive."""
-    glsl_dependencies = {"sdCone", "sdCappedCone"}
+    glsl_dependencies = {"primitives"}
 
     def __init__(self, height: float = 1.0, radius1: float = 0.5, radius2: float = 0.0):
         super().__init__()
@@ -214,7 +213,7 @@ def cone(height: float = 1.0, radius1: float = 0.5, radius2: float = 0.0) -> SDF
 
 class Plane(SDFNode):
     """Represents an infinite plane."""
-    glsl_dependencies = {"sdPlane"}
+    glsl_dependencies = {"primitives"}
 
     def __init__(self, normal, offset: float = 0.0):
         super().__init__()
@@ -238,7 +237,7 @@ def plane(normal, offset: float = 0.0) -> SDFNode:
 
 class Octahedron(SDFNode):
     """Represents an octahedron."""
-    glsl_dependencies = {"sdOctahedron"}
+    glsl_dependencies = {"primitives"}
 
     def __init__(self, size: float = 1.0):
         super().__init__()
@@ -261,7 +260,7 @@ def octahedron(size: float = 1.0) -> SDFNode:
 
 class Ellipsoid(SDFNode):
     """Represents an ellipsoid."""
-    glsl_dependencies = {"sdEllipsoid"}
+    glsl_dependencies = {"primitives"}
 
     def __init__(self, radii: tuple = (1.0, 0.5, 0.5)):
         super().__init__()
@@ -289,7 +288,7 @@ def ellipsoid(radii=(1.0, 0.5, 0.5), x: float = None, y: float = None, z: float 
     
 class Circle(SDFNode):
     """Represents a 2D circle primitive for extrusion or revolution."""
-    glsl_dependencies = {"sdCircle"}
+    glsl_dependencies = {"primitives"}
 
     def __init__(self, r: float = 1.0):
         super().__init__()
@@ -312,7 +311,7 @@ def circle(r: float = 1.0) -> SDFNode:
 
 class Rectangle(SDFNode):
     """Represents a 2D rectangle primitive for extrusion or revolution."""
-    glsl_dependencies = {"sdRectangle"}
+    glsl_dependencies = {"primitives"}
 
     def __init__(self, size: tuple = (1.0, 1.0)):
         super().__init__()

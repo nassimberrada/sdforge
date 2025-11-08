@@ -53,7 +53,34 @@ class SDFNode(ABC):
         from .engine import render as render_func
         render_func(self, **kwargs)
 
+    # --- Boolean Operations ---
+    def union(self, *others, k: float = 0.0) -> 'SDFNode':
+        """Creates a union of this object and others, with optional smoothness."""
+        from .api.operations import Union
+        return Union(children=[self] + list(others), k=k)
+
+    def intersection(self, *others, k: float = 0.0) -> 'SDFNode':
+        """Creates an intersection of this object and others, with optional smoothness."""
+        from .api.operations import Intersection
+        return Intersection(children=[self] + list(others), k=k)
+
+    def difference(self, other, k: float = 0.0) -> 'SDFNode':
+        """Subtracts another object from this one, with optional smoothness."""
+        from .api.operations import Difference
+        return Difference(self, other, k=k)
+
+    def __or__(self, other):
+        """Operator overload for a simple union: `shape1 | shape2`."""
+        return self.union(other)
+
+    def __and__(self, other):
+        """Operator overload for a simple intersection: `shape1 & shape2`."""
+        return self.intersection(other)
+
+    def __sub__(self, other):
+        """Operator overload for a simple difference: `shape1 - shape2`."""
+        return self.difference(other)
+
     # --- Stubs for future functionality ---
     def translate(self, offset): raise NotImplementedError("Transforms not implemented yet.")
-    def union(self, other): raise NotImplementedError("Operations not implemented yet.")
     def color(self, r, g, b): raise NotImplementedError("Materials not implemented yet.")

@@ -12,6 +12,7 @@ class GLSLContext:
         self.statements = []
         self.dependencies = set()
         self._var_counter = 0
+        self.definitions = set() # For node-specific GLSL function definitions
 
     def add_statement(self, line: str):
         """Adds a line of code to the current function body."""
@@ -30,6 +31,7 @@ class GLSLContext:
         new_ctx.p = new_p_name
         # Inherit dependencies and counter state from parent
         new_ctx.dependencies = self.dependencies.copy()
+        new_ctx.definitions = self.definitions.copy()
         new_ctx._var_counter = self._var_counter
         return new_ctx
 
@@ -37,6 +39,7 @@ class GLSLContext:
         """Merges statements and state from a sub-context into this one."""
         self.statements.extend(sub_context.statements)
         self.dependencies.update(sub_context.dependencies)
+        self.definitions.update(sub_context.definitions)
         self._var_counter = sub_context._var_counter
 
 
@@ -71,6 +74,14 @@ class SDFNode(ABC):
         """Renders the SDF object in a live-updating viewer."""
         from .engine import render as render_func
         render_func(self, **kwargs)
+
+    def _collect_uniforms(self, uniforms: dict):
+        """Recursively collects uniforms from the scene graph."""
+        if hasattr(self, 'child') and self.child:
+            self.child._collect_uniforms(uniforms)
+        if hasattr(self, 'children'):
+            for child in self.children:
+                child._collect_uniforms(uniforms)
 
     # --- Boolean Operations ---
     def union(self, *others, k: float = 0.0) -> 'SDFNode':

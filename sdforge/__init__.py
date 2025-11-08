@@ -16,3 +16,6 @@ from .api.primitives import (
     rectangle,
     circle,
 )
+
+# --- Custom GLSL ---
+from .api.forge import Forge

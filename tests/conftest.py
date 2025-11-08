@@ -103,15 +103,24 @@ def validate_glsl():
     """
     Provides a function to validate a GLSL Scene function using glslangValidator.
     """
-    def _validator(scene_code: str):
+    def _validator(scene_code: str, sdf_obj=None):
         """
         Wraps scene_code in a minimal fragment shader and runs the validator.
         Raises an AssertionError on failure.
         """
+        # Collect uniforms from the sdf_obj to declare them in the test shader
+        uniforms = {}
+        if sdf_obj:
+            sdf_obj._collect_uniforms(uniforms)
+        
+        uniform_declarations = "\n".join([f"uniform float {name};" for name in uniforms.keys()])
+
         shader = f"""
         #version 430 core
         out vec4 f_color;
         
+        {uniform_declarations}
+
         {scene_code}
 
         void main() {{

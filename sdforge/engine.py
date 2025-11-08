@@ -9,7 +9,9 @@ class SceneCompiler:
     def compile(self, root_node: SDFNode) -> str:
         ctx = GLSLContext(compiler=self)
         result_var = root_node.to_glsl(ctx)
+        
         library_code = get_glsl_definitions(frozenset(ctx.dependencies))
+        custom_definitions = "\n".join(ctx.definitions)
         function_body = "\n    ".join(ctx.statements)
         
         scene_function = f"""
@@ -18,7 +20,7 @@ vec4 Scene(in vec3 p) {{
     return {result_var};
 }}
 """
-        return library_code + "\n" + scene_function
+        return library_code + "\n" + custom_definitions + "\n" + scene_function
 
 class NativeRenderer:
     """A minimal renderer for displaying the raw SDF distance field."""
@@ -31,6 +33,7 @@ class NativeRenderer:
         self.ctx = None
         self.program = None
         self.vao = None
+        self.uniforms = {}
         
     def run(self):
         import glfw
@@ -47,6 +50,9 @@ class NativeRenderer:
         
         self.ctx = moderngl.create_context()
         
+        # --- Collect Uniforms ---
+        self.sdf_obj._collect_uniforms(self.uniforms)
+        
         # --- Shader Generation ---
         scene_code = SceneCompiler().compile(self.sdf_obj)
         camera_code = get_glsl_definitions(frozenset(['camera']))
@@ -59,6 +65,8 @@ class NativeRenderer:
             camera_logic_glsl = f"cameraStatic(st, {pos}, {tgt}, {float(cam.zoom)}, ro, rd);"
         else:
             camera_logic_glsl = "cameraOrbit(st, u_mouse.xy, u_resolution, 1.0, ro, rd);"
+            
+        custom_uniforms_glsl = "\n".join([f"uniform float {name};" for name in self.uniforms.keys()])
 
         vertex_shader = """
             #version 330 core
@@ -70,6 +78,7 @@ class NativeRenderer:
             #version 330 core
             uniform vec2 u_resolution;
             uniform vec4 u_mouse;
+            {custom_uniforms_glsl}
             out vec4 f_color;
             
             {camera_code}
@@ -144,6 +153,13 @@ class NativeRenderer:
                     mx, my = glfw.get_cursor_pos(self.window)
                     self.program['u_mouse'].value = (mx, my, 0, 0)
                 except KeyError: pass
+            
+            # Upload custom uniforms
+            for name, value in self.uniforms.items():
+                try:
+                    self.program[name].value = float(value)
+                except KeyError:
+                    pass # Uniform may have been optimized out by the GLSL compiler
 
             self.ctx.clear(0.1, 0.12, 0.15)
             self.vao.render(mode=moderngl.TRIANGLE_STRIP)

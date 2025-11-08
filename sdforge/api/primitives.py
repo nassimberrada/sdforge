@@ -4,7 +4,6 @@ from ..core import SDFNode, GLSLContext
 class Sphere(SDFNode):
     """Represents a sphere primitive."""
     
-    # This class attribute is the explicit link to the required GLSL code.
     glsl_dependencies = {"sdSphere"}
 
     def __init__(self, r: float = 1.0):
@@ -12,14 +11,8 @@ class Sphere(SDFNode):
         self.r = r
 
     def to_glsl(self, ctx: GLSLContext) -> str:
-        # 1. Add our dependencies to the context for the compiler to find.
         ctx.dependencies.update(self.glsl_dependencies)
-        
-        # 2. Generate the specific GLSL expression for this node.
         dist_expr = f"sdSphere({ctx.p}, {float(self.r)})"
-        
-        # 3. Return the result in a new vec4 variable.
-        #    The vec4 format (dist, mat_id, 0, 0) is for future compatibility.
         return ctx.new_variable('vec4', f"vec4({dist_expr}, -1.0, 0.0, 0.0)")
 
     def to_callable(self):
@@ -31,3 +24,316 @@ class Sphere(SDFNode):
 def sphere(r: float = 1.0) -> SDFNode:
     """Creates a sphere SDF node."""
     return Sphere(r)
+
+class Box(SDFNode):
+    """Represents a box primitive, possibly with rounded edges."""
+    glsl_dependencies = {"sdBox", "sdRoundedBox"}
+
+    def __init__(self, size: tuple = (1.0, 1.0, 1.0), radius: float = 0.0):
+        super().__init__()
+        self.size = np.array(size, dtype=float)
+        self.radius = float(radius)
+
+    def to_glsl(self, ctx: GLSLContext) -> str:
+        ctx.dependencies.update(self.glsl_dependencies)
+        
+        half_size = self.size / 2.0
+        size_vec = f"vec3({half_size[0]}, {half_size[1]}, {half_size[2]})"
+        
+        if self.radius > 1e-6:
+            dist_expr = f"sdRoundedBox({ctx.p}, {size_vec}, {self.radius})"
+        else:
+            dist_expr = f"sdBox({ctx.p}, {size_vec})"
+            
+        return ctx.new_variable('vec4', f"vec4({dist_expr}, -1.0, 0.0, 0.0)")
+
+    def to_callable(self):
+        half_size = self.size / 2.0
+        radius = self.radius
+        
+        def _callable(points: np.ndarray) -> np.ndarray:
+            q = np.abs(points) - half_size
+            dist = np.linalg.norm(np.maximum(q, 0.0), axis=-1)
+            if radius <= 1e-6:
+                dist += np.minimum(np.max(q, axis=-1), 0.0)
+            else:
+                dist -= radius
+            return dist
+        return _callable
+
+def box(size=1.0, radius: float = 0.0, x: float = None, y: float = None, z: float = None) -> SDFNode:
+    """Creates a box, optionally with rounded edges."""
+    if x is not None and y is not None and z is not None:
+        size = (x, y, z)
+    elif isinstance(size, (int, float)):
+        size = (size, size, size)
+    return Box(size=tuple(size), radius=radius)
+
+class Torus(SDFNode):
+    """Represents a torus primitive."""
+    glsl_dependencies = {"sdTorus"}
+
+    def __init__(self, major: float = 1.0, minor: float = 0.25):
+        super().__init__()
+        self.major, self.minor = major, minor
+        
+    def to_glsl(self, ctx: GLSLContext) -> str:
+        ctx.dependencies.update(self.glsl_dependencies)
+        dist_expr = f"sdTorus({ctx.p}, vec2({float(self.major)}, {float(self.minor)}))"
+        return ctx.new_variable('vec4', f"vec4({dist_expr}, -1.0, 0.0, 0.0)")
+
+    def to_callable(self):
+        major, minor = self.major, self.minor
+        def _callable(points: np.ndarray) -> np.ndarray:
+            q = np.array([np.linalg.norm(points[:, [0, 2]], axis=-1) - major, points[:, 1]]).T
+            return np.linalg.norm(q, axis=-1) - minor
+        return _callable
+
+def torus(major: float = 1.0, minor: float = 0.25) -> SDFNode:
+    """Creates a torus."""
+    return Torus(major, minor)
+
+class Line(SDFNode):
+    """Represents a line segment primitive with a radius."""
+    glsl_dependencies = {"sdCapsule", "sdCappedCylinder"}
+
+    def __init__(self, a, b, radius: float = 0.1, rounded_caps: bool = True):
+        super().__init__()
+        self.a, self.b, self.radius = np.array(a), np.array(b), radius
+        self.rounded_caps = rounded_caps
+
+    def to_glsl(self, ctx: GLSLContext) -> str:
+        ctx.dependencies.update(self.glsl_dependencies)
+        a, b, r = self.a, self.b, float(self.radius)
+        a_str = f"vec3({a[0]},{a[1]},{a[2]})"
+        b_str = f"vec3({b[0]},{b[1]},{b[2]})"
+        func = "sdCapsule" if self.rounded_caps else "sdCappedCylinder"
+        dist_expr = f"{func}({ctx.p}, {a_str}, {b_str}, {r})"
+        return ctx.new_variable('vec4', f"vec4({dist_expr}, -1.0, 0.0, 0.0)")
+
+    def to_callable(self):
+        a, b, r = self.a, self.b, self.radius
+        if self.rounded_caps:
+            def _callable(points: np.ndarray) -> np.ndarray:
+                pa = points - a; ba = b - a
+                h = np.clip(np.dot(pa, ba) / np.dot(ba, ba), 0.0, 1.0)
+                return np.linalg.norm(pa - ba * h[:, np.newaxis], axis=-1) - r
+            return _callable
+        else: # Capped cylinder
+            def _callable(points: np.ndarray) -> np.ndarray:
+                ba = b - a
+                pa = points - a
+                baba = np.dot(ba, ba)
+                paba = np.dot(pa, ba)
+                x = np.linalg.norm(pa * baba - ba * paba[:, np.newaxis], axis=-1) - r * baba
+                y = np.abs(paba - baba * 0.5) - baba * 0.5
+                x2 = x*x
+                y2 = y*y*baba
+                d_inner = np.where(np.maximum(x, y) < 0.0, -np.minimum(x2, y2), (np.where(x > 0.0, x2, 0.0) + np.where(y > 0.0, y2, 0.0)))
+                return np.sign(d_inner) * np.sqrt(np.abs(d_inner)) / baba
+            return _callable
+
+def line(a, b, radius: float = 0.1, rounded_caps: bool = True) -> SDFNode:
+    """Creates a line segment with a given radius (capsule or cylinder)."""
+    return Line(a, b, radius, rounded_caps)
+
+class Cylinder(SDFNode):
+    """Represents a cylinder primitive, possibly with rounded edges."""
+    glsl_dependencies = {"sdCylinder", "sdRoundedCylinder"}
+
+    def __init__(self, radius: float = 0.5, height: float = 1.0, round_radius: float = 0.0):
+        super().__init__()
+        self.radius, self.height, self.round_radius = radius, height, round_radius
+
+    def to_glsl(self, ctx: GLSLContext) -> str:
+        ctx.dependencies.update(self.glsl_dependencies)
+        if self.round_radius > 1e-6:
+            dist_expr = f"sdRoundedCylinder({ctx.p}, {float(self.radius)}, {float(self.round_radius)}, {float(self.height)})"
+        else:
+            dist_expr = f"sdCylinder({ctx.p}, vec2({float(self.radius)}, {float(self.height) / 2.0}))"
+        return ctx.new_variable('vec4', f"vec4({dist_expr}, -1.0, 0.0, 0.0)")
+
+    def to_callable(self):
+        radius, height, round_radius = self.radius, self.height, self.round_radius
+        if round_radius > 1e-6:
+            def _callable_rounded(points: np.ndarray) -> np.ndarray:
+                d_x = np.linalg.norm(points[:, [0, 2]], axis=-1) - 2.0 * radius + round_radius
+                d_y = np.abs(points[:, 1]) - height
+                d = np.stack([d_x, d_y], axis=-1)
+                return np.minimum(np.maximum(d[:, 0], d[:, 1]), 0.0) + np.linalg.norm(np.maximum(d, 0.0), axis=-1) - round_radius
+            return _callable_rounded
+        else:
+            h_half = height / 2.0
+            def _callable_sharp(points: np.ndarray) -> np.ndarray:
+                d = np.abs(np.array([np.linalg.norm(points[:, [0, 2]], axis=-1), points[:, 1]]).T) - np.array([radius, h_half])
+                return np.minimum(np.maximum(d[:, 0], d[:, 1]), 0.0) + np.linalg.norm(np.maximum(d, 0.0), axis=-1)
+            return _callable_sharp
+
+def cylinder(radius: float = 0.5, height: float = 1.0, round_radius: float = 0.0) -> SDFNode:
+    """Creates a cylinder oriented along the Y-axis."""
+    return Cylinder(radius, height, round_radius)
+
+class Cone(SDFNode):
+    """Represents a cone or frustum primitive."""
+    glsl_dependencies = {"sdCone", "sdCappedCone"}
+
+    def __init__(self, height: float = 1.0, radius1: float = 0.5, radius2: float = 0.0):
+        super().__init__()
+        self.height, self.radius1, self.radius2 = height, radius1, radius2
+        
+    def to_glsl(self, ctx: GLSLContext) -> str:
+        ctx.dependencies.update(self.glsl_dependencies)
+        h, r1, r2 = float(self.height), float(self.radius1), float(self.radius2)
+        if r2 > 1e-6:
+            dist_expr = f"sdCappedCone({ctx.p}, {h}, {r1}, {r2})"
+        else:
+            dist_expr = f"sdCone({ctx.p}, vec2({h}, {r1}))"
+        return ctx.new_variable('vec4', f"vec4({dist_expr}, -1.0, 0.0, 0.0)")
+
+    def to_callable(self):
+        h, r1, r2 = self.height, self.radius1, self.radius2
+        def _callable_capped(points: np.ndarray) -> np.ndarray:
+            q_x = np.linalg.norm(points[:, [0, 2]], axis=-1)
+            q = np.stack([q_x, points[:, 1]], axis=-1)
+            k1 = np.array([r2, h])
+            k2 = np.array([r2 - r1, 2.0 * h])
+            ca_x_min = np.where(q[:, 1] < 0.0, r1, r2)
+            ca_x = q[:, 0] - np.minimum(q[:, 0], ca_x_min)
+            ca_y = np.abs(q[:, 1]) - h
+            ca = np.stack([ca_x, ca_y], axis=-1)
+            k1_q = k1 - q
+            clamp_val = np.clip(np.sum(k1_q * k2, axis=-1) / np.dot(k2, k2), 0.0, 1.0)
+            cb = q - k1 + k2 * clamp_val[:, np.newaxis]
+            s = np.where((cb[:, 0] < 0.0) & (ca[:, 1] < 0.0), -1.0, 1.0)
+            return s * np.sqrt(np.minimum(np.sum(ca * ca, axis=-1), np.sum(cb * cb, axis=-1)))
+        return _callable_capped
+
+def cone(height: float = 1.0, radius1: float = 0.5, radius2: float = 0.0) -> SDFNode:
+    """Creates a cone or a frustum (capped cone)."""
+    return Cone(height, radius1, radius2)
+
+class Plane(SDFNode):
+    """Represents an infinite plane."""
+    glsl_dependencies = {"sdPlane"}
+
+    def __init__(self, normal, offset: float = 0.0):
+        super().__init__()
+        self.normal, self.offset = np.array(normal), offset
+        
+    def to_glsl(self, ctx: GLSLContext) -> str:
+        ctx.dependencies.update(self.glsl_dependencies)
+        n = self.normal
+        dist_expr = f"sdPlane({ctx.p}, vec4({n[0]}, {n[1]}, {n[2]}, {float(self.offset)}))"
+        return ctx.new_variable('vec4', f"vec4({dist_expr}, -1.0, 0.0, 0.0)")
+
+    def to_callable(self):
+        normal, offset = self.normal, self.offset
+        def _callable(points: np.ndarray) -> np.ndarray:
+            return np.dot(points, normal) + offset
+        return _callable
+
+def plane(normal, offset: float = 0.0) -> SDFNode:
+    """Creates an infinite plane."""
+    return Plane(normal, offset)
+
+class Octahedron(SDFNode):
+    """Represents an octahedron."""
+    glsl_dependencies = {"sdOctahedron"}
+
+    def __init__(self, size: float = 1.0):
+        super().__init__()
+        self.size = size
+        
+    def to_glsl(self, ctx: GLSLContext) -> str:
+        ctx.dependencies.update(self.glsl_dependencies)
+        dist_expr = f"sdOctahedron({ctx.p}, {float(self.size)})"
+        return ctx.new_variable('vec4', f"vec4({dist_expr}, -1.0, 0.0, 0.0)")
+
+    def to_callable(self):
+        size = self.size
+        def _callable(points: np.ndarray) -> np.ndarray:
+            return (np.sum(np.abs(points), axis=-1) - size) * 0.57735027
+        return _callable
+
+def octahedron(size: float = 1.0) -> SDFNode:
+    """Creates an octahedron."""
+    return Octahedron(size)
+
+class Ellipsoid(SDFNode):
+    """Represents an ellipsoid."""
+    glsl_dependencies = {"sdEllipsoid"}
+
+    def __init__(self, radii: tuple = (1.0, 0.5, 0.5)):
+        super().__init__()
+        self.radii = np.array(radii)
+        
+    def to_glsl(self, ctx: GLSLContext) -> str:
+        ctx.dependencies.update(self.glsl_dependencies)
+        r = self.radii
+        dist_expr = f"sdEllipsoid({ctx.p}, vec3({r[0]}, {r[1]}, {r[2]}))"
+        return ctx.new_variable('vec4', f"vec4({dist_expr}, -1.0, 0.0, 0.0)")
+
+    def to_callable(self):
+        radii = self.radii
+        def _callable(points: np.ndarray) -> np.ndarray:
+            k0 = np.linalg.norm(points / radii, axis=-1)
+            k1 = np.linalg.norm(points / (radii * radii), axis=-1)
+            return k0 * (k0 - 1.0) / (k1 + 1e-9)
+        return _callable
+
+def ellipsoid(radii=(1.0, 0.5, 0.5), x: float = None, y: float = None, z: float = None) -> SDFNode:
+    """Creates an ellipsoid."""
+    if x is not None and y is not None and z is not None:
+        radii = (x, y, z)
+    return Ellipsoid(tuple(radii))
+    
+class Circle(SDFNode):
+    """Represents a 2D circle primitive for extrusion or revolution."""
+    glsl_dependencies = {"sdCircle"}
+
+    def __init__(self, r: float = 1.0):
+        super().__init__()
+        self.r = r
+
+    def to_glsl(self, ctx: GLSLContext) -> str:
+        ctx.dependencies.update(self.glsl_dependencies)
+        dist_expr = f"sdCircle({ctx.p}.xy, {float(self.r)})"
+        return ctx.new_variable('vec4', f"vec4({dist_expr}, -1.0, 0.0, 0.0)")
+
+    def to_callable(self):
+        r_val = self.r
+        def _callable(points: np.ndarray) -> np.ndarray:
+            return np.linalg.norm(points[:, :2], axis=-1) - r_val
+        return _callable
+
+def circle(r: float = 1.0) -> SDFNode:
+    """Creates a 2D circle in the XY plane."""
+    return Circle(r)
+
+class Rectangle(SDFNode):
+    """Represents a 2D rectangle primitive for extrusion or revolution."""
+    glsl_dependencies = {"sdRectangle"}
+
+    def __init__(self, size: tuple = (1.0, 1.0)):
+        super().__init__()
+        self.size = np.array(size)
+
+    def to_glsl(self, ctx: GLSLContext) -> str:
+        ctx.dependencies.update(self.glsl_dependencies)
+        half_size = self.size / 2.0
+        size_vec = f"vec2({half_size[0]}, {half_size[1]})"
+        dist_expr = f"sdRectangle({ctx.p}.xy, {size_vec})"
+        return ctx.new_variable('vec4', f"vec4({dist_expr}, -1.0, 0.0, 0.0)")
+
+    def to_callable(self):
+        half_size = self.size / 2.0
+        def _callable(points: np.ndarray) -> np.ndarray:
+            q = np.abs(points[:, :2]) - half_size
+            return np.linalg.norm(np.maximum(q, 0.0), axis=-1) + np.minimum(np.maximum(q[:, 0], q[:, 1]), 0.0)
+        return _callable
+
+def rectangle(size=1.0) -> SDFNode:
+    """Creates a 2D rectangle in the XY plane."""
+    if isinstance(size, (int, float)):
+        size = (size, size)
+    return Rectangle(tuple(size))

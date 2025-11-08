@@ -7,14 +7,28 @@ GLSL_FUNCTIONS = {}
 
 def parse_glsl_file(content: str):
     """Parses a GLSL file into a dictionary of functions."""
-    # Regex to find function signatures (including return type) and their bodies
+    # Regex to find function signatures (return type, name, args) and their bodies.
+    # This is more robust against comments and newlines than the previous version.
+    # Group 1: Return type and function name (e.g., "float sdSphere")
+    # Group 2: Arguments (e.g., "in vec3 p, in float r")
+    # Group 3: Function body
     func_pattern = re.compile(
-        r"([\w\s]+\s+(\w+)\s*\([^)]*\))\s*\{([\s\S]*?)\}", re.MULTILINE
+        # Catches `return_type name`
+        r"([ \t\w]+[ \t]+(\w+)\s*"
+        # Catches `(args)`
+        r"\([^)]*\))\s*"
+        # Catches `{body}`
+        r"\{([\s\S]*?)\}", re.MULTILINE
     )
     for match in func_pattern.finditer(content):
         signature = match.group(1).strip()
         name = match.group(2)
         body = match.group(3).strip()
+        
+        # Skip lines that are just comments, a potential failure mode for simple regex
+        if signature.strip().startswith(('//', '/*')):
+            continue
+
         full_code = f"{signature} {{\n    {body}\n}}"
         GLSL_FUNCTIONS[name] = full_code
 

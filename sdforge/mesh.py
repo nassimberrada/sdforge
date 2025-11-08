@@ -47,7 +47,7 @@ def _write_glb(path, verts, faces, vertex_colors):
         import pygltflib
     except ImportError:
         print("ERROR: Exporting to .glb requires 'pygltflib'.", file=sys.stderr)
-        print("Please install it via: pip install sdforge[export] or pip install pygltflib", file=sys.stderr)
+        print("Please install it via: pip install pygltflib", file=sys.stderr)
         return
 
     # Convert verts and faces to GLB format
@@ -75,11 +75,6 @@ def _write_glb(path, verts, faces, vertex_colors):
 
     primitive = pygltflib.Primitive(attributes=pygltflib.Attributes(POSITION=0), indices=1)
     
-    # Placeholder for vertex colors (currently not implemented)
-    if vertex_colors:
-        # The warning is now in the save function
-        pass
-
     gltf.meshes.append(pygltflib.Mesh(primitives=[primitive]))
     
     gltf.set_binary_blob(buffer_data)
@@ -121,7 +116,6 @@ def save(sdf_obj, path, bounds, samples, verbose, algorithm, adaptive, vertex_co
         count = len(X)*len(Y)*len(Z)
         print(f"  - Grid dimensions: {len(X)} x {len(Y)} x {len(Z)} = {count} points")
 
-    # Create all grid points (float32 for downstream libs)
     points_grid = _cartesian_product(X, Y, Z).astype('f4')
 
     if verbose:
@@ -133,14 +127,10 @@ def save(sdf_obj, path, bounds, samples, verbose, algorithm, adaptive, vertex_co
     try:
         verts, faces, _, _ = measure.marching_cubes(distances, level=0, spacing=(step, step, step))
     except ValueError:
-        print("ERROR: Marching cubes failed. The surface may not intersect the specified bounds or the SDF evaluation returned invalid values.")
-        print("  Suggestions:")
-        print("    - Increase 'samples' to produce a finer voxel grid (e.g. samples=2**23 or 2**24).")
-        print("    - Expand 'bounds' so the object is definitely inside the volume.")
-        print("    - Verify your SDF callable returns finite numeric distances for all points.")
+        print("ERROR: Marching cubes failed. The surface may not intersect the specified bounds or the SDF evaluation returned invalid values.", file=sys.stderr)
         return
         
-    verts += np.array(bounds[0]) # Offset vertices to correct world position
+    verts += np.array(bounds[0])
 
     path_lower = path.lower()
     if path_lower.endswith('.stl'):

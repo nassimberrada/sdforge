@@ -1,12 +1,13 @@
 from pathlib import Path
 
-def get_glsl_content_from_path(glsl_path: str) -> str:
-    """Reads the content of a GLSL file."""
+def _get_glsl_from_lib(rel_path: str) -> str:
+    """Reads the content of a GLSL file from the library."""
     try:
-        with open(Path(__file__).parent / 'glsl' / glsl_path, 'r') as f:
+        glsl_path = Path(__file__).parent / 'glsl' / rel_path
+        with open(glsl_path, 'r') as f:
             return f.read()
     except FileNotFoundError:
-        print(f"ERROR: Could not find GLSL file: {glsl_path}")
+        print(f"ERROR: Could not find GLSL library file: {rel_path}")
         return ""
 
 def assemble_standalone_shader(sdf_obj) -> str:
@@ -14,30 +15,37 @@ def assemble_standalone_shader(sdf_obj) -> str:
     Assembles a complete, self-contained GLSL fragment shader for an SDF object.
     The resulting shader can be used in other applications like Godot or Three.js.
     """
-    from .render import assemble_shader_code as assemble_scene
-    from .core import _glsl_format
+    from .render import SceneCompiler
 
-    # 1. Collect Materials and Uniforms from the SDF tree
+    # 1. Collect Materials, Uniforms, and Params
     materials = []
     sdf_obj._collect_materials(materials)
-    
+
     uniforms = {}
     sdf_obj._collect_uniforms(uniforms)
-
+    
     params = {}
     sdf_obj._collect_params(params)
-
-    # 2. Build Material and Uniform GLSL declarations
-    material_struct_glsl = "struct MaterialInfo { vec3 color; };\n"
-    material_uniform_glsl = f"uniform MaterialInfo u_materials[{max(1, len(materials))}];\n"
     
+    # 2. Build GLSL declarations
     all_user_uniforms = list(uniforms.keys()) + [p.uniform_name for p in params.values()]
     custom_uniforms_glsl = "\n".join([f"uniform float {name};" for name in all_user_uniforms])
 
-    # 3. Assemble the core Scene(p) function from the SDF object
-    scene_code = assemble_scene(sdf_obj)
+    material_struct_glsl = "struct MaterialInfo { vec3 color; };\n"
+    material_uniform_glsl = f"uniform MaterialInfo u_materials[{max(1, len(materials))}];\n"
+    material_lookup_glsl = """
+        int material_id = int(hit.y);
+        vec3 material_color = vec3(0.8); // Default color
+        if (material_id >= 0 && material_id < {material_count}) {{
+            material_color = u_materials[material_id].color;
+        }}
+    """.format(material_count=len(materials))
+
+    # 3. Compile the core Scene(p) function and its dependencies
+    scene_compiler = SceneCompiler()
+    scene_code = scene_compiler.compile(sdf_obj)
     
-    # 4. Assemble the final shader string
+    # 4. Assemble the final shader string using a template
     shader = f"""
 #version 330 core
 
@@ -45,15 +53,16 @@ def assemble_standalone_shader(sdf_obj) -> str:
 uniform vec2 u_resolution; // The viewport resolution (in pixels)
 uniform float u_time;      // Time in seconds
 
-// Camera uniforms (can be controlled by your application)
+// Generic camera uniforms (can be controlled by your application)
 uniform vec3 u_cam_pos = vec3(5.0, 4.0, 5.0);
 uniform vec3 u_cam_target = vec3(0.0, 0.0, 0.0);
 uniform float u_cam_zoom = 1.0;
 
-// Lighting uniforms
+// Generic lighting uniforms
 uniform vec3 u_light_pos = vec3(4.0, 5.0, 6.0);
 uniform float u_ambient_strength = 0.1;
 uniform float u_shadow_softness = 8.0;
+uniform float u_ao_strength = 3.0;
 
 // User-defined uniforms from Forge and Param objects
 {custom_uniforms_glsl}
@@ -64,14 +73,13 @@ uniform float u_shadow_softness = 8.0;
 
 out vec4 f_color; // Output fragment color
 
+// Forward declare Scene() so renderer functions can find it.
+vec4 Scene(in vec3 p);
+
 // --- SDForge GLSL Library ---
-{get_glsl_content_from_path('sdf/noise.glsl')}
-{get_glsl_content_from_path('sdf/primitives.glsl')}
-{get_glsl_content_from_path('sdf/operations.glsl')}
-{get_glsl_content_from_path('sdf/transforms.glsl')}
-{get_glsl_content_from_path('scene/camera.glsl')}
-{get_glsl_content_from_path('scene/light.glsl')}
-{get_glsl_content_from_path('scene/raymarching.glsl')}
+{_get_glsl_from_lib('camera.glsl')}
+{_get_glsl_from_lib('raymarching.glsl')}
+{_get_glsl_from_lib('light.glsl')}
 
 // --- Scene Definition (Generated from Python) ---
 {scene_code}
@@ -93,21 +101,16 @@ void main() {{
         // 3. We hit something, calculate surface properties
         vec3 p = ro + t * rd;
         vec3 normal = estimateNormal(p);
-        vec3 lightDir = normalize(u_light_pos - p);
         
         // 4. Calculate lighting and shadows
+        vec3 lightDir = normalize(u_light_pos - p);
         float diffuse = max(dot(normal, lightDir), u_ambient_strength);
         float shadow = softShadow(p + normal * 0.01, lightDir, u_shadow_softness);
-        diffuse *= shadow;
+        float ao = ambientOcclusion(p, normal, u_ao_strength);
         
-        // 5. Get material color
-        int material_id = int(hit.y);
-        vec3 material_color = vec3(0.8); // Default color
-        if (material_id >= 0 && material_id < {len(materials)}) {{
-            material_color = u_materials[material_id].color;
-        }}
-
-        color = material_color * diffuse;
+        // 5. Look up material color and apply lighting
+        {material_lookup_glsl}
+        color = material_color * diffuse * shadow * ao;
     }}
     
     f_color = vec4(color, 1.0);

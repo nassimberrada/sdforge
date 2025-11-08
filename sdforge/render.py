@@ -4,244 +4,61 @@ import time
 from pathlib import Path
 import importlib.util
 import numpy as np
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
+from .core import SDFNode, GLSLContext
+from .loader import get_glsl_definitions
+from .api.camera import Camera
+from .api.light import Light
+from .debug import Debug
 
-from .core import Camera, Light
+try:
+    from watchdog.observers import Observer
+    from watchdog.events import FileSystemEventHandler
+    WATCHDOG_AVAILABLE = True
+except ImportError:
+    WATCHDOG_AVAILABLE = False
 
-# The maximum number of unique materials supported in a scene.
 MAX_MATERIALS = 64
 
-def _glsl_format(val):
-    """Formats a Python value for injection into a GLSL string."""
-    if isinstance(val, str):
-        return val
-    return f"{float(val)}"
-
-def get_glsl_content(filename: str) -> str:
-    """Reads the content of a GLSL file from the package."""
-    glsl_dir = Path(__file__).parent / 'glsl'
-    try:
-        with open(glsl_dir / filename, 'r') as f:
-            return f.read()
-    except FileNotFoundError:
-        print(f"ERROR: Could not find GLSL file: {filename}")
-        return ""
-
-def assemble_shader_code(sdf_obj) -> str:
-    """Assembles the final GLSL scene function from an SDF object."""
-    # The Scene function now returns a vec4: (distance, material_id, 0, 0)
-    scene_glsl = sdf_obj.to_glsl()
-    inline_definitions = []
-    # Use a set to prevent duplicates, which cause redefinition errors
-    unique_defs = set(sdf_obj.get_glsl_definitions())
-    for d in unique_defs:
-        inline_definitions.append(d)
-    joined_defs = '\n'.join(inline_definitions)
-    return f"""
-    {joined_defs}
-    vec4 Scene(in vec3 p) {{ return {scene_glsl}; }}
-    """
+class SceneCompiler:
+    """Compiles an SDFNode tree into a complete GLSL Scene function."""
+    def compile(self, root_node: SDFNode) -> str:
+        ctx = GLSLContext(compiler=self)
+        result_var = root_node.to_glsl(ctx)
+        
+        library_code = get_glsl_definitions(frozenset(ctx.dependencies))
+        custom_definitions = "\n".join(ctx.definitions)
+        function_body = "\n    ".join(ctx.statements)
+        
+        scene_function = f"""
+vec4 Scene(in vec3 p) {{
+    {function_body}
+    return {result_var};
+}}
+"""
+        return library_code + "\n" + custom_definitions + "\n" + scene_function
 
 class NativeRenderer:
-    """Handles the creation of a native window and renders the SDF."""
-
-    def __init__(self, sdf_obj, camera=None, light=None, watch=False, width=1280, height=720, record=None, save_frame=None, bg_color=(0.1, 0.12, 0.15), debug=None, **kwargs):
+    """A minimal renderer for displaying the raw SDF distance field."""
+    def __init__(self, sdf_obj: SDFNode, camera: Camera = None, light: Light = None, debug: Debug = None, watch=True, width=1280, height=720, **kwargs):
         self.sdf_obj = sdf_obj
         self.camera = camera
         self.light = light
-        self.watching = watch
+        self.debug = debug
+        self.watching = watch and WATCHDOG_AVAILABLE
         self.width = width
         self.height = height
-        self.record_path = record
-        self.save_frame_path = save_frame
-        self.time = kwargs.get('time', 0.0)
-        self.bg_color = bg_color
-        self.debug_mode = debug
-        self.params = {}
         self.window = None
         self.ctx = None
         self.program = None
         self.vao = None
         self.vbo = None
+        self.uniforms = {}
+        self.params = {}
         self.script_path = os.path.abspath(sys.argv[0])
         self.reload_pending = False
-
-    def _init_window(self, headless=False):
-        import glfw
-        try:
-            if not glfw.init():
-                raise RuntimeError("Could not initialize GLFW")
-            glfw.window_hint(glfw.CONTEXT_VERSION_MAJOR, 3)
-            glfw.window_hint(glfw.CONTEXT_VERSION_MINOR, 3)
-            glfw.window_hint(glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE)
-            glfw.window_hint(glfw.OPENGL_FORWARD_COMPAT, True)
-            if headless:
-                glfw.window_hint(glfw.VISIBLE, False)
-            self.window = glfw.create_window(self.width, self.height, "SDF Forge Viewer", None, None)
-            if not self.window:
-                glfw.terminate()
-                raise RuntimeError("Could not create GLFW window. Your GPU may not be supported or drivers may be missing.")
-            glfw.make_context_current(self.window)
-        except Exception as e:
-            print(f"FATAL: Failed to create an OpenGL context. {e}", file=sys.stderr)
-            print("INFO: This may be due to missing graphics drivers or running in an environment without a display server (e.g., a raw terminal).", file=sys.stderr)
-            sys.exit(1)
-
-    def _compile_shader(self):
-        import moderngl
         
-        # --- Collect scene components ---
-        materials = []
-        self.sdf_obj._collect_materials(materials)
-        if len(materials) > MAX_MATERIALS:
-            print(f"WARNING: Exceeded maximum of {MAX_MATERIALS} materials. Truncating.")
-            materials = materials[:MAX_MATERIALS]
-        
-        self.params = {}
-        self.sdf_obj._collect_params(self.params)
-
-        # --- Generate GLSL for components ---
-        material_struct_glsl = "struct MaterialInfo { vec3 color; };\n"
-        material_uniform_glsl = f"uniform MaterialInfo u_materials[{max(1, len(materials))}];\n"
-        param_uniform_glsl = "\n".join([f"uniform float {p.uniform_name};" for p in self.params.values()])
-
-        # --- Light ---
-        light_pos_str = "ro"
-        ambient_strength_str = "0.1"
-        shadow_softness_str = "8.0"
-        ao_strength_str = "3.0"
-
-        if self.light:
-            if self.light.position:
-                pos = self.light.position
-                light_pos_str = f"vec3({_glsl_format(pos[0])}, {_glsl_format(pos[1])}, {_glsl_format(pos[2])})"
-            ambient_strength_str = _glsl_format(self.light.ambient_strength)
-            shadow_softness_str = _glsl_format(self.light.shadow_softness)
-            ao_strength_str = _glsl_format(self.light.ao_strength)
-        
-        # --- Camera ---
-        camera_logic_glsl = ""
-        if self.camera:
-            pos = self.camera.position
-            pos_str = f"vec3({_glsl_format(pos[0])}, {_glsl_format(pos[1])}, {_glsl_format(pos[2])})"
-            
-            target = self.camera.target
-            target_str = f"vec3({_glsl_format(target[0])}, {_glsl_format(target[1])}, {_glsl_format(target[2])})"
-
-            zoom_str = _glsl_format(self.camera.zoom)
-            
-            camera_logic_glsl = f"cameraStatic(st, {pos_str}, {target_str}, {zoom_str}, ro, rd);"
-        else:
-            camera_logic_glsl = "cameraOrbit(st, u_mouse.xy, u_resolution, 1.0, ro, rd);"
-
-        scene_code = assemble_shader_code(self.sdf_obj)
-        
-        # --- Debug Logic ---
-        debug_imports_glsl = ""
-        final_color_logic = "color = material_color * diffuse * ao;"
-        if self.debug_mode == 'normals':
-            debug_imports_glsl = get_glsl_content('scene/debug.glsl')
-            final_color_logic = "color = debugNormals(normal);"
-        elif self.debug_mode == 'steps':
-            debug_imports_glsl = get_glsl_content('scene/debug.glsl')
-            final_color_logic = "color = debugSteps(hit.z, 100.0);"
-        elif self.debug_mode:
-            print(f"WARNING: Unknown debug mode '{self.debug_mode}'. Ignoring.")
-
-        full_fragment_shader = f"""
-            #version 330 core
-            
-            uniform vec2 u_resolution;
-            uniform float u_time;
-            uniform vec4 u_mouse;
-            uniform vec3 u_bg_color;
-            
-            {material_struct_glsl}
-            {material_uniform_glsl}
-            {param_uniform_glsl}
-
-            out vec4 f_color;
-            
-            {get_glsl_content('sdf/primitives.glsl')}
-            {get_glsl_content('scene/camera.glsl')}
-            {get_glsl_content('scene/raymarching.glsl')}
-            {get_glsl_content('scene/light.glsl')}
-            {debug_imports_glsl}
-            
-            {scene_code}
-
-            void main() {{
-                vec2 st = (2.0 * gl_FragCoord.xy - u_resolution.xy) / u_resolution.y;
-                vec3 ro, rd;
-                {camera_logic_glsl}
-                
-                vec3 color = u_bg_color;
-                vec4 hit = raymarch(ro, rd);
-                float t = hit.x;
-                
-                if (t > 0.0) {{
-                    vec3 p = ro + t * rd;
-                    vec3 normal = estimateNormal(p);
-                    
-                    // Standard lighting path (variables still needed for some debug modes)
-                    vec3 lightPos = {light_pos_str};
-                    vec3 lightDir = normalize(lightPos - p);
-                    float diffuse = max(dot(normal, lightDir), {ambient_strength_str});
-                    float shadow = softShadow(p + normal * 0.01, lightDir, {shadow_softness_str});
-                    diffuse *= shadow;
-                    float ao = ambientOcclusion(p, normal, {ao_strength_str});
-                    int material_id = int(hit.y);
-                    vec3 material_color = vec3(0.8);
-                    if (material_id >= 0 && material_id < {len(materials)}) {{
-                        material_color = u_materials[material_id].color;
-                    }}
-
-                    // Final color determined by debug mode or standard lighting
-                    {final_color_logic}
-                }}
-                f_color = vec4(color, 1.0);
-            }}
-        """
-
-        vertex_shader = """
-            #version 330 core
-            in vec2 in_vert;
-            void main() { gl_Position = vec4(in_vert, 0.0, 1.0); }
-        """
-        try:
-            program = self.ctx.program(vertex_shader=vertex_shader, fragment_shader=full_fragment_shader)
-            print("INFO: Shader compiled successfully.")
-            
-            # Upload material data
-            for i, mat in enumerate(materials):
-                program[f'u_materials[{i}].color'].value = mat.color
-
-            # Upload initial param values
-            for p in self.params.values():
-                try:
-                    program[p.uniform_name].value = p.value
-                except KeyError:
-                    pass  # Uniform might be optimized out if unused
-
-            program['u_bg_color'].value = self.bg_color
-
-            return program
-        except Exception as e:
-            print(f"ERROR: Shader compilation failed. Keeping previous shader. Details:\n{e}")
-            return self.program
-
-    def _setup_gl(self):
-        import moderngl
-        self.ctx = moderngl.create_context()
-        self.program = self._compile_shader()
-        if self.program is None:
-            raise RuntimeError("Failed to compile initial shader. Cannot continue.")
-        vertices = np.array([-1.0, -1.0, -1.0, 1.0, 1.0, -1.0, 1.0, 1.0], dtype='f4')
-        self.vbo = self.ctx.buffer(vertices)
-        self.vao = self.ctx.simple_vertex_array(self.program, self.vbo, 'in_vert')
-
     def _reload_script(self):
+        """Dynamically reloads the user's script and updates the scene."""
         print(f"INFO: Change detected in '{Path(self.script_path).name}'. Reloading...")
         try:
             spec = importlib.util.spec_from_file_location("user_script", self.script_path)
@@ -249,38 +66,41 @@ class NativeRenderer:
             spec.loader.exec_module(module)
             if hasattr(module, 'main') and callable(module.main):
                 result = module.main()
-                new_sdf_obj, new_cam_obj, new_light_obj = None, None, None
-                
-                if isinstance(result, tuple):
-                    # Check for SDFObject first to ensure it's always found
-                    for item in result:
-                        from .core import SDFObject
-                        if isinstance(item, SDFObject):
-                           new_sdf_obj = item
-                           break
-                    # Find other objects
-                    for item in result:
-                        if isinstance(item, Camera):
-                            new_cam_obj = item
-                        elif isinstance(item, Light):
-                            new_light_obj = item
-                else:
+                new_sdf_obj, new_cam_obj, new_light_obj, new_debug_obj = None, None, None, None
+
+                if isinstance(result, SDFNode):
                     new_sdf_obj = result
+                elif isinstance(result, tuple):
+                    for item in result:
+                        if isinstance(item, SDFNode): new_sdf_obj = item
+                        if isinstance(item, Camera): new_cam_obj = item
+                        if isinstance(item, Light): new_light_obj = item
+                        if isinstance(item, Debug): new_debug_obj = item
                 
                 if new_sdf_obj:
                     self.sdf_obj = new_sdf_obj
                     self.camera = new_cam_obj
                     self.light = new_light_obj
+                    self.debug = new_debug_obj
+                    # Re-compile shader and vertex array
                     self.program = self._compile_shader()
-                    self.vao = self.ctx.simple_vertex_array(self.program, self.vbo, 'in_vert')
+                    if self.program:
+                        self.vao = self.ctx.simple_vertex_array(self.program, self.vbo, 'in_vert')
             else:
-                print("WARNING: No valid `main` function found. Cannot reload.")
+                print("WARNING: No valid `main` function found in script. Cannot reload.")
         except Exception as e:
             print(f"ERROR: Failed to reload script: {e}")
 
     def _start_watcher(self):
+        """Initializes and starts the watchdog file observer."""
+        if not self.watching:
+            if not WATCHDOG_AVAILABLE:
+                print("INFO: Hot-reloading disabled. `watchdog` not installed. Run 'pip install watchdog'.")
+            return
+
         class ChangeHandler(FileSystemEventHandler):
-            def __init__(self, renderer_instance): self.renderer = renderer_instance
+            def __init__(self, renderer_instance):
+                self.renderer = renderer_instance
             def on_modified(self, event):
                 if event.src_path == self.renderer.script_path:
                     self.renderer.reload_pending = True
@@ -290,68 +110,159 @@ class NativeRenderer:
         observer.daemon = True
         observer.start()
         print(f"INFO: Watching '{Path(self.script_path).name}' for changes...")
+        
+    def _compile_shader(self):
+        """Compiles the full fragment shader for the current scene."""
+        # --- Collect scene components ---
+        materials = []
+        self.sdf_obj._collect_materials(materials)
+        if len(materials) > MAX_MATERIALS:
+            print(f"WARNING: Exceeded maximum of {MAX_MATERIALS} materials. Truncating.")
+            materials = materials[:MAX_MATERIALS]
+
+        self.uniforms = {}
+        self.sdf_obj._collect_uniforms(self.uniforms)
+        
+        self.params = {}
+        self.sdf_obj._collect_params(self.params)
+        
+        scene_code = SceneCompiler().compile(self.sdf_obj)
+        
+        # --- GLSL Library Imports ---
+        glsl_deps = {'camera', 'raymarching', 'light'}
+        if self.debug:
+            glsl_deps.add('debug')
+        renderer_library_code = get_glsl_definitions(frozenset(glsl_deps))
+
+        # --- Camera Logic ---
+        if self.camera:
+            cam = self.camera
+            pos = f"vec3({float(cam.position[0])}, {float(cam.position[1])}, {float(cam.position[2])})"
+            tgt = f"vec3({float(cam.target[0])}, {float(cam.target[1])}, {float(cam.target[2])})"
+            camera_logic_glsl = f"cameraStatic(st, {pos}, {tgt}, {float(cam.zoom)}, ro, rd);"
+        else:
+            camera_logic_glsl = "cameraOrbit(st, u_mouse.xy, u_resolution, 1.0, ro, rd);"
+        
+        # --- Lighting Logic ---
+        light = self.light or Light()
+        light_pos_str = f"vec3({light.position[0]}, {light.position[1]}, {light.position[2]})" if light.position else "ro"
+        
+        # --- Material Logic ---
+        material_struct_glsl = "struct MaterialInfo { vec3 color; };\n"
+        material_uniform_glsl = f"uniform MaterialInfo u_materials[{max(1, len(materials))}];\n"
+        material_lookup_glsl = """
+            int material_id = int(hit.y);
+            vec3 material_color = vec3(0.8); // Default color
+            if (material_id >= 0 && material_id < {material_count}) {{
+                material_color = u_materials[material_id].color;
+            }}
+        """.format(material_count=len(materials))
+
+
+        # --- Debug Logic ---
+        final_color_logic = """
+            vec3 lightPos = {light_pos};
+            vec3 lightDir = normalize(lightPos - p);
+            float diffuse = max(dot(normal, lightDir), {ambient});
+            float shadow = softShadow(p + normal * 0.01, lightDir, {shadow_softness});
+            diffuse *= shadow;
+            float ao = ambientOcclusion(p, normal, {ao_strength});
+            {material_lookup}
+            color = material_color * diffuse * ao;
+        """.format(
+            light_pos=light_pos_str,
+            ambient=light.ambient_strength,
+            shadow_softness=light.shadow_softness,
+            ao_strength=light.ao_strength,
+            material_lookup=material_lookup_glsl
+        )
+        if self.debug:
+            if self.debug.mode == 'normals':
+                final_color_logic = "color = debugNormals(normal);"
+            elif self.debug.mode == 'steps':
+                final_color_logic = "color = debugSteps(hit.z, 100.0);"
+            else:
+                print(f"WARNING: Unknown debug mode '{self.debug.mode}'. Ignoring.")
+
+        all_uniforms = list(self.uniforms.keys()) + [p.uniform_name for p in self.params.values()]
+        custom_uniforms_glsl = "\n".join([f"uniform float {name};" for name in all_uniforms])
+        
+        vertex_shader = """
+            #version 330 core
+            in vec2 in_vert;
+            void main() { gl_Position = vec4(in_vert, 0.0, 1.0); }
+        """
+
+        fragment_shader = f"""
+            #version 330 core
+            uniform vec2 u_resolution;
+            uniform vec4 u_mouse;
+            {custom_uniforms_glsl}
+            {material_struct_glsl}
+            {material_uniform_glsl}
+            out vec4 f_color;
+
+            // Forward declare Scene() so renderer functions can find it.
+            vec4 Scene(in vec3 p);
+            
+            {renderer_library_code}
+            {scene_code}
+
+            void main() {{
+                vec2 st = (2.0 * gl_FragCoord.xy - u_resolution.xy) / u_resolution.y;
+                vec3 ro, rd;
+                {camera_logic_glsl}
+                
+                vec4 hit = raymarch(ro, rd);
+                float t = hit.x;
+                
+                vec3 color = vec3(0.1, 0.12, 0.15); // Background color
+                if (t > 0.0) {{
+                    vec3 p = ro + t * rd;
+                    vec3 normal = estimateNormal(p);
+                    {final_color_logic}
+                }}
+                
+                f_color = vec4(color, 1.0);
+            }}
+        """
+        
+        try:
+            new_program = self.ctx.program(
+                vertex_shader=vertex_shader, fragment_shader=fragment_shader
+            )
+            print("INFO: Shader compiled successfully.")
+            
+            # Upload material data
+            for i, mat in enumerate(materials):
+                new_program[f'u_materials[{i}].color'].value = mat.color
+
+            return new_program
+        except Exception as e:
+            print(f"ERROR: Shader compilation failed. Keeping previous shader. Details:\n{e}", file=sys.stderr)
+            return self.program # Return old program on failure
 
     def run(self):
         import glfw
         import moderngl
 
-        if self.save_frame_path:
-            self._init_window(headless=True)
-            self._setup_gl()
+        if not glfw.init():
+            raise RuntimeError("Could not initialize GLFW")
 
-            try:
-                import imageio
-            except ImportError:
-                print("ERROR: 'imageio' is required for saving frames.\nPlease install it via: pip install sdforge[record]")
-                glfw.terminate()
-                return
-
-            width, height = self.width, self.height
-            self.ctx.viewport = (0, 0, width, height)
-
-            fbo = self.ctx.simple_framebuffer((width, height))
-            fbo.use()
-            fbo.clear(self.bg_color[0], self.bg_color[1], self.bg_color[2], 1.0)
-            
-            if self.program:
-                try: self.program['u_resolution'].value = (width, height)
-                except KeyError: pass
-                try: self.program['u_time'].value = self.time
-                except KeyError: pass
-                try: self.program['u_mouse'].value = (width / 2, height / 2, 0, 0)
-                except KeyError: pass
-
-            if self.vao:
-                self.vao.render(mode=moderngl.TRIANGLE_STRIP)
-            
-            frame_bytes = fbo.read(components=3, alignment=1)
-            frame_np = np.frombuffer(frame_bytes, dtype=np.uint8).reshape((height, width, 3))
-            imageio.imwrite(self.save_frame_path, np.flipud(frame_np))
-            print(f"INFO: Frame saved to '{self.save_frame_path}'.")
-            
-            fbo.release()
+        self.window = glfw.create_window(self.width, self.height, "SDF Forge", None, None)
+        if not self.window:
             glfw.terminate()
-            return
-
-        writer = None
-        if self.record_path:
-            try:
-                import imageio
-                fps = 30
-                writer = imageio.get_writer(self.record_path, fps=fps)
-                print(f"INFO: Recording video to '{self.record_path}' at {fps} FPS.")
-            except ImportError:
-                print("ERROR: 'imageio' is required for video recording.\nPlease install it via: pip install sdforge[record]")
-                self.record_path = None
-
-        self._init_window()
-        self._setup_gl()
+            raise RuntimeError("Could not create GLFW window.")
+        glfw.make_context_current(self.window)
         
-        if self.watching: self._start_watcher()
-
-        # NOTE: The UI slider rendering logic is not included in the provided files.
-        # This fix ensures the shader compiles and uses the default Param values.
-        # A UI library like Dear ImGui would be needed to update the uniforms interactively.
+        self.ctx = moderngl.create_context()
+        self.program = self._compile_shader()
+        
+        vertices = np.array([-1.0, -1.0, -1.0, 1.0, 1.0, -1.0, 1.0, 1.0], dtype='f4')
+        self.vbo = self.ctx.buffer(vertices) # Assign to instance
+        self.vao = self.ctx.simple_vertex_array(self.program, self.vbo, 'in_vert')
+        
+        self._start_watcher()
 
         while not glfw.window_should_close(self.window):
             if self.reload_pending:
@@ -361,43 +272,38 @@ class NativeRenderer:
             width, height = glfw.get_framebuffer_size(self.window)
             self.ctx.viewport = (0, 0, width, height)
             
-            if self.program:
-                try: self.program['u_resolution'].value = (width, height)
-                except KeyError: pass
-                try: self.program['u_time'].value = glfw.get_time()
-                except KeyError: pass
+            try: self.program['u_resolution'].value = (width, height)
+            except KeyError: pass
+            
+            if not self.camera:
                 try:
                     mx, my = glfw.get_cursor_pos(self.window)
-                    self.program['u_mouse'].value = (mx, height - my, 0, 0)
+                    self.program['u_mouse'].value = (mx, my, 0, 0)
+                except KeyError: pass
+            
+            for name, value in self.uniforms.items():
+                try: self.program[name].value = float(value)
+                except KeyError: pass
+            
+            # NEW: Upload Param uniforms
+            for p in self.params.values():
+                try: self.program[p.uniform_name].value = p.value
                 except KeyError: pass
 
+            self.ctx.clear(0.1, 0.12, 0.15)
             self.vao.render(mode=moderngl.TRIANGLE_STRIP)
-            
-            if writer:
-                frame_bytes = self.ctx.screen.read(components=3, alignment=1)
-                frame_np = np.frombuffer(frame_bytes, dtype=np.uint8).reshape((height, width, 3))
-                writer.append_data(np.flipud(frame_np))
-            
             glfw.swap_buffers(self.window)
             glfw.poll_events()
 
-        if writer: writer.close()
-        print("INFO: Viewer window closed.")
         glfw.terminate()
 
-def render(sdf_obj, camera=None, light=None, watch=True, record=None, save_frame=None, bg_color=(0.1, 0.12, 0.15), debug=None, **kwargs):
+def render(sdf_obj: SDFNode, camera: Camera = None, light: Light = None, watch=True, debug: Debug = None, **kwargs):
+    """Public API to launch the renderer."""
     try:
         import moderngl, glfw
     except ImportError:
         print("ERROR: Live rendering requires 'moderngl' and 'glfw'.", file=sys.stderr)
-        print("Please install them via: pip install sdforge[full] or pip install moderngl glfw", file=sys.stderr)
         return
-
-    if save_frame:
-        watch = False # Override to non-interactive for saving
-        if record:
-            print("WARNING: `record` is ignored when `save_frame` is provided.")
-            record = None
-        
-    renderer = NativeRenderer(sdf_obj, camera=camera, light=light, watch=watch, record=record, save_frame=save_frame, bg_color=bg_color, debug=debug, **kwargs)
+    # Pass `watch` parameter to the renderer
+    renderer = NativeRenderer(sdf_obj, camera=camera, light=light, watch=watch, debug=debug, **kwargs)
     renderer.run()

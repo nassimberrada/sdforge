@@ -1,13 +1,12 @@
 # --- Core Components ---
-from .core import (
-    SDFObject,
-    Camera,
-    Light,
-    X, Y, Z,
-)
+from .core import SDFNode, X, Y, Z
+from .debug import Debug
+from .api.camera import Camera
+from .api.light import Light
+from .api.material import Material
 
 # --- Primitives ---
-from .primitives import (
+from .api.primitives import (
     sphere,
     box,
     cylinder,
@@ -15,27 +14,17 @@ from .primitives import (
     line,
     cone,
     plane,
-    hex_prism,
     octahedron,
     ellipsoid,
-    box_frame,
-    capped_torus,
-    link,
-    round_cone,
-    pyramid,
-    # --- 2D Primitives ---
     rectangle,
     circle,
 )
 
-# --- Operations and Grouping ---
-from .operations import Group
-
-# --- Shaping and Materials ---
-from .shaping import Material
-
 # --- Custom GLSL ---
-from .custom import Forge
+from .api.forge import Forge
 
 # --- Interactive UI ---
-from .ui import Param
+from .api.params import Param
+
+# --- Operations and Grouping ---
+from .api.group import Group

@@ -1,6 +1,8 @@
 # --- Core Components ---
 from .core import SDFNode, X, Y, Z
+from .debug import Debug
 from .api.camera import Camera
+from .api.light import Light
 
 # --- Primitives ---
 from .api.primitives import (

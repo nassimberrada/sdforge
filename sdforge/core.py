@@ -96,10 +96,10 @@ class SDFNode(ABC):
         """
         raise NotImplementedError
 
-    def render(self, **kwargs):
+    def render(self, camera=None, light=None, debug=None, **kwargs):
         """Renders the SDF object in a live-updating viewer."""
         from .engine import render as render_func
-        render_func(self, **kwargs)
+        render_func(self, camera=camera, light=light, debug=debug, **kwargs)
 
     def save(self, path, bounds=None, samples=2**22, verbose=True, algorithm='marching_cubes', adaptive=False, vertex_colors=False):
         """
@@ -122,9 +122,9 @@ class SDFNode(ABC):
         from . import mesh
         mesh.save(self, path, bounds, samples, verbose, algorithm, adaptive, vertex_colors)
 
-    def save_frame(self, path, **kwargs):
+    def save_frame(self, path, camera=None, light=None, **kwargs):
         """Renders a single frame and saves it to an image file (e.g., '.png')."""
-        self.render(save_frame=path, watch=False, **kwargs)
+        self.render(save_frame=path, watch=False, camera=camera, light=light, **kwargs)
 
     def estimate_bounds(self, resolution=64, search_bounds=((-2, -2, -2), (2, 2, 2)), padding=0.1, verbose=True):
         """

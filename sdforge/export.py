@@ -46,8 +46,9 @@ uniform float u_cam_zoom = 1.0;
 
 // Generic lighting uniforms
 uniform vec3 u_light_pos = vec3(4.0, 5.0, 6.0);
-uniform float u_ambient_strength = 0.2;
+uniform float u_ambient_strength = 0.1;
 uniform float u_shadow_softness = 8.0;
+uniform float u_ao_strength = 3.0;
 
 // User-defined uniforms from Forge and Param objects
 {custom_uniforms_glsl}
@@ -55,50 +56,9 @@ uniform float u_shadow_softness = 8.0;
 out vec4 f_color; // Output fragment color
 
 // --- SDForge GLSL Library ---
-// NOTE: The Scene() function generated below already includes the necessary
-// sdf/noise.glsl, sdf/operations.glsl, sdf/primitives.glsl, and sdf/transforms.glsl
-// This section includes the rendering-specific functions.
 {_get_glsl_from_lib('camera.glsl')}
-// The Scene() function must be declared before it is used by the functions below.
-vec4 Scene(in vec3 p);
-
-// --- Raymarching & Normals ---
-vec3 estimateNormal(vec3 p) {{
-    float eps = 0.001;
-    vec2 e = vec2(1.0, -1.0) * 0.5773 * eps;
-    return normalize(
-        e.xyy * Scene(p + e.xyy).x +
-        e.yyx * Scene(p + e.yyx).x +
-        e.yxy * Scene(p + e.yxy).x +
-        e.xxx * Scene(p + e.xxx).x
-    );
-}}
-
-float raymarch(vec3 ro, vec3 rd) {{
-    float t = 0.0;
-    for (int i = 0; i < 100; i++) {{
-        vec3 p = ro + t * rd;
-        float d = Scene(p).x;
-        if (d < 0.001) return t;
-        t += d;
-        if (t > 100.0) break;
-    }}
-    return -1.0;
-}}
-
-float softShadow(vec3 ro, vec3 rd, float softness) {{
-    float res = 1.0;
-    float t = 0.02;
-    for (int i = 0; i < 32; i++) {{
-        float h = Scene(ro + rd * t).x;
-        if (h < 0.001) return 0.0;
-        res = min(res, softness * h / t);
-        t += h;
-        if (t > 10.0) break;
-    }}
-    return clamp(res, 0.0, 1.0);
-}}
-
+{_get_glsl_from_lib('raymarching.glsl')}
+{_get_glsl_from_lib('light.glsl')}
 
 // --- Scene Definition (Generated from Python) ---
 {scene_code}
@@ -111,7 +71,8 @@ void main() {{
     cameraStatic(st, u_cam_pos, u_cam_target, u_cam_zoom, ro, rd);
     
     // 2. Raymarch the scene
-    float t = raymarch(ro, rd);
+    vec4 hit = raymarch(ro, rd);
+    float t = hit.x;
     
     vec3 color = vec3(0.1, 0.12, 0.15); // Default background color
 
@@ -124,9 +85,10 @@ void main() {{
         // 4. Calculate lighting and shadows
         float diffuse = max(dot(normal, lightDir), u_ambient_strength);
         float shadow = softShadow(p + normal * 0.01, lightDir, u_shadow_softness);
+        float ao = ambientOcclusion(p, normal, u_ao_strength);
         
         // 5. Apply lighting to a default material color
-        color = vec3(0.9) * diffuse * shadow;
+        color = vec3(0.9) * diffuse * shadow * ao;
     }}
     
     f_color = vec4(color, 1.0);

@@ -7,6 +7,8 @@ import numpy as np
 from .core import SDFNode, GLSLContext
 from .loader import get_glsl_definitions
 from .api.camera import Camera
+from .api.light import Light
+from .debug import Debug
 
 try:
     from watchdog.observers import Observer
@@ -36,9 +38,11 @@ vec4 Scene(in vec3 p) {{
 
 class NativeRenderer:
     """A minimal renderer for displaying the raw SDF distance field."""
-    def __init__(self, sdf_obj: SDFNode, camera: Camera = None, watch=True, width=1280, height=720, **kwargs):
+    def __init__(self, sdf_obj: SDFNode, camera: Camera = None, light: Light = None, debug: Debug = None, watch=True, width=1280, height=720, **kwargs):
         self.sdf_obj = sdf_obj
         self.camera = camera
+        self.light = light
+        self.debug = debug
         self.watching = watch and WATCHDOG_AVAILABLE
         self.width = width
         self.height = height
@@ -61,7 +65,7 @@ class NativeRenderer:
             spec.loader.exec_module(module)
             if hasattr(module, 'main') and callable(module.main):
                 result = module.main()
-                new_sdf_obj, new_cam_obj = None, None
+                new_sdf_obj, new_cam_obj, new_light_obj, new_debug_obj = None, None, None, None
 
                 if isinstance(result, SDFNode):
                     new_sdf_obj = result
@@ -69,10 +73,14 @@ class NativeRenderer:
                     for item in result:
                         if isinstance(item, SDFNode): new_sdf_obj = item
                         if isinstance(item, Camera): new_cam_obj = item
+                        if isinstance(item, Light): new_light_obj = item
+                        if isinstance(item, Debug): new_debug_obj = item
                 
                 if new_sdf_obj:
                     self.sdf_obj = new_sdf_obj
                     self.camera = new_cam_obj
+                    self.light = new_light_obj
+                    self.debug = new_debug_obj
                     # Re-compile shader and vertex array
                     self.program = self._compile_shader()
                     if self.program:
@@ -111,8 +119,14 @@ class NativeRenderer:
         self.sdf_obj._collect_params(self.params)
         
         scene_code = SceneCompiler().compile(self.sdf_obj)
-        camera_code = get_glsl_definitions(frozenset(['camera']))
+        
+        # --- GLSL Library Imports ---
+        glsl_deps = {'camera', 'raymarching', 'light'}
+        if self.debug:
+            glsl_deps.add('debug')
+        renderer_library_code = get_glsl_definitions(frozenset(glsl_deps))
 
+        # --- Camera Logic ---
         if self.camera:
             cam = self.camera
             pos = f"vec3({float(cam.position[0])}, {float(cam.position[1])}, {float(cam.position[2])})"
@@ -121,6 +135,33 @@ class NativeRenderer:
         else:
             camera_logic_glsl = "cameraOrbit(st, u_mouse.xy, u_resolution, 1.0, ro, rd);"
         
+        # --- Lighting Logic ---
+        light = self.light or Light()
+        light_pos_str = f"vec3({light.position[0]}, {light.position[1]}, {light.position[2]})" if light.position else "ro"
+        
+        # --- Debug Logic ---
+        final_color_logic = """
+            vec3 lightPos = {light_pos};
+            vec3 lightDir = normalize(lightPos - p);
+            float diffuse = max(dot(normal, lightDir), {ambient});
+            float shadow = softShadow(p + normal * 0.01, lightDir, {shadow_softness});
+            diffuse *= shadow;
+            float ao = ambientOcclusion(p, normal, {ao_strength});
+            color = vec3(0.9) * diffuse * ao;
+        """.format(
+            light_pos=light_pos_str,
+            ambient=light.ambient_strength,
+            shadow_softness=light.shadow_softness,
+            ao_strength=light.ao_strength
+        )
+        if self.debug:
+            if self.debug.mode == 'normals':
+                final_color_logic = "color = debugNormals(normal);"
+            elif self.debug.mode == 'steps':
+                final_color_logic = "color = debugSteps(hit.z, 100.0);"
+            else:
+                print(f"WARNING: Unknown debug mode '{self.debug.mode}'. Ignoring.")
+
         all_uniforms = list(self.uniforms.keys()) + [p.uniform_name for p in self.params.values()]
         custom_uniforms_glsl = "\n".join([f"uniform float {name};" for name in all_uniforms])
         
@@ -136,48 +177,26 @@ class NativeRenderer:
             uniform vec4 u_mouse;
             {custom_uniforms_glsl}
             out vec4 f_color;
-            
-            {camera_code}
-            {scene_code}
 
-            float raymarch(vec3 ro, vec3 rd) {{
-                float t = 0.0;
-                for (int i = 0; i < 100; i++) {{
-                    vec3 p = ro + t * rd;
-                    float d = Scene(p).x;
-                    if (d < 0.001) return t;
-                    t += d;
-                    if (t > 100.0) break;
-                }}
-                return -1.0;
-            }}
+            // Forward declare Scene() so renderer functions can find it.
+            vec4 Scene(in vec3 p);
             
-            vec3 estimateNormal(vec3 p) {{
-                float eps = 0.001;
-                vec2 e = vec2(1.0, -1.0) * 0.5773 * eps;
-                return normalize(
-                    e.xyy * Scene(p + e.xyy).x +
-                    e.yyx * Scene(p + e.yyx).x +
-                    e.yxy * Scene(p + e.yxy).x +
-                    e.xxx * Scene(p + e.xxx).x
-                );
-            }}
+            {renderer_library_code}
+            {scene_code}
 
             void main() {{
                 vec2 st = (2.0 * gl_FragCoord.xy - u_resolution.xy) / u_resolution.y;
                 vec3 ro, rd;
                 {camera_logic_glsl}
                 
-                float t = raymarch(ro, rd);
+                vec4 hit = raymarch(ro, rd);
+                float t = hit.x;
                 
                 vec3 color = vec3(0.1, 0.12, 0.15); // Background color
                 if (t > 0.0) {{
                     vec3 p = ro + t * rd;
                     vec3 normal = estimateNormal(p);
-                    // Simple diffuse lighting from a fixed point
-                    vec3 lightDir = normalize(vec3(0.8, 0.7, 0.6));
-                    float diffuse = max(dot(normal, lightDir), 0.2);
-                    color = vec3(0.9) * diffuse;
+                    {final_color_logic}
                 }}
                 
                 f_color = vec4(color, 1.0);
@@ -249,7 +268,7 @@ class NativeRenderer:
 
         glfw.terminate()
 
-def render(sdf_obj: SDFNode, camera: Camera = None, watch=True, **kwargs):
+def render(sdf_obj: SDFNode, camera: Camera = None, light: Light = None, watch=True, debug: Debug = None, **kwargs):
     """Public API to launch the renderer."""
     try:
         import moderngl, glfw
@@ -257,5 +276,5 @@ def render(sdf_obj: SDFNode, camera: Camera = None, watch=True, **kwargs):
         print("ERROR: Live rendering requires 'moderngl' and 'glfw'.", file=sys.stderr)
         return
     # Pass `watch` parameter to the renderer
-    renderer = NativeRenderer(sdf_obj, camera=camera, watch=watch, **kwargs)
+    renderer = NativeRenderer(sdf_obj, camera=camera, light=light, watch=watch, debug=debug, **kwargs)
     renderer.run()

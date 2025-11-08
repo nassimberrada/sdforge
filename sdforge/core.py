@@ -1,5 +1,6 @@
 import numpy as np
 from abc import ABC, abstractmethod
+import sys
 
 # Cardinal axis constants
 X, Y, Z = np.array([1,0,0]), np.array([0,1,0]), np.array([0,0,1])
@@ -74,6 +75,76 @@ class SDFNode(ABC):
         """Renders the SDF object in a live-updating viewer."""
         from .engine import render as render_func
         render_func(self, **kwargs)
+
+    def save(self, path, bounds=None, samples=2**22, verbose=True, algorithm='marching_cubes', adaptive=False, vertex_colors=False):
+        """
+        Generates a mesh and saves it to a file.
+
+        Args:
+            path (str): The file path to save to (e.g., 'model.stl', 'model.glb').
+            bounds (tuple, optional): The bounding box to mesh within. If None, it will be automatically estimated.
+            samples (int, optional): The number of points to sample in the volume.
+            verbose (bool, optional): Whether to print progress information.
+            algorithm (str, optional): Meshing algorithm to use. Currently only 'marching_cubes' is supported.
+            adaptive (bool, optional): Whether to use adaptive meshing. Not currently implemented.
+            vertex_colors (bool, optional): Whether to include vertex colors in the export (for .glb/.gltf). Not currently implemented.
+        """
+        if bounds is None:
+            if verbose:
+                print("INFO: No bounds provided to .save(), estimating automatically.", file=sys.stderr)
+            bounds = self.estimate_bounds(verbose=verbose)
+
+        from . import mesh
+        mesh.save(self, path, bounds, samples, verbose, algorithm, adaptive, vertex_colors)
+
+    def save_frame(self, path, **kwargs):
+        """Renders a single frame and saves it to an image file (e.g., '.png')."""
+        self.render(save_frame=path, watch=False, **kwargs)
+
+    def estimate_bounds(self, resolution=64, search_bounds=((-2, -2, -2), (2, 2, 2)), padding=0.1, verbose=True):
+        """
+        Estimates the bounding box of the SDF object by sampling a grid.
+
+        Args:
+            resolution (int, optional): The number of points to sample along each axis.
+            search_bounds (tuple, optional): The initial cube volume to search for the object.
+            padding (float, optional): A padding factor to add to the estimated bounds.
+            verbose (bool, optional): If True, prints progress information.
+
+        Returns:
+            tuple: A tuple of ((min_x, min_y, min_z), (max_x, max_y, max_z)).
+        """
+        from .mesh import _cartesian_product
+        if verbose:
+            print(f"INFO: Estimating bounds with {resolution**3} samples...", file=sys.stderr)
+
+        sdf_callable = self.to_callable()
+
+        axes = [np.linspace(search_bounds[0][i], search_bounds[1][i], resolution) for i in range(3)]
+        points_grid = _cartesian_product(*axes).astype('f4')
+
+        distances = sdf_callable(points_grid)
+        inside_mask = distances <= 1e-4
+        inside_points = points_grid[inside_mask]
+
+        if inside_points.shape[0] < 2:
+            if verbose:
+                print(f"WARNING: No object surface found within the search bounds {search_bounds}. Returning search_bounds.", file=sys.stderr)
+            return search_bounds
+
+        min_coords = np.min(inside_points, axis=0)
+        max_coords = np.max(inside_points, axis=0)
+        
+        size = max_coords - min_coords
+        size[size < 1e-6] = padding
+        min_coords -= size * padding
+        max_coords += size * padding
+
+        bounds = (tuple(min_coords), tuple(max_coords))
+        if verbose:
+            print(f"SUCCESS: Estimated bounds: {bounds}", file=sys.stderr)
+            
+        return bounds
 
     def _collect_uniforms(self, uniforms: dict):
         """Recursively collects uniforms from the scene graph."""

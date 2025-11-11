@@ -63,6 +63,29 @@ def decimated_save_example():
     else:
         print("Error: Model saving failed.")
 
+def adaptive_save_example():
+    """
+    Saves a mesh using adaptive octree subdivision.
+    This is much faster and more memory-efficient for sparse or hollow objects,
+    as it only evaluates points near the object's surface.
+    """
+    # A hollow box is a perfect example where adaptive meshing shines.
+    # Uniform sampling would waste millions of points inside the hollow area.
+    scene = box(2.0, radius=0.1).shell(0.05)
+    
+    output_path = "adaptive_model.stl"
+    print(f"\nSaving model to '{output_path}' with adaptive meshing...")
+    
+    # Instead of `samples`, we use `adaptive=True` and control detail
+    # with `octree_depth`. A depth of 8 gives a 256x256x256 effective resolution.
+    scene.save(output_path, adaptive=True, octree_depth=8)
+    
+    if os.path.exists(output_path):
+        print(f"To view the model, run: meshlab {output_path}")
+        print("This mesh was generated much faster than it would have been with uniform sampling.")
+    else:
+        print("Error: Model saving failed.")
+
 
 def main():
     """
@@ -74,6 +97,7 @@ def main():
         "auto": auto_bounds_save_example,
         "manual": manual_bounds_save_example,
         "decimate": decimated_save_example,
+        "adaptive": adaptive_save_example,
     }
     
     if len(sys.argv) < 2:

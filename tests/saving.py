@@ -1,7 +1,7 @@
 import sys
 import pytest
 import os
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, call
 from sdforge import sphere, box, Forge
 
 def test_save_static_object(tmp_path):
@@ -29,13 +29,12 @@ def test_save_glb_calls_writer(mock_write_glb, tmp_path):
     s.save(str(output_file), samples=2**10, verbose=False)
     mock_write_glb.assert_called_once()
 
-def test_save_with_advanced_meshing_warns(tmp_path, capsys):
+def test_save_with_unsupported_algorithm_warns(tmp_path, capsys):
     s = sphere(1.0)
     output_file = tmp_path / "test.stl"
-    s.save(str(output_file), samples=2**10, verbose=False, algorithm='dual_contouring', adaptive=True)
+    s.save(str(output_file), samples=2**10, verbose=False, algorithm='dual_contouring')
     captured = capsys.readouterr()
     assert "WARNING: Algorithm 'dual_contouring' is not supported." in captured.err
-    assert "WARNING: Adaptive meshing is not yet implemented." in captured.err
 
 def test_save_with_vertex_colors_warns(tmp_path, capsys):
     s = sphere(1.0)
@@ -123,3 +122,53 @@ def test_save_with_invalid_decimation_ratio_warns(tmp_path, capsys):
 
     # The file sizes should be identical since simplification was skipped
     assert os.path.getsize(original_file) == os.path.getsize(decimated_file)
+
+# --- Adaptive Meshing Tests ---
+
+def test_save_adaptive_object(tmp_path):
+    """Tests that adaptive meshing runs and creates a valid file."""
+    s = sphere(1.0)
+    output_file = tmp_path / "adaptive_model.stl"
+    s.save(str(output_file), adaptive=True, octree_depth=6, verbose=False)
+    assert os.path.exists(output_file)
+    assert os.path.getsize(output_file) > 84
+
+def test_save_adaptive_with_samples_warns(tmp_path, capsys):
+    """Tests that using both adaptive and samples flags gives a warning."""
+    s = sphere(1.0)
+    output_file = tmp_path / "adaptive_warn.stl"
+    s.save(str(output_file), adaptive=True, samples=2**10, verbose=False)
+    captured = capsys.readouterr()
+    assert "WARNING: `samples` parameter is ignored when `adaptive=True`" in captured.err
+
+def test_adaptive_is_smarter_than_uniform_for_sparse_scene():
+    """
+    Tests the core benefit of adaptive meshing: fewer evaluations for sparse scenes.
+    """
+    # A sparse scene: a small sphere in a large bounding box
+    s = sphere(0.1)
+    bounds = ((-5, -5, -5), (5, 5, 5))
+    
+    # Mock the SDF's callable to count how many times it's invoked
+    mock_callable = MagicMock(wraps=s.to_callable())
+    s.to_callable = MagicMock(return_value=mock_callable)
+
+    # Run uniform meshing
+    # We patch the file writer to avoid actual disk I/O
+    with patch('sdforge.mesh._write_binary_stl'):
+        s.save("uniform.stl", bounds=bounds, adaptive=False, samples=10**3, verbose=False)
+    uniform_calls = mock_callable.call_args[0][0].shape[0]
+
+    mock_callable.reset_mock()
+    
+    # Run adaptive meshing
+    with patch('sdforge.mesh._write_binary_stl'):
+        s.save("adaptive.stl", bounds=bounds, adaptive=True, octree_depth=5, verbose=False)
+    adaptive_calls = mock_callable.call_args[0][0].shape[0]
+
+    # The number of uniform calls should be around 1000 (10x10x10 grid).
+    # The number of adaptive calls should be significantly less, as it only
+    # explores the area immediately around the small sphere.
+    assert uniform_calls > 900
+    assert adaptive_calls < 500
+    assert adaptive_calls < uniform_calls

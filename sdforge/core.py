@@ -109,17 +109,22 @@ class SDFNode(ABC):
         from .render import render as render_func
         render_func(self, camera=camera, light=light, debug=debug, **kwargs)
 
-    def save(self, path, bounds=None, samples=2**22, verbose=True, algorithm='marching_cubes', adaptive=False, vertex_colors=False, decimate_ratio=None):
+    def save(self, path, bounds=None, samples=2**22, verbose=True, algorithm='marching_cubes', adaptive=False, octree_depth=8, vertex_colors=False, decimate_ratio=None):
         """
         Generates a mesh and saves it to a file.
 
         Args:
             path (str): The file path to save to (e.g., 'model.stl', 'model.glb').
             bounds (tuple, optional): The bounding box to mesh within. If None, it will be automatically estimated.
-            samples (int, optional): The number of points to sample in the volume.
+            samples (int, optional): The number of points to sample for uniform grid meshing.
+                                     Higher is more detailed but slower. Ignored if `adaptive=True`.
             verbose (bool, optional): Whether to print progress information.
             algorithm (str, optional): Meshing algorithm to use. Currently only 'marching_cubes' is supported.
-            adaptive (bool, optional): Whether to use adaptive meshing. Not currently implemented.
+            adaptive (bool, optional): If True, uses an octree-based adaptive meshing algorithm which is often
+                                       faster and more memory-efficient than a uniform grid. Defaults to False.
+            octree_depth (int, optional): The maximum subdivision depth for adaptive meshing.
+                                          Higher is more detailed. Effective resolution is 2**octree_depth.
+                                          Ignored if `adaptive=False`. Defaults to 8.
             vertex_colors (bool, optional): Whether to include vertex colors in the export (for .glb/.gltf). Not currently implemented.
             decimate_ratio (float, optional): If specified, simplifies the mesh to reduce triangle count.
                                            A value of 0.9 aims to remove 90% of the triangles.
@@ -131,7 +136,7 @@ class SDFNode(ABC):
             bounds = self.estimate_bounds(verbose=verbose)
 
         from . import mesh
-        mesh.save(self, path, bounds, samples, verbose, algorithm, adaptive, vertex_colors, decimate_ratio)
+        mesh.save(self, path, bounds, samples, verbose, algorithm, adaptive, vertex_colors, decimate_ratio, octree_depth=octree_depth)
 
     def save_frame(self, path, camera=None, light=None, **kwargs):
         """Renders a single frame and saves it to an image file (e.g., '.png')."""

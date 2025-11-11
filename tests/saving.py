@@ -1,6 +1,7 @@
+import sys
 import pytest
 import os
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 from sdforge import sphere, box, Forge
 
 def test_save_static_object(tmp_path):
@@ -47,13 +48,12 @@ def test_save_with_vertex_colors_warns(tmp_path, capsys):
 @patch('sdforge.core.SDFNode.render')
 def test_save_frame_api(mock_render):
     s = sphere()
-    s.save_frame('test.png', time=1.23)
+    s.save_frame('test.png', camera=None, light=None)
     mock_render.assert_called_once_with(
         save_frame='test.png', 
         watch=False,
         camera=None,
         light=None,
-        time=1.23
     )
 
 def test_save_displaced_object_fails(tmp_path):
@@ -76,3 +76,50 @@ def test_save_marching_cubes_failure(tmp_path, capsys):
     s.save(str(output_file), bounds=((-1, -1, -1), (1, 1, 1)), samples=2**10, verbose=False)
     captured = capsys.readouterr()
     assert "ERROR: Marching cubes failed" in captured.err
+
+@pytest.mark.skipif("trimesh" not in sys.modules, reason="trimesh library not installed")
+def test_save_with_decimation_simplifies_mesh(tmp_path):
+    """Tests that decimation actually reduces the file size."""
+    s = sphere(1.0)
+    
+    original_file = tmp_path / "original.stl"
+    decimated_file = tmp_path / "decimated.stl"
+    
+    s.save(str(original_file), samples=2**16, verbose=False)
+    s.save(str(decimated_file), samples=2**16, verbose=False, decimate_ratio=0.9)
+    
+    assert os.path.exists(original_file)
+    assert os.path.exists(decimated_file)
+    
+    original_size = os.path.getsize(original_file)
+    decimated_size = os.path.getsize(decimated_file)
+    
+    assert decimated_size > 84
+    assert decimated_size < original_size
+
+@patch.dict('sys.modules', {'trimesh': None})
+def test_save_with_decimation_warns_if_trimesh_missing(tmp_path, capsys):
+    """Tests that a warning is printed if decimation is requested but trimesh is missing."""
+    s = sphere(1.0)
+    output_file = tmp_path / "test.stl"
+    
+    s.save(str(output_file), samples=2**10, verbose=False, decimate_ratio=0.5)
+    
+    captured = capsys.readouterr()
+    assert "WARNING: Mesh simplification requires the 'trimesh' library." in captured.err
+    assert "pip install trimesh" in captured.err
+
+def test_save_with_invalid_decimation_ratio_warns(tmp_path, capsys):
+    """Tests that an invalid ratio prints a warning and does not simplify."""
+    s = sphere(1.0)
+    original_file = tmp_path / "original.stl"
+    decimated_file = tmp_path / "decimated.stl"
+
+    s.save(str(original_file), samples=2**12, verbose=False)
+    s.save(str(decimated_file), samples=2**12, verbose=False, decimate_ratio=1.5) # Invalid ratio
+
+    captured = capsys.readouterr()
+    assert "WARNING: `decimate_ratio` must be between 0 and 1." in captured.err
+
+    # The file sizes should be identical since simplification was skipped
+    assert os.path.getsize(original_file) == os.path.getsize(decimated_file)

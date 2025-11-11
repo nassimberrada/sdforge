@@ -109,7 +109,7 @@ class SDFNode(ABC):
         from .render import render as render_func
         render_func(self, camera=camera, light=light, debug=debug, **kwargs)
 
-    def save(self, path, bounds=None, samples=2**22, verbose=True, algorithm='marching_cubes', adaptive=False, vertex_colors=False):
+    def save(self, path, bounds=None, samples=2**22, verbose=True, algorithm='marching_cubes', adaptive=False, vertex_colors=False, decimate_ratio=None):
         """
         Generates a mesh and saves it to a file.
 
@@ -121,6 +121,9 @@ class SDFNode(ABC):
             algorithm (str, optional): Meshing algorithm to use. Currently only 'marching_cubes' is supported.
             adaptive (bool, optional): Whether to use adaptive meshing. Not currently implemented.
             vertex_colors (bool, optional): Whether to include vertex colors in the export (for .glb/.gltf). Not currently implemented.
+            decimate_ratio (float, optional): If specified, simplifies the mesh to reduce triangle count.
+                                           A value of 0.9 aims to remove 90% of the triangles.
+                                           Requires the 'trimesh' library. Defaults to None (no simplification).
         """
         if bounds is None:
             if verbose:
@@ -128,7 +131,7 @@ class SDFNode(ABC):
             bounds = self.estimate_bounds(verbose=verbose)
 
         from . import mesh
-        mesh.save(self, path, bounds, samples, verbose, algorithm, adaptive, vertex_colors)
+        mesh.save(self, path, bounds, samples, verbose, algorithm, adaptive, vertex_colors, decimate_ratio)
 
     def save_frame(self, path, camera=None, light=None, **kwargs):
         """Renders a single frame and saves it to an image file (e.g., '.png')."""

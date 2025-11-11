@@ -24,9 +24,13 @@ setup(
         'export': [
             'pygltflib'
         ],
+        'saving': [
+            'trimesh'
+        ],
         'full': [
             'imgui[glfw]>=2.0.0',
-            'pygltflib'
+            'pygltflib',
+            'trimesh'
         ]
     },
     classifiers=[

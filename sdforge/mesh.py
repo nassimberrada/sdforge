@@ -81,7 +81,7 @@ def _write_glb(path, verts, faces, vertex_colors):
     gltf.save(path)
 
 
-def save(sdf_obj, path, bounds, samples, verbose, algorithm, adaptive, vertex_colors):
+def save(sdf_obj, path, bounds, samples, verbose, algorithm, adaptive, vertex_colors, decimate_ratio=None):
     """
     Generates a mesh from an SDF object using the Marching Cubes algorithm and saves it to a file.
     """
@@ -132,6 +132,33 @@ def save(sdf_obj, path, bounds, samples, verbose, algorithm, adaptive, vertex_co
         
     verts += np.array(bounds[0])
 
+    if decimate_ratio is not None:
+        if not (0 < decimate_ratio < 1):
+            print("WARNING: `decimate_ratio` must be between 0 and 1. Skipping simplification.", file=sys.stderr)
+        else:
+            try:
+                import trimesh
+                if verbose:
+                    print(f"  - Simplifying mesh (target reduction: {decimate_ratio * 100:.1f}%)...")
+                
+                mesh = trimesh.Trimesh(vertices=verts, faces=faces)
+                
+                original_face_count = len(mesh.faces)
+                target_face_count = int(original_face_count * (1.0 - decimate_ratio))
+
+                simplified_mesh = mesh.simplify_quadric_decimation(target_face_count)
+
+                verts = simplified_mesh.vertices
+                faces = simplified_mesh.faces
+                if verbose:
+                    print(f"  - Simplified from {original_face_count} to {len(faces)} faces.")
+
+            except ImportError:
+                print("WARNING: Mesh simplification requires the 'trimesh' library.", file=sys.stderr)
+                print("         Please install it via: pip install trimesh", file=sys.stderr)
+            except Exception as e:
+                print(f"ERROR: Mesh simplification failed: {e}", file=sys.stderr)
+    
     path_lower = path.lower()
     if path_lower.endswith('.stl'):
         _write_binary_stl(path, verts[faces])

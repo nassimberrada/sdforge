@@ -42,6 +42,27 @@ def manual_bounds_save_example():
     else:
         print("Error: Model saving failed.")
 
+def decimated_save_example():
+    """
+    Saves a mesh with post-process simplification to reduce triangle count.
+    This requires the 'trimesh' library to be installed.
+    """
+    # A box has large flat faces, making it a good candidate for decimation.
+    scene = box(size=(2, 1, 1.5), radius=0.1)
+    
+    output_path = "decimated_model.stl"
+    print(f"\nSaving model to '{output_path}' with 90% triangle reduction...")
+    
+    # We generate a high-resolution mesh first.
+    # Then, decimate_ratio=0.9 will aim to remove 90% of the triangles.
+    scene.save(output_path, samples=2**22, decimate_ratio=0.9)
+    
+    if os.path.exists(output_path):
+        print(f"To view the model, run: meshlab {output_path}")
+        print("Notice how the flat surfaces have far fewer triangles than a normal export.")
+    else:
+        print("Error: Model saving failed.")
+
 
 def main():
     """
@@ -52,6 +73,7 @@ def main():
     examples = {
         "auto": auto_bounds_save_example,
         "manual": manual_bounds_save_example,
+        "decimate": decimated_save_example,
     }
     
     if len(sys.argv) < 2:

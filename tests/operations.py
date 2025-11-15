@@ -85,15 +85,39 @@ def test_difference_api_and_callable(shapes):
     expected = np.maximum(s.to_callable()(points), -b.to_callable()(points))
     assert np.allclose(d_callable(points), expected)
 
+def test_exclusive_blend_params_api(shapes):
+    """Tests that using multiple blend types (k, fillet, chamfer) raises an error."""
+    s, b = shapes
+    with pytest.raises(ValueError):
+        s.difference(b, k=0.1, fillet=0.1)
+    with pytest.raises(ValueError):
+        s.difference(b, k=0.1, chamfer=0.1)
+    with pytest.raises(ValueError):
+        s.difference(b, fillet=0.1, chamfer=0.1)
+
+def test_convenience_methods(shapes):
+    s, b = shapes
+    # Just test that they construct the correct underlying object
+    d1 = s.fillet_difference(b, radius=0.1)
+    assert isinstance(d1, Difference) and d1.k == 0.1 and d1.chamfer == 0.0
+
+    d2 = s.chamfer_difference(b, distance=0.2)
+    assert isinstance(d2, Difference) and d2.k == 0.0 and d2.chamfer == 0.2
+
 # --- Equivalence and Compilation Tests ---
 
 OPERATION_TEST_CASES = [
     sphere(r=1.0) | box(size=1.5),
     sphere(r=1.0) & box(size=1.5),
     sphere(r=1.0) - box(size=1.5),
-    sphere(r=1.0).union(box(size=1.5), k=0.2),
-    sphere(r=1.0).intersection(box(size=1.5), k=0.2),
-    sphere(r=1.0).difference(box(size=1.5), k=0.2),
+    # Fillet (smooth)
+    sphere(r=1.0).union(box(size=1.5), fillet=0.2),
+    sphere(r=1.0).intersection(box(size=1.5), fillet=0.2),
+    sphere(r=1.0).difference(box(size=1.5), fillet=0.2),
+    # Chamfer (linear)
+    sphere(r=1.0).union(box(size=1.5), chamfer=0.2),
+    sphere(r=1.0).intersection(box(size=1.5), chamfer=0.2),
+    sphere(r=1.0).difference(box(size=1.5), chamfer=0.2),
     # Test chaining
     (sphere(r=1.0) | box(size=0.8)) - sphere(0.5)
 ]

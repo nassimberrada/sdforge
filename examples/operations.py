@@ -1,5 +1,5 @@
 import sys
-from sdforge import sphere, box
+from sdforge import sphere, box, cylinder, X
 
 def union_example():
     """A sphere and a box joined together."""
@@ -26,6 +26,33 @@ def smooth_union_example():
     # The 'k' parameter controls the smoothness of the blend.
     return s1.union(s2, k=0.3)
 
+def fillet_difference_example():
+    """Demonstrates subtracting a shape with a rounded (filleted) edge."""
+    plate = box(size=(2.0, 0.5, 2.0))
+    hole = cylinder(radius=0.5, height=1.0)
+    
+    # The fillet=0.1 parameter rounds the edge where the cylinder is subtracted.
+    scene = plate.difference(hole, fillet=0.1)
+    return scene
+
+def chamfer_difference_example():
+    """Demonstrates subtracting a shape with a linear (chamfered) edge."""
+    plate = box(size=(2.0, 0.5, 2.0))
+    hole = cylinder(radius=0.5, height=1.0)
+
+    # The chamfer=0.1 parameter creates a 45-degree bevel.
+    scene = plate.difference(hole, chamfer=0.1)
+    return scene
+
+def fillet_union_example():
+    """Demonstrates joining two shapes with a filleted seam."""
+    s1 = sphere(0.8).translate(-X * 0.5)
+    s2 = sphere(0.8).translate(X * 0.5)
+    
+    # The fillet parameter smoothly blends the two spheres together.
+    scene = s1.union(s2, fillet=0.4)
+    return scene
+
 def main():
     """
     Renders an example based on a command-line argument.
@@ -37,6 +64,9 @@ def main():
         "intersection": intersection_example,
         "difference": difference_example,
         "smooth_union": smooth_union_example,
+        "fillet_cut": fillet_difference_example,
+        "chamfer_cut": chamfer_difference_example,
+        "fillet_join": fillet_union_example,
     }
     
     if len(sys.argv) < 2:

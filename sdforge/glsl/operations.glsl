@@ -14,7 +14,7 @@ vec4 opS(vec4 a, vec4 b) {
 }
 
 
-// --- Smooth Boolean Operations ---
+// --- Smooth Boolean Operations (Fillet) ---
 
 vec4 sUnion(vec4 a, vec4 b, float k )
 {
@@ -37,5 +37,28 @@ vec4 sDifference(vec4 a, vec4 b, float k )
     float h = clamp( 0.5 - 0.5*(b.x+a.x)/k, 0.0, 1.0 );
     float dist = mix( a.x, -b.x, h ) + k*h*(1.0-h);
     // The material of the first object is always used for subtraction
+    return vec4(dist, a.y, a.z, a.w);
+}
+
+// --- Linear Boolean Operations (Chamfer) ---
+
+vec4 cUnion(vec4 a, vec4 b, float k)
+{
+    float h = clamp( 0.5 + 0.5*(b.x-a.x)/k, 0.0, 1.0 );
+    float dist = mix( b.x, a.x, h );
+    return (a.x < b.x) ? vec4(dist, a.y, a.z, a.w) : vec4(dist, b.y, b.z, b.w);
+}
+
+vec4 cIntersect(vec4 a, vec4 b, float k)
+{
+    float h = clamp( 0.5 - 0.5*(b.x-a.x)/k, 0.0, 1.0 );
+    float dist = mix( b.x, a.x, h );
+    return (a.x > b.x) ? vec4(dist, a.y, a.z, a.w) : vec4(dist, b.y, b.z, b.w);
+}
+
+vec4 cDifference(vec4 a, vec4 b, float k)
+{
+    float h = clamp( 0.5 - 0.5*(b.x+a.x)/k, 0.0, 1.0 );
+    float dist = mix( a.x, -b.x, h );
     return vec4(dist, a.y, a.z, a.w);
 }

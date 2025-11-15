@@ -211,20 +211,32 @@ class SDFNode(ABC):
                 child._collect_uniforms(uniforms)
 
     # --- Boolean Operations ---
-    def union(self, *others, k: float = 0.0) -> 'SDFNode':
-        """Creates a union of this object and others, with optional smoothness."""
+    def union(self, *others, k: float = 0.0, fillet: float = 0.0, chamfer: float = 0.0) -> 'SDFNode':
+        """Creates a union of this object and others, with optional fillet or chamfer."""
         from .api.operations import Union
-        return Union(children=[self] + list(others), k=k)
+        num_ops = (k > 1e-6) + (fillet > 1e-6) + (chamfer > 1e-6)
+        if num_ops > 1:
+            raise ValueError("Cannot specify more than one of 'k', 'fillet', or 'chamfer' at the same time.")
+        if fillet > 1e-6: k = fillet
+        return Union(children=[self] + list(others), k=k, chamfer=chamfer)
 
-    def intersection(self, *others, k: float = 0.0) -> 'SDFNode':
-        """Creates an intersection of this object and others, with optional smoothness."""
+    def intersection(self, *others, k: float = 0.0, fillet: float = 0.0, chamfer: float = 0.0) -> 'SDFNode':
+        """Creates an intersection of this object and others, with optional fillet or chamfer."""
         from .api.operations import Intersection
-        return Intersection(children=[self] + list(others), k=k)
+        num_ops = (k > 1e-6) + (fillet > 1e-6) + (chamfer > 1e-6)
+        if num_ops > 1:
+            raise ValueError("Cannot specify more than one of 'k', 'fillet', or 'chamfer' at the same time.")
+        if fillet > 1e-6: k = fillet
+        return Intersection(children=[self] + list(others), k=k, chamfer=chamfer)
 
-    def difference(self, other, k: float = 0.0) -> 'SDFNode':
-        """Subtracts another object from this one, with optional smoothness."""
+    def difference(self, other, k: float = 0.0, fillet: float = 0.0, chamfer: float = 0.0) -> 'SDFNode':
+        """Subtracts another object from this one, with optional fillet or chamfer."""
         from .api.operations import Difference
-        return Difference(self, other, k=k)
+        num_ops = (k > 1e-6) + (fillet > 1e-6) + (chamfer > 1e-6)
+        if num_ops > 1:
+            raise ValueError("Cannot specify more than one of 'k', 'fillet', or 'chamfer' at the same time.")
+        if fillet > 1e-6: k = fillet
+        return Difference(self, other, k=k, chamfer=chamfer)
 
     def __or__(self, other):
         """Operator overload for a simple union: `shape1 | shape2`."""
@@ -237,6 +249,31 @@ class SDFNode(ABC):
     def __sub__(self, other):
         """Operator overload for a simple difference: `shape1 - shape2`."""
         return self.difference(other)
+        
+    # --- CAD-style Boolean Operations ---
+    def fillet_union(self, *others, radius: float) -> 'SDFNode':
+        """Creates a union with a rounded (filleted) seam."""
+        return self.union(*others, fillet=radius)
+
+    def chamfer_union(self, *others, distance: float) -> 'SDFNode':
+        """Creates a union with a linear (chamfered) seam."""
+        return self.union(*others, chamfer=distance)
+        
+    def fillet_intersection(self, *others, radius: float) -> 'SDFNode':
+        """Creates an intersection with a rounded (filleted) seam."""
+        return self.intersection(*others, fillet=radius)
+
+    def chamfer_intersection(self, *others, distance: float) -> 'SDFNode':
+        """Creates an intersection with a linear (chamfered) seam."""
+        return self.intersection(*others, chamfer=distance)
+
+    def fillet_difference(self, other, radius: float) -> 'SDFNode':
+        """Subtracts a shape with a rounded (filleted) seam."""
+        return self.difference(other, fillet=radius)
+
+    def chamfer_difference(self, other, distance: float) -> 'SDFNode':
+        """Subtracts a shape with a linear (chamfered) seam."""
+        return self.difference(other, chamfer=distance)
 
     # --- Material ---
     def color(self, r: float, g: float, b: float) -> 'SDFNode':

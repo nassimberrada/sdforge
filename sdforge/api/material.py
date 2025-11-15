@@ -3,6 +3,16 @@ from ..core import SDFNode
 class Material(SDFNode):
     """Applies a color material to a child object."""
     def __init__(self, child, color):
+        """
+        Internal constructor for a Material node.
+
+        Note: This class is not typically instantiated directly. Use the
+        `.color()` method on an SDFNode object instead.
+
+        Args:
+            child (SDFNode): The SDF object to apply the material to.
+            color (tuple): An (r, g, b) tuple with values from 0.0 to 1.0.
+        """
         super().__init__()
         self.child = child
         self.color = tuple(color) # Ensure color is a tuple for hashing

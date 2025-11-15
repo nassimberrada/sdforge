@@ -5,6 +5,10 @@ class Camera:
         """
         Initializes the camera.
 
+        When a Camera object is passed to the `.render()` method, the view
+        is fixed to these settings. If no camera is provided, an interactive
+        orbit camera is used instead.
+
         Args:
             position (tuple, optional): The position of the camera in 3D space.
                                         Defaults to (5, 4, 5).
@@ -12,6 +16,13 @@ class Camera:
                                       Defaults to (0, 0, 0).
             zoom (float, optional): The zoom level. Higher is more zoomed in.
                                     Defaults to 1.0.
+        
+        Example:
+            >>> from sdforge import sphere, Camera
+            >>> scene = sphere(1.0)
+            >>> # Create a camera positioned far away, looking at the origin
+            >>> cam = Camera(position=(10, 8, 10), target=(0, 0, 0))
+            >>> scene.render(camera=cam)
         """
         self.position = position
         self.target = target

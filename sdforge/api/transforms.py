@@ -26,7 +26,12 @@ class _Transform(SDFNode):
         raise NotImplementedError
 
 class Translate(_Transform):
-    """Translates a child object."""
+    """
+    Internal node to translate a child object.
+    
+    Note: This class is not typically instantiated directly. Use the
+    `.translate()` method or the `+` operator on an SDFNode object.
+    """
     glsl_dependencies = {"transforms"}
 
     def __init__(self, child: SDFNode, offset: tuple):
@@ -44,7 +49,12 @@ class Translate(_Transform):
         return lambda points: child_callable(points - offset)
         
 class Scale(SDFNode):
-    """Scales a child object."""
+    """
+    Internal node to scale a child object.
+    
+    Note: This class is not typically instantiated directly. Use the
+    `.scale()` method or the `*` operator on an SDFNode object.
+    """
     glsl_dependencies = {"transforms"}
 
     def __init__(self, child: SDFNode, factor):
@@ -87,7 +97,12 @@ class Scale(SDFNode):
         return lambda points: child_callable(points / factor) * scale_correction
 
 class Rotate(_Transform):
-    """Rotates a child object around a cardinal axis."""
+    """
+    Internal node to rotate a child object around a cardinal axis.
+
+    Note: This class is not typically instantiated directly. Use the
+    `.rotate()` method on an SDFNode object.
+    """
     glsl_dependencies = {"transforms"}
 
     def __init__(self, child: SDFNode, axis: tuple, angle: float):
@@ -116,7 +131,12 @@ class Rotate(_Transform):
         return lambda points: child_callable(points @ rot_matrix.T)
 
 class Orient(_Transform):
-    """Orients a child object by swizzling coordinates."""
+    """
+    Internal node to orient a child object by swizzling coordinates.
+
+    Note: This class is not typically instantiated directly. Use the
+    `.orient()` method on an SDFNode object.
+    """
     glsl_dependencies = set()
 
     def __init__(self, child: SDFNode, axis: tuple):
@@ -135,7 +155,12 @@ class Orient(_Transform):
         return child_callable
 
 class Twist(_Transform):
-    """Twists a child object."""
+    """
+    Internal node to twist a child object.
+
+    Note: This class is not typically instantiated directly. Use the
+    `.twist()` method on an SDFNode object.
+    """
     glsl_dependencies = {"transforms"}
     def __init__(self, child: SDFNode, k: float):
         super().__init__(child)
@@ -154,7 +179,12 @@ class Twist(_Transform):
         return _callable
 
 class Bend(_Transform):
-    """Bends a child object along a cardinal axis."""
+    """
+    Internal node to bend a child object along a cardinal axis.
+
+    Note: This class is not typically instantiated directly. Use the
+    `.bend()` method on an SDFNode object.
+    """
     glsl_dependencies = {"transforms"}
     def __init__(self, child: SDFNode, axis: np.ndarray, k: float):
         super().__init__(child)
@@ -188,7 +218,12 @@ class Bend(_Transform):
         return _callable
 
 class Repeat(_Transform):
-    """Repeats a child object infinitely."""
+    """
+    Internal node to repeat a child object infinitely.
+
+    Note: This class is not typically instantiated directly. Use the
+    `.repeat()` method on an SDFNode object.
+    """
     glsl_dependencies = {"transforms"}
     def __init__(self, child, spacing):
         super().__init__(child)
@@ -208,7 +243,12 @@ class Repeat(_Transform):
         return _callable
 
 class LimitedRepeat(_Transform):
-    """Repeats a child object a limited number of times."""
+    """
+    Internal node to repeat a child object a limited number of times.
+
+    Note: This class is not typically instantiated directly. Use the
+    `.limited_repeat()` method on an SDFNode object.
+    """
     glsl_dependencies = {"transforms"}
     def __init__(self, child, spacing, limits):
         super().__init__(child)
@@ -235,7 +275,12 @@ class LimitedRepeat(_Transform):
         return _callable
 
 class PolarRepeat(_Transform):
-    """Repeats a child object in a circle."""
+    """
+    Internal node to repeat a child object in a circle.
+
+    Note: This class is not typically instantiated directly. Use the
+    `.polar_repeat()` method on an SDFNode object.
+    """
     glsl_dependencies = {"transforms"}
     def __init__(self, child, repetitions):
         super().__init__(child)
@@ -256,7 +301,12 @@ class PolarRepeat(_Transform):
         return _callable
 
 class Mirror(_Transform):
-    """Mirrors a child object."""
+    """
+    Internal node to mirror a child object.
+
+    Note: This class is not typically instantiated directly. Use the
+    `.mirror()` method on an SDFNode object.
+    """
     glsl_dependencies = {"transforms"}
     def __init__(self, child, axes):
         super().__init__(child)

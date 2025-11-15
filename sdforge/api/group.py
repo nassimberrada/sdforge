@@ -7,11 +7,32 @@ from .operations import Union
 
 class Group(SDFNode):
     """
-    Represents a group of SDF objects that can be transformed together.
-    Transforms applied to the group are propagated to all its children.
-    The group itself evaluates as the union of its children.
+    A collection of SDF objects that can be transformed as a single unit.
+
+    A Group acts like a container. Any transformation (like `.translate()` or
+    `.rotate()`) applied to the group is propagated to all of its children.
+    When rendered or meshed, the group evaluates as the union of all its
+    child objects.
     """
     def __init__(self, *children):
+        """
+        Initializes a Group with one or more child objects.
+
+        Args:
+            *children (SDFNode): A variable number of SDFNode objects to include
+                                 in the group.
+        
+        Example:
+            >>> from sdforge import Group, sphere, box, Y
+            >>> import numpy as np
+            >>> # Create two objects
+            >>> s = sphere(0.5).translate((-1, 0, 0))
+            >>> b = box(0.5).translate((1, 0, 0))
+            >>> # Group them together
+            >>> g = Group(s, b)
+            >>> # Now, a single rotation is applied to the entire group
+            >>> scene = g.rotate(Y, np.pi / 4)
+        """
         super().__init__()
         self.children = children
 

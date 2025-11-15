@@ -6,10 +6,25 @@ class Light:
 
         Args:
             position (tuple, optional): The position of the light source. If None,
-                                        the light is positioned at the camera. Defaults to None.
-            ambient_strength (float, optional): The minimum brightness for surfaces. Defaults to 0.1.
-            shadow_softness (float, optional): How soft shadows are. Higher is softer. Defaults to 8.0.
-            ao_strength (float, optional): Strength of ambient occlusion. Defaults to 3.0.
+                                        the light is treated as a "headlight" attached
+                                        to the camera. Defaults to None.
+            ambient_strength (float, optional): The minimum brightness for surfaces,
+                                                preventing shadows from being pure black.
+                                                Defaults to 0.1.
+            shadow_softness (float, optional): Controls how soft shadows are. Higher
+                                               values produce softer shadows but can be
+                                               more computationally expensive.
+                                               Defaults to 8.0.
+            ao_strength (float, optional): Strength of the ambient occlusion effect, which
+                                           darkens crevices and contact points.
+                                           Defaults to 3.0.
+        
+        Example:
+            >>> from sdforge import sphere, Light
+            >>> scene = sphere(1.0)
+            >>> # Create a bright, hard-edged light from a fixed position
+            >>> light = Light(position=(5, 5, 3), shadow_softness=1.0)
+            >>> scene.render(light=light)
         """
         self.position = position
         self.ambient_strength = ambient_strength

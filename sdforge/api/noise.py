@@ -3,10 +3,24 @@ from ..utils import _glsl_format
 from .params import Param
 
 class Displace(SDFNode):
-    """Displaces the surface of a child object using a raw GLSL expression."""
+    """
+    Internal node to displace the surface of a child object using a raw GLSL expression.
+    
+    Note: This class is not typically instantiated directly. Use the
+    `.displace()` method on an SDFNode object instead.
+    """
     glsl_dependencies = {"shaping"}
 
     def __init__(self, child: SDFNode, displacement_glsl: str):
+        """
+        Initializes the Displace node.
+
+        Args:
+            child (SDFNode): The object whose surface will be displaced.
+            displacement_glsl (str): A GLSL expression that evaluates to a float.
+                                     The expression can use `vec3 p` to get the
+                                     current sample point in space.
+        """
         super().__init__()
         self.child = child
         self.displacement_glsl = displacement_glsl
@@ -22,10 +36,24 @@ class Displace(SDFNode):
         raise TypeError("Cannot create a callable for an object with raw GLSL displacement.")
 
 class DisplaceByNoise(Displace):
-    """Displaces the surface of a child object using a procedural noise function."""
+    """
+    Internal node to displace a surface using a procedural noise function.
+
+    Note: This class is not typically instantiated directly. Use the
+    `.displace_by_noise()` method on an SDFNode object instead.
+    """
     glsl_dependencies = {"shaping", "noise"}
 
     def __init__(self, child: SDFNode, scale: float = 10.0, strength: float = 0.1):
+        """
+        Initializes the DisplaceByNoise node.
+
+        Args:
+            child (SDFNode): The object whose surface will be displaced.
+            scale (float): The frequency/scale of the noise. Higher values
+                           result in finer, more detailed noise.
+            strength (float): The amplitude of the displacement.
+        """
         glsl_expr = f"snoise(p * {_glsl_format(scale)}) * {_glsl_format(strength)}"
         super().__init__(child, glsl_expr)
         self.scale = scale

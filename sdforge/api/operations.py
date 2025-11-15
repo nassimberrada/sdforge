@@ -5,7 +5,12 @@ from ..utils import _glsl_format
 from .params import Param
 
 class Union(SDFNode):
-    """Represents the union of multiple SDF objects."""
+    """
+    Internal node representing the union of multiple SDF objects.
+
+    Note: This class is not typically instantiated directly. Use the
+    `.union()` method or the `|` operator on SDFNode objects.
+    """
     glsl_dependencies = {"operations"}
 
     def __init__(self, children: list, k: float = 0.0, chamfer: float = 0.0):
@@ -60,7 +65,12 @@ class Union(SDFNode):
             return _callable_smooth
 
 class Intersection(SDFNode):
-    """Represents the intersection of multiple SDF objects."""
+    """
+    Internal node representing the intersection of multiple SDF objects.
+
+    Note: This class is not typically instantiated directly. Use the
+    `.intersection()` method or the `&` operator on SDFNode objects.
+    """
     glsl_dependencies = {"operations"}
 
     def __init__(self, children: list, k: float = 0.0, chamfer: float = 0.0):
@@ -111,7 +121,12 @@ class Intersection(SDFNode):
             return _callable_smooth
 
 class Difference(SDFNode):
-    """Represents the subtraction of one SDF object from another."""
+    """
+    Internal node representing the subtraction of one SDF object from another.
+
+    Note: This class is not typically instantiated directly. Use the
+    `.difference()` method or the `-` operator on SDFNode objects.
+    """
     glsl_dependencies = {"operations"}
 
     def __init__(self, a: SDFNode, b: SDFNode, k: float = 0.0, chamfer: float = 0.0):

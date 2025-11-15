@@ -19,6 +19,15 @@ class Param:
             default (float): The initial value of the parameter.
             min_val (float): The minimum value of the slider range.
             max_val (float): The maximum value of the slider range.
+        
+        Example:
+            >>> from sdforge import Param, box
+            >>> # Create a parameter to control corner rounding
+            >>> p_radius = Param("Corner Radius", 0.1, 0.0, 0.5)
+            >>> # Use the parameter just like a number
+            >>> scene = box(size=1.5, radius=p_radius)
+            >>> # When rendered, a slider for "Corner Radius" will appear.
+            >>> scene.render()
         """
         self.name = name
         self.value = default

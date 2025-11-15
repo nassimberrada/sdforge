@@ -5,7 +5,12 @@ from ..utils import _glsl_format
 from .params import Param
 
 class Round(SDFNode):
-    """Rounds the edges of a child object."""
+    """
+    Internal node to round the edges of a child object.
+
+    Note: This class is not typically instantiated directly. Use the
+    `.round()` method on an SDFNode object instead.
+    """
     glsl_dependencies = {"shaping"}
     def __init__(self, child: SDFNode, radius: float):
         super().__init__()
@@ -23,7 +28,12 @@ class Round(SDFNode):
         return lambda p: child_callable(p) - self.radius
 
 class Bevel(SDFNode):
-    """Creates a shell or outline of a child object."""
+    """
+    Internal node to create a shell or outline of a child object.
+
+    Note: This class is not typically instantiated directly. Use the
+    `.shell()` or `.bevel()` methods on an SDFNode object.
+    """
     glsl_dependencies = {"shaping"}
     def __init__(self, child: SDFNode, thickness: float):
         super().__init__()
@@ -41,7 +51,12 @@ class Bevel(SDFNode):
         return lambda p: np.abs(child_callable(p)) - self.thickness
 
 class Extrude(SDFNode):
-    """Extrudes a 2D SDF shape."""
+    """
+    Internal node to extrude a 2D SDF shape.
+
+    Note: This class is not typically instantiated directly. Use the
+    `.extrude()` method on a 2D SDFNode object.
+    """
     glsl_dependencies = {"shaping"}
     def __init__(self, child: SDFNode, height: float):
         super().__init__()
@@ -64,7 +79,12 @@ class Extrude(SDFNode):
         return _callable
 
 class Revolve(SDFNode):
-    """Revolves a 2D SDF shape around the Y-axis."""
+    """
+    Internal node to revolve a 2D SDF shape around the Y-axis.
+
+    Note: This class is not typically instantiated directly. Use the
+    `.revolve()` method on a 2D SDFNode object.
+    """
     def to_glsl(self, ctx: GLSLContext) -> str:
         # Create a new point variable for the revolved coordinate space
         revolved_p_xy = f"vec2(length({ctx.p}.xz), {ctx.p}.y)"

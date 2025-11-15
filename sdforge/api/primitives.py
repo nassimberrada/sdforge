@@ -25,7 +25,18 @@ class Sphere(SDFNode):
         return _callable
 
 def sphere(r: float = 1.0) -> SDFNode:
-    """Creates a sphere SDF node."""
+    """
+    Creates a sphere centered at the origin.
+
+    Args:
+        r (float, optional): The radius of the sphere. Defaults to 1.0.
+
+    Returns:
+        SDFNode: A sphere primitive.
+    
+    Example:
+        >>> s = sphere(r=1.5)
+    """
     return Sphere(r)
 
 class Box(SDFNode):
@@ -81,7 +92,29 @@ class Box(SDFNode):
         return _callable
 
 def box(size=1.0, radius: float = 0.0, x: float = None, y: float = None, z: float = None) -> SDFNode:
-    """Creates a box, optionally with rounded edges."""
+    """
+    Creates a box centered at the origin, optionally with rounded edges.
+
+    Args:
+        size (float or tuple, optional): The size of the box. If a float,
+                                         creates a cube. If a tuple, specifies
+                                         (width, height, depth). Defaults to 1.0.
+        radius (float, optional): The radius for rounding the box's edges.
+                                  Defaults to 0.0 (sharp edges).
+        x (float, optional): A convenience argument to specify the x-size.
+                             If x, y, and z are all provided, they override `size`.
+        y (float, optional): Convenience for y-size.
+        z (float, optional): Convenience for z-size.
+
+    Returns:
+        SDFNode: A box primitive.
+    
+    Example:
+        >>> # A 2x2x2 cube
+        >>> cube = box(2.0)
+        >>> # A 1x2x3 cuboid with rounded corners
+        >>> rounded_box = box(size=(1, 2, 3), radius=0.1)
+    """
     if x is not None and y is not None and z is not None:
         size = (x, y, z)
     elif isinstance(size, (int, float, str, Param)):
@@ -111,7 +144,21 @@ class Torus(SDFNode):
         return _callable
 
 def torus(major: float = 1.0, minor: float = 0.25) -> SDFNode:
-    """Creates a torus."""
+    """
+    Creates a torus centered at the origin, oriented in the XZ plane.
+
+    Args:
+        major (float, optional): The major radius (from the center of the
+                                 torus to the center of the tube). Defaults to 1.0.
+        minor (float, optional): The minor radius (the radius of the tube
+                                 itself). Defaults to 0.25.
+
+    Returns:
+        SDFNode: A torus primitive.
+        
+    Example:
+        >>> t = torus(major=2.0, minor=0.1)
+    """
     return Torus(major, minor)
 
 class Line(SDFNode):
@@ -157,7 +204,25 @@ class Line(SDFNode):
             return _callable
 
 def line(a, b, radius: float = 0.1, rounded_caps: bool = True) -> SDFNode:
-    """Creates a line segment with a given radius (capsule or cylinder)."""
+    """
+    Creates a line segment between two points with a given radius.
+
+    Args:
+        a (tuple or np.ndarray): The starting point of the line segment.
+        b (tuple or np.ndarray): The ending point of the line segment.
+        radius (float, optional): The radius of the line. Defaults to 0.1.
+        rounded_caps (bool, optional): If True, creates a capsule with hemispherical
+                                       ends. If False, creates a cylinder with flat
+                                       ends. Defaults to True.
+
+    Returns:
+        SDFNode: A capsule or cylinder primitive.
+    
+    Example:
+        >>> from sdforge import X
+        >>> # A capsule from the origin to a point on the X axis
+        >>> l = line(a=(0,0,0), b=X*2, radius=0.1)
+    """
     return Line(a, b, radius, rounded_caps)
 
 class Cylinder(SDFNode):
@@ -206,7 +271,22 @@ class Cylinder(SDFNode):
             return _callable_sharp
 
 def cylinder(radius: float = 0.5, height: float = 1.0, round_radius: float = 0.0) -> SDFNode:
-    """Creates a cylinder oriented along the Y-axis."""
+    """
+    Creates a cylinder centered at the origin, oriented along the Y-axis.
+
+    Args:
+        radius (float, optional): The radius of the cylinder. Defaults to 0.5.
+        height (float, optional): The total height of the cylinder. Defaults to 1.0.
+        round_radius (float, optional): If > 0, rounds the top and bottom edges
+                                        of the cylinder. Defaults to 0.0.
+
+    Returns:
+        SDFNode: A cylinder primitive.
+        
+    Example:
+        >>> # A tall, thin cylinder
+        >>> c = cylinder(radius=0.2, height=3.0)
+    """
     return Cylinder(radius, height, round_radius)
 
 class Cone(SDFNode):
@@ -280,7 +360,27 @@ class Cone(SDFNode):
 
 
 def cone(height: float = 1.0, radius1: float = 0.5, radius2: float = 0.0) -> SDFNode:
-    """Creates a cone or a frustum (capped cone)."""
+    """
+    Creates a cone or frustum centered at the origin, oriented along the Y-axis.
+
+    The cone's base (radius1) is at y = -height/2 and its top (radius2) is at
+    y = +height/2.
+
+    Args:
+        height (float, optional): The total height of the cone. Defaults to 1.0.
+        radius1 (float, optional): The radius of the base. Defaults to 0.5.
+        radius2 (float, optional): The radius of the top. A value of 0 creates a
+                                   sharp point. Defaults to 0.0.
+
+    Returns:
+        SDFNode: A cone or frustum primitive.
+        
+    Example:
+        >>> # A sharp cone
+        >>> c1 = cone(height=2.0, radius1=0.8, radius2=0.0)
+        >>> # A frustum (a cone with the top cut off)
+        >>> c2 = cone(height=1.5, radius1=0.6, radius2=0.2)
+    """
     return Cone(height, radius1, radius2)
 
 class Plane(SDFNode):
@@ -306,7 +406,25 @@ class Plane(SDFNode):
         return _callable
 
 def plane(normal, offset: float = 0.0) -> SDFNode:
-    """Creates an infinite plane."""
+    """
+    Creates an infinite plane.
+
+    Args:
+        normal (tuple or np.ndarray): The normal vector of the plane, indicating
+                                      which direction it faces.
+        offset (float, optional): The distance of the plane from the origin
+                                  along its normal. Defaults to 0.0.
+
+    Returns:
+        SDFNode: An infinite plane primitive.
+        
+    Example:
+        >>> from sdforge import Y, box
+        >>> # Create a floor plane below a box
+        >>> floor = plane(normal=Y, offset=-1.0)
+        >>> b = box(1.0)
+        >>> scene = b | floor
+    """
     return Plane(normal, offset)
 
 class Octahedron(SDFNode):
@@ -331,7 +449,20 @@ class Octahedron(SDFNode):
         return _callable
 
 def octahedron(size: float = 1.0) -> SDFNode:
-    """Creates an octahedron."""
+    """
+    Creates an octahedron centered at the origin.
+
+    Args:
+        size (float, optional): The size of the octahedron, corresponding to the
+                                distance from the center to the center of a face.
+                                Defaults to 1.0.
+
+    Returns:
+        SDFNode: An octahedron primitive.
+        
+    Example:
+        >>> o = octahedron(size=1.5)
+    """
     return Octahedron(size)
 
 class Ellipsoid(SDFNode):
@@ -359,7 +490,24 @@ class Ellipsoid(SDFNode):
         return _callable
 
 def ellipsoid(radii=(1.0, 0.5, 0.5), x: float = None, y: float = None, z: float = None) -> SDFNode:
-    """Creates an ellipsoid."""
+    """
+    Creates an ellipsoid centered at the origin.
+
+    Args:
+        radii (tuple, optional): A tuple of the radii along the (X, Y, Z) axes.
+                                 Defaults to (1.0, 0.5, 0.5).
+        x (float, optional): A convenience argument to specify the x-radius.
+                             If x, y, and z are all provided, they override `radii`.
+        y (float, optional): Convenience for y-radius.
+        z (float, optional): Convenience for z-radius.
+
+    Returns:
+        SDFNode: An ellipsoid primitive.
+        
+    Example:
+        >>> # A tall, thin ellipsoid
+        >>> e = ellipsoid(radii=(0.2, 1.5, 0.2))
+    """
     if x is not None and y is not None and z is not None:
         radii = (x, y, z)
     return Ellipsoid(tuple(radii))
@@ -386,7 +534,22 @@ class Circle(SDFNode):
         return _callable
 
 def circle(r: float = 1.0) -> SDFNode:
-    """Creates a 2D circle in the XY plane."""
+    """
+    Creates a 2D circle in the XY plane.
+
+    This is a 2D primitive, primarily used as a profile for 3D shaping
+    operations like `.extrude()` or `.revolve()`.
+
+    Args:
+        r (float, optional): The radius of the circle. Defaults to 1.0.
+
+    Returns:
+        SDFNode: A 2D circle primitive.
+    
+    Example:
+        >>> # Extrude a circle to create a cylinder
+        >>> c = circle(r=0.5).extrude(height=2.0)
+    """
     return Circle(r)
 
 class Rectangle(SDFNode):
@@ -414,7 +577,25 @@ class Rectangle(SDFNode):
         return _callable
 
 def rectangle(size=1.0) -> SDFNode:
-    """Creates a 2D rectangle in the XY plane."""
+    """
+    Creates a 2D rectangle in the XY plane.
+
+    This is a 2D primitive, primarily used as a profile for 3D shaping
+    operations like `.extrude()` or `.revolve()`.
+
+    Args:
+        size (float or tuple, optional): The size of the rectangle. If a float,
+                                         creates a square. If a tuple, specifies
+                                         (width, height). Defaults to 1.0.
+
+    Returns:
+        SDFNode: A 2D rectangle primitive.
+    
+    Example:
+        >>> from sdforge import X
+        >>> # Revolve a rectangle offset from the Y-axis to create a washer
+        >>> washer = rectangle(size=(0.2, 0.1)).translate(X*1.0).revolve()
+    """
     if isinstance(size, (int, float, str, Param)):
         size = (size, size)
     return Rectangle(tuple(size))

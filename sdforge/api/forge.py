@@ -14,20 +14,40 @@ except ImportError:
 
 class Forge(SDFNode):
     """
-    An SDF object defined by a raw GLSL code snippet, with optional uniforms.
+    An SDF object defined by a raw GLSL code snippet.
+
+    Forge provides an escape hatch to define custom shapes or operations
+    directly in GLSL, which can be seamlessly integrated with other `sdforge`
+    objects.
     """
 
     def __init__(self, glsl_code_body: str, uniforms: dict = None):
         """
-        Initializes the Forge object.
+        Initializes the Forge object with a GLSL expression.
 
         Args:
-            glsl_code_body (str): A string of GLSL code that returns a float.
-                                  The point in space is available as the `vec3 p` variable.
-                                  Example: "return length(p) - u_radius;"
-            uniforms (dict, optional): A dictionary of uniforms to be passed to the GLSL code.
-                                       Keys are uniform names (e.g., 'u_radius') and values
-                                       are floats to be uploaded. Defaults to None.
+            glsl_code_body (str): A string of GLSL code that returns a float
+                                  distance. The point in space is available as
+                                  the `vec3 p` variable. If the code does not
+                                  contain 'return', it will be added.
+            uniforms (dict, optional): A dictionary of uniforms to be passed to
+                                       the GLSL code. Keys are uniform names
+                                       (e.g., 'u_radius') and values are the
+                                       corresponding floats. Defaults to None.
+        
+        Example:
+            >>> from sdforge import Forge, box
+            >>> # Create a sphere using a raw GLSL expression
+            >>> custom_sphere = Forge("length(p) - 1.0")
+            >>>
+            >>> # Create a box with a controllable size uniform
+            >>> glsl_box = '''
+            ...     vec3 q = abs(p) - vec3(u_size);
+            ...     return length(max(q,0.0)) + min(max(q.x,max(q.y,q.z)),0.0);
+            ... '''
+            >>> custom_box = Forge(glsl_box, uniforms={'u_size': 0.8})
+            >>>
+            >>> scene = custom_sphere | custom_box.translate((2, 0, 0))
         """
         super().__init__()
         if "return" not in glsl_code_body:

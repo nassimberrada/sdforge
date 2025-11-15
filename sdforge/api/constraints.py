@@ -14,8 +14,10 @@ object. These functions encapsulate that geometric math.
 def coincident(point_a, point_b):
     """
     Checks if two points are coincident within a small tolerance.
+
     This is primarily for validation or testing, as the best practice
-    is to simply use the same variable for both points.
+    is to simply use the same variable for both points to enforce coincidence
+    by construction.
 
     Args:
         point_a (tuple or np.ndarray): The first point.
@@ -23,6 +25,12 @@ def coincident(point_a, point_b):
 
     Returns:
         bool: True if the points are effectively coincident.
+    
+    Example:
+        >>> p1 = (1.0, 2.0, 3.0)
+        >>> p2 = (1.00000001, 2.0, 3.0)
+        >>> coincident(p1, p2)
+        True
     """
     return np.allclose(point_a, point_b, atol=1e-6)
 
@@ -36,15 +44,25 @@ def midpoint(point_a: np.ndarray, point_b: np.ndarray) -> np.ndarray:
 
     Returns:
         np.ndarray: The point halfway between point_a and point_b.
+    
+    Example:
+        >>> from sdforge import box
+        >>> import numpy as np
+        >>> corner1 = np.array([-1, -1, -1])
+        >>> corner2 = np.array([1, 1, 1])
+        >>> center = midpoint(corner1, corner2) # returns array([0., 0., 0.])
+        >>> # Create a box centered between two points
+        >>> b = box(0.5).translate(center)
     """
     return (np.array(point_a) + np.array(point_b)) / 2.0
 
 
 def tangent_offset(circle_radius: float, line_direction: np.ndarray) -> np.ndarray:
     """
-    Calculates the translational offset required to make a line, passing
-    through the origin, tangent to a circle centered at the origin.
+    Calculates the offset to make a line tangent to a circle.
 
+    This helper computes the translational offset required to make a line,
+    passing through the origin, tangent to a circle also centered at the origin.
     The offset is perpendicular to the line's direction.
 
     Args:
@@ -53,6 +71,14 @@ def tangent_offset(circle_radius: float, line_direction: np.ndarray) -> np.ndarr
 
     Returns:
         np.ndarray: The 3D vector offset to apply to the line's translation.
+    
+    Example:
+        >>> from sdforge import line, cylinder, X
+        >>> circle_obj = cylinder(radius=2.0, height=0.1)
+        >>> # Make a line tangent to the circle, along the X axis
+        >>> offset = tangent_offset(circle_radius=2.0, line_direction=X)
+        >>> tangent = line(a=(-5,0,0), b=(5,0,0), radius=0.05).translate(offset)
+        >>> scene = circle_obj | tangent
     """
     # Find a vector perpendicular to the line direction in the XY plane
     # This is a simplification; a robust solution would handle 3D cases.
@@ -61,11 +87,12 @@ def tangent_offset(circle_radius: float, line_direction: np.ndarray) -> np.ndarr
 
 def align_to_face(obj_to_align, reference_point, face_normal: np.ndarray, offset: float = 0.0):
     """
-    Applies transformations to an object to align it with a conceptual
-    "face" defined by a point and a normal vector.
+    Aligns and places an object onto a conceptual face.
 
-    For example, align a cylinder to be perpendicular to the +X face of a cube
-    by providing a point on that face and the face's normal vector.
+    This function applies transformations to an object to align its primary
+    axis (usually Y) with a "face" defined by a point and a normal vector.
+    It's useful for placing features like bosses or holes onto the surface
+    of another object. Note: currently only supports cardinal axis normals.
 
     Args:
         obj_to_align (SDFNode): The object to move and rotate.
@@ -78,6 +105,15 @@ def align_to_face(obj_to_align, reference_point, face_normal: np.ndarray, offset
 
     Returns:
         SDFNode: The transformed (aligned and translated) object.
+    
+    Example:
+        >>> from sdforge import box, cylinder, X
+        >>> main_box = box(size=(2, 1, 1))
+        >>> # Place a cylinder on the center of the +X face of the box
+        >>> face_center = (1, 0, 0)
+        >>> boss = cylinder(radius=0.2, height=0.5)
+        >>> placed_boss = align_to_face(boss, face_center, face_normal=X)
+        >>> scene = main_box | placed_boss
     """
     
     # Normalize the face normal to be safe
@@ -131,10 +167,7 @@ def place_at_angle(obj_to_place, pivot_point, axis, angle_rad, distance):
     Places an object at a specific angle and distance from a pivot point.
 
     This is useful for creating circular patterns of features, like holes on a flange.
-    The function performs the following steps:
-    1. Translates the object out from the origin by `distance` along the X-axis.
-    2. Rotates the object around the specified `axis` by `angle_rad`.
-    3. Translates the rotated object to the `pivot_point`.
+    The function performs a sequence of translate-rotate-translate operations.
 
     Args:
         obj_to_place (SDFNode): The feature to place.
@@ -145,22 +178,45 @@ def place_at_angle(obj_to_place, pivot_point, axis, angle_rad, distance):
 
     Returns:
         SDFNode: The transformed object.
+    
+    Example:
+        >>> import numpy as np
+        >>> from sdforge import cylinder, Group, Y
+        >>> flange = cylinder(radius=2.0, height=0.2)
+        >>> hole = cylinder(radius=0.1, height=0.3)
+        >>> holes = []
+        >>> for i in range(6):
+        ...     angle = i * (2 * np.pi / 6)
+        ...     h = place_at_angle(hole, (0,0,0), Y, angle, 1.75)
+        ...     holes.append(h)
+        >>> scene = flange - Group(*holes)
     """
     return obj_to_place.translate(X * distance).rotate(axis, angle_rad).translate(pivot_point)
 
 def offset_along(obj_to_place, reference_point, direction, distance):
     """
-    Translates an object to a new position offset from a reference point
-    along a specific direction vector.
+    Moves an object from a reference point along a direction vector.
+
+    Translates an object to a new position that is a specific distance
+    away from a reference point along a given direction.
 
     Args:
         obj_to_place (SDFNode): The object to move.
         reference_point (np.ndarray): The starting point for the offset.
-        direction (np.ndarray): The normalized vector for the direction of offset.
+        direction (np.ndarray): The vector for the direction of offset. It will be normalized.
         distance (float): The distance to move along the direction vector.
 
     Returns:
         SDFNode: The translated object.
+        
+    Example:
+        >>> from sdforge import sphere
+        >>> start = (1, 1, 1)
+        >>> direction = (1, 0, 0)
+        >>> # Place a sphere 5 units along the X axis from the start point
+        >>> s = sphere(0.5)
+        >>> placed_sphere = offset_along(s, start, direction, 5.0)
+        >>> # Final position will be (6, 1, 1)
     """
     normalized_dir = np.array(direction) / np.linalg.norm(direction)
     destination = np.array(reference_point) + normalized_dir * distance
@@ -168,12 +224,12 @@ def offset_along(obj_to_place, reference_point, direction, distance):
 
 def bounding_box(sdf_obj, padding: float = 0.0):
     """
-    Computes the bounding box of a complex SDF object and returns it as a
-    simple `box` primitive.
+    Creates a `box` primitive that encloses a complex SDF object.
 
-    This is a powerful tool for creating enclosures, fixtures, or performing
-    boolean operations on the entire volume of another part. It works by
-    sampling the SDF to find its extents.
+    This powerful tool works by sampling the SDF to find its extents, then
+    returning a simple `box` primitive that matches those bounds. It's useful
+    for creating enclosures, fixtures, or performing boolean operations on
+    the entire volume of another part.
 
     Args:
         sdf_obj (SDFNode): The object to measure.
@@ -182,6 +238,14 @@ def bounding_box(sdf_obj, padding: float = 0.0):
 
     Returns:
         SDFNode: A `box` primitive that encloses the original object.
+    
+    Example:
+        >>> from sdforge import sphere, X
+        >>> # A complex, off-center object
+        >>> complex_shape = sphere(1.0) | sphere(0.5).translate(X * 1.5)
+        >>> # Create a shell around it using its bounding box
+        >>> enclosure = bounding_box(complex_shape, padding=0.1).shell(0.05)
+        >>> scene = enclosure | complex_shape.color(1,0,0)
     """
     from ..api.primitives import box # Local import to avoid circular dependency
     bounds = sdf_obj.estimate_bounds(verbose=False)

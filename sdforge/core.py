@@ -119,9 +119,11 @@ class SDFNode(ABC):
             samples (int, optional): The number of points to sample for uniform grid meshing.
                                      Higher is more detailed but slower. Ignored if `adaptive=True`.
             verbose (bool, optional): Whether to print progress information.
-            algorithm (str, optional): Meshing algorithm to use. Currently only 'marching_cubes' is supported.
+            algorithm (str, optional): Meshing algorithm to use. Supported options:
+                                       'marching_cubes', 'dual_contouring'. Defaults to 'marching_cubes'.
             adaptive (bool, optional): If True, uses an octree-based adaptive meshing algorithm which is often
                                        faster and more memory-efficient than a uniform grid. Defaults to False.
+                                       Note: Not currently compatible with 'dual_contouring'.
             octree_depth (int, optional): The maximum subdivision depth for adaptive meshing.
                                           Higher is more detailed. Effective resolution is 2**octree_depth.
                                           Ignored if `adaptive=False`. Defaults to 8.

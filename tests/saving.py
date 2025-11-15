@@ -32,9 +32,9 @@ def test_save_glb_calls_writer(mock_write_glb, tmp_path):
 def test_save_with_unsupported_algorithm_warns(tmp_path, capsys):
     s = sphere(1.0)
     output_file = tmp_path / "test.stl"
-    s.save(str(output_file), samples=2**10, verbose=False, algorithm='dual_contouring')
+    s.save(str(output_file), samples=2**10, verbose=False, algorithm='dual_contouring_fake')
     captured = capsys.readouterr()
-    assert "WARNING: Algorithm 'dual_contouring' is not supported." in captured.err
+    assert "WARNING: Algorithm 'dual_contouring_fake' is not supported." in captured.err
 
 def test_save_with_vertex_colors_warns(tmp_path, capsys):
     s = sphere(1.0)
@@ -74,7 +74,7 @@ def test_save_marching_cubes_failure(tmp_path, capsys):
     output_file = tmp_path / "no_intersect.stl"
     s.save(str(output_file), bounds=((-1, -1, -1), (1, 1, 1)), samples=2**10, verbose=False)
     captured = capsys.readouterr()
-    assert "ERROR: Marching cubes failed" in captured.err
+    assert "ERROR: Mesh generation failed" in captured.err
 
 @pytest.mark.skipif("trimesh" not in sys.modules, reason="trimesh library not installed")
 def test_save_with_decimation_simplifies_mesh(tmp_path):
@@ -172,3 +172,18 @@ def test_adaptive_is_smarter_than_uniform_for_sparse_scene():
     assert uniform_calls > 900
     assert adaptive_calls < 500
     assert adaptive_calls < uniform_calls
+
+def test_save_dual_contouring(tmp_path):
+    """Tests that dual contouring runs and creates a valid file."""
+    s = box(1.0)
+    output_file = tmp_path / "dc_model.stl"
+    s.save(str(output_file), samples=2**12, verbose=False, algorithm='dual_contouring')
+    assert os.path.exists(output_file)
+    assert os.path.getsize(output_file) > 84
+
+def test_save_adaptive_dual_contouring_fails(tmp_path):
+    """Tests that trying to use adaptive meshing with dual contouring raises an error."""
+    s = sphere(1.0)
+    output_file = tmp_path / "test.stl"
+    with pytest.raises(ValueError, match="does not currently support adaptive meshing"):
+        s.save(str(output_file), adaptive=True, algorithm='dual_contouring', verbose=False)

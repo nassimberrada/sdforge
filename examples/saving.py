@@ -86,6 +86,26 @@ def adaptive_save_example():
     else:
         print("Error: Model saving failed.")
 
+def dual_contouring_save_example():
+    """
+    Saves a mesh using the Dual Contouring algorithm.
+    This algorithm is often better at preserving sharp features than
+    Marching Cubes, at the cost of being slower.
+    """
+    # A box with no rounding is a good test case for sharp edges.
+    scene = box(size=(1.5, 1.0, 1.0), radius=0.0)
+
+    output_path = "dual_contouring_model.stl"
+    print(f"\nSaving model to '{output_path}' with Dual Contouring...")
+    
+    # We specify the algorithm in the save() call.
+    scene.save(output_path, samples=2**18, algorithm='dual_contouring')
+    
+    if os.path.exists(output_path):
+        print(f"To view the model, run: meshlab {output_path}")
+        print("Notice how the sharp edges are preserved much better than a typical marching cubes export.")
+    else:
+        print("Error: Model saving failed.")
 
 def main():
     """
@@ -98,6 +118,7 @@ def main():
         "manual": manual_bounds_save_example,
         "decimate": decimated_save_example,
         "adaptive": adaptive_save_example,
+        "dual_contouring": dual_contouring_save_example,
     }
     
     if len(sys.argv) < 2:

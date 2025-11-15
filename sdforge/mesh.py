@@ -194,9 +194,146 @@ def _adaptive_meshing(sdf_callable, bounds, max_depth, verbose):
     
     return volume, min_coord, step
 
+def _get_normal_callable(sdf_callable):
+    """Creates a function to compute SDF normals using central differences."""
+    def normal_callable(points):
+        eps = 1e-5
+        p = np.array(points, dtype='f4')
+        dx = sdf_callable(p + np.array([eps, 0, 0])) - sdf_callable(p - np.array([eps, 0, 0]))
+        dy = sdf_callable(p + np.array([0, eps, 0])) - sdf_callable(p - np.array([0, eps, 0]))
+        dz = sdf_callable(p + np.array([0, 0, eps])) - sdf_callable(p - np.array([0, 0, eps]))
+        
+        normals = np.stack([dx, dy, dz], axis=-1)
+        norms = np.linalg.norm(normals, axis=-1, keepdims=True)
+        return normals / np.where(norms == 0, 1, norms)
+    return normal_callable
+
+def _dual_contouring(sdf_callable, bounds, resolution, verbose):
+    if verbose:
+        print(f"  - Using Dual Contouring with resolution {resolution}.")
+
+    # 1. Grid setup
+    X = np.linspace(bounds[0][0], bounds[1][0], resolution[0])
+    Y = np.linspace(bounds[0][1], bounds[1][1], resolution[1])
+    Z = np.linspace(bounds[0][2], bounds[1][2], resolution[2])
+    Nx, Ny, Nz = len(X), len(Y), len(Z)
+    
+    points_grid = _cartesian_product(X, Y, Z).astype('f4')
+    if verbose:
+        print(f"  - Grid dimensions: {Nx} x {Ny} x {Nz} = {len(points_grid)} points")
+        print("  - Evaluating SDF on grid...")
+    volume = sdf_callable(points_grid).reshape(Nx, Ny, Nz)
+    
+    normal_callable = _get_normal_callable(sdf_callable)
+
+    # 2. Find feature points by solving QEFs
+    if verbose: print("  - Finding feature points...")
+    cell_to_vert_idx = {}
+    verts = []
+    
+    cell_corners = np.array([ [i,j,k] for i in (0,1) for j in (0,1) for k in (0,1) ])
+    edge_v_map = [[0,1], [2,3], [4,5], [6,7], [0,2], [1,3], [4,6], [5,7], [0,4], [1,5], [2,6], [3,7]]
+
+    for i in range(Nx - 1):
+        for j in range(Ny - 1):
+            for k in range(Nz - 1):
+                # Get corner values for this cell
+                corner_vals = volume[i:i+2, j:j+2, k:k+2].flatten()
+                
+                # If all corners have the same sign, cell is not on the surface
+                if np.all(corner_vals > 0) or np.all(corner_vals < 0):
+                    continue
+
+                # Cell is on the surface, find edge intersections
+                cross_points, cross_normals = [], []
+                
+                cell_origin = np.array([X[i], Y[j], Z[k]])
+                cell_size = np.array([X[i+1]-X[i], Y[j+1]-Y[j], Z[k+1]-Z[k]])
+
+                for v0_idx, v1_idx in edge_v_map:
+                    p0_idx = cell_corners[v0_idx] + [i,j,k]
+                    p1_idx = cell_corners[v1_idx] + [i,j,k]
+                    val0, val1 = volume[tuple(p0_idx)], volume[tuple(p1_idx)]
+                    
+                    if val0 * val1 < 0:
+                        p0 = np.array([X[p0_idx[0]], Y[p0_idx[1]], Z[p0_idx[2]]])
+                        p1 = np.array([X[p1_idx[0]], Y[p1_idx[1]], Z[p1_idx[2]]])
+                        
+                        # Linear interpolation to find intersection
+                        t = val0 / (val0 - val1)
+                        intersect_p = p0 + t * (p1 - p0)
+                        
+                        cross_points.append(intersect_p)
+                
+                if not cross_points: continue
+                
+                # Get normals at intersection points
+                cross_normals = normal_callable(np.array(cross_points))
+
+                # Build and solve QEF
+                A = np.sum([np.outer(n, n) for n in cross_normals], axis=0)
+                b = np.sum([np.dot(n, p) * n for n, p in zip(cross_normals, cross_points)], axis=0)
+                
+                try:
+                    # Use pseudo-inverse for robustness
+                    vert = np.linalg.pinv(A) @ b
+                    # Clamp vertex to be inside the cell
+                    vert = np.clip(vert, cell_origin, cell_origin + cell_size)
+                except np.linalg.LinAlgError:
+                    vert = np.mean(cross_points, axis=0) # Fallback
+
+                cell_to_vert_idx[(i,j,k)] = len(verts)
+                verts.append(vert)
+
+    # 3. Generate faces
+    if verbose: print("  - Generating faces...")
+    faces = []
+    for i in range(Nx - 1):
+        for j in range(Ny - 1):
+            for k in range(Nz - 1):
+                # X-aligned edges
+                if j > 0 and k > 0 and volume[i,j,k] * volume[i+1,j,k] < 0:
+                    v1 = cell_to_vert_idx.get((i, j - 1, k - 1))
+                    v2 = cell_to_vert_idx.get((i, j, k - 1))
+                    v3 = cell_to_vert_idx.get((i, j, k))
+                    v4 = cell_to_vert_idx.get((i, j - 1, k))
+                    if all(v is not None for v in [v1,v2,v3,v4]):
+                        if volume[i,j,k] < 0:
+                            faces.extend([[v1,v2,v3], [v1,v3,v4]])
+                        else:
+                            faces.extend([[v1,v4,v3], [v1,v3,v2]])
+
+                # Y-aligned edges
+                if i > 0 and k > 0 and volume[i,j,k] * volume[i,j+1,k] < 0:
+                    v1 = cell_to_vert_idx.get((i - 1, j, k - 1))
+                    v2 = cell_to_vert_idx.get((i, j, k - 1))
+                    v3 = cell_to_vert_idx.get((i, j, k))
+                    v4 = cell_to_vert_idx.get((i - 1, j, k))
+                    if all(v is not None for v in [v1,v2,v3,v4]):
+                        if volume[i,j,k] < 0:
+                            faces.extend([[v1,v4,v3], [v1,v3,v2]])
+                        else:
+                            faces.extend([[v1,v2,v3], [v1,v3,v4]])
+
+                # Z-aligned edges
+                if i > 0 and j > 0 and volume[i,j,k] * volume[i,j,k+1] < 0:
+                    v1 = cell_to_vert_idx.get((i - 1, j - 1, k))
+                    v2 = cell_to_vert_idx.get((i, j - 1, k))
+                    v3 = cell_to_vert_idx.get((i, j, k))
+                    v4 = cell_to_vert_idx.get((i - 1, j, k))
+                    if all(v is not None for v in [v1,v2,v3,v4]):
+                        if volume[i,j,k] < 0:
+                            faces.extend([[v1,v2,v3], [v1,v3,v4]])
+                        else:
+                            faces.extend([[v1,v4,v3], [v1,v3,v2]])
+                            
+    return np.array(verts), np.array(faces)
+
+
 def save(sdf_obj, path, bounds, samples, verbose, algorithm, adaptive, vertex_colors, decimate_ratio=None, octree_depth=8):
-    if algorithm != 'marching_cubes':
+    if algorithm not in ['marching_cubes', 'dual_contouring']:
         print(f"WARNING: Algorithm '{algorithm}' is not supported. Falling back to 'marching_cubes'.", file=sys.stderr)
+        algorithm = 'marching_cubes'
 
     start_time = time.time()
     if verbose:
@@ -212,6 +349,9 @@ def save(sdf_obj, path, bounds, samples, verbose, algorithm, adaptive, vertex_co
     verts, faces = [], []
     
     if adaptive:
+        if algorithm == 'dual_contouring':
+            raise ValueError("Dual Contouring algorithm does not currently support adaptive meshing. Please set `adaptive=False`.")
+
         if samples != 2**22:
              print(f"WARNING: `samples` parameter is ignored when `adaptive=True`. Using `octree_depth={octree_depth}` instead.", file=sys.stderr)
 
@@ -222,7 +362,13 @@ def save(sdf_obj, path, bounds, samples, verbose, algorithm, adaptive, vertex_co
                 verts += origin
             except (ValueError, RuntimeError):
                 verts = []
-    else:
+    elif algorithm == 'dual_contouring':
+        res = int(round(samples**(1/3)))
+        if res < 4:
+            print(f"WARNING: samples={samples} results in a very low grid resolution ({res}). Mesh quality may be poor. Increasing resolution.", file=sys.stderr)
+            res = 4
+        verts, faces = _dual_contouring(sdf_callable, bounds, (res, res, res), verbose)
+    else: # Uniform marching cubes
         if octree_depth != 8:
              print("WARNING: `octree_depth` parameter is ignored when `adaptive=False`. Using `samples` instead.", file=sys.stderr)
         
@@ -256,7 +402,7 @@ def save(sdf_obj, path, bounds, samples, verbose, algorithm, adaptive, vertex_co
             verts = []
 
     if len(verts) == 0 or len(faces) == 0:
-        print("ERROR: Marching cubes failed. The surface may not intersect the specified bounds or the SDF evaluation returned invalid values.", file=sys.stderr)
+        print("ERROR: Mesh generation failed. The surface may not intersect the specified bounds or the algorithm returned no geometry.", file=sys.stderr)
         return
 
     if decimate_ratio is not None:

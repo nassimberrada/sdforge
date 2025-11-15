@@ -1,4 +1,5 @@
 import uuid
+from ..utils import _combine_expr, Expr
 
 class Param:
     """
@@ -34,3 +35,33 @@ class Param:
     def to_glsl(self):
         """Returns the GLSL uniform name."""
         return self.uniform_name
+
+    # --- Arithmetic Operations ---
+    # These methods allow Params to be used in expressions (e.g., `p / 2`).
+    # They return an Expr object that tracks the Param dependency.
+    def __add__(self, other):
+        return _combine_expr(self, other, '+')
+
+    def __radd__(self, other):
+        return _combine_expr(other, self, '+')
+
+    def __sub__(self, other):
+        return _combine_expr(self, other, '-')
+
+    def __rsub__(self, other):
+        return _combine_expr(other, self, '-')
+
+    def __mul__(self, other):
+        return _combine_expr(self, other, '*')
+
+    def __rmul__(self, other):
+        return _combine_expr(other, self, '*')
+
+    def __truediv__(self, other):
+        return _combine_expr(self, other, '/')
+
+    def __rtruediv__(self, other):
+        return _combine_expr(other, self, '/')
+        
+    def __neg__(self):
+        return Expr(f"(-{self.to_glsl()})", {self})

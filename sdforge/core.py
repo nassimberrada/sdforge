@@ -58,6 +58,7 @@ class SDFNode(ABC):
     def _collect_params(self, params: dict):
         """Recursively collects Param objects from the scene graph."""
         from .api.params import Param
+        from .utils import Expr
         # Inspect all public attributes of the current object.
         for attr_name in dir(self):
             if attr_name.startswith('_') or attr_name in ['child', 'children']:
@@ -66,10 +67,16 @@ class SDFNode(ABC):
                 attr_val = getattr(self, attr_name)
                 if isinstance(attr_val, Param):
                     params[attr_val.uniform_name] = attr_val
+                elif isinstance(attr_val, Expr): # <-- NEW: Check for expressions
+                    for p in attr_val.params:
+                        params[p.uniform_name] = p
                 elif isinstance(attr_val, (list, tuple, np.ndarray)):
                     for item in attr_val:
                         if isinstance(item, Param):
                             params[item.uniform_name] = item
+                        elif isinstance(item, Expr): # <-- NEW: Check for expressions in lists
+                             for p in item.params:
+                                 params[p.uniform_name] = p
             except Exception:
                 continue # Gracefully skip attributes that might fail
 

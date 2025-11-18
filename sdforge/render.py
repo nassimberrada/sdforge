@@ -18,6 +18,7 @@ except ImportError:
     WATCHDOG_AVAILABLE = False
 
 MAX_MATERIALS = 64
+_IS_RELOADING = False
 
 class SceneCompiler:
     """Compiles an SDFNode tree into a complete GLSL Scene function."""
@@ -59,11 +60,15 @@ class NativeRenderer:
         
     def _reload_script(self):
         """Dynamically reloads the user's script and updates the scene."""
+        global _IS_RELOADING
         print(f"INFO: Change detected in '{Path(self.script_path).name}'. Reloading...")
+        
+        _IS_RELOADING = True
         try:
             spec = importlib.util.spec_from_file_location("user_script", self.script_path)
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
+            
             if hasattr(module, 'main') and callable(module.main):
                 result = module.main()
                 new_sdf_obj, new_cam_obj, new_light_obj, new_debug_obj = None, None, None, None
@@ -79,9 +84,10 @@ class NativeRenderer:
                 
                 if new_sdf_obj:
                     self.sdf_obj = new_sdf_obj
-                    self.camera = new_cam_obj
-                    self.light = new_light_obj
-                    self.debug = new_debug_obj
+                    if new_cam_obj: self.camera = new_cam_obj
+                    if new_light_obj: self.light = new_light_obj
+                    if new_debug_obj: self.debug = new_debug_obj
+                    
                     # Re-compile shader and vertex array
                     self.program = self._compile_shader()
                     if self.program:
@@ -90,6 +96,8 @@ class NativeRenderer:
                 print("WARNING: No valid `main` function found in script. Cannot reload.")
         except Exception as e:
             print(f"ERROR: Failed to reload script: {e}")
+        finally:
+            _IS_RELOADING = False
 
     def _start_watcher(self):
         """Initializes and starts the watchdog file observer."""
@@ -299,6 +307,10 @@ class NativeRenderer:
 
 def render(sdf_obj: SDFNode, camera: Camera = None, light: Light = None, watch=True, debug: Debug = None, **kwargs):
     """Public API to launch the renderer."""
+    
+    if _IS_RELOADING:
+        return
+
     try:
         import moderngl, glfw
     except ImportError:

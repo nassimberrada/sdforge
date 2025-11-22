@@ -3,6 +3,117 @@ from ..core import SDFNode, GLSLContext
 from ..utils import _glsl_format
 from .params import Param
 
+# --- Helpers ---
+
+def _bezier_distance_callable(A, B, C, r):
+    """
+    Returns a function f(points) -> dists calculating SDF to a Quadratic Bezier.
+    A, B, C are numpy arrays of shape (3,). r is float radius.
+    """
+    if np.allclose(A, B) or np.allclose(B, C):
+        ba = C - A
+        baba = np.dot(ba, ba)
+        def _callable_linear(points: np.ndarray) -> np.ndarray:
+            pa = points - A
+            h = np.clip(np.dot(pa, ba) / (baba + 1e-9), 0.0, 1.0)
+            return np.linalg.norm(pa - ba * h[:, np.newaxis], axis=-1) - r
+        return _callable_linear
+
+    # Precompute constant curve vectors
+    a = B - A
+    b = A - 2.0*B + C
+    c = a * 2.0
+    
+    def _callable(points: np.ndarray) -> np.ndarray:
+        # d = A - pos
+        d = A[np.newaxis, :] - points
+        
+        kk = 1.0 / np.dot(b, b)
+        kx = kk * np.dot(a, b)
+        
+        dot_d_b = np.dot(d, b)
+        dot_d_a = np.dot(d, a)
+        
+        ky = kk * (2.0 * np.dot(a, a) + dot_d_b) / 3.0
+        kz = kk * dot_d_a
+        
+        # Align coefficients with standard cubic t^3 + kx_full*t^2 + ...
+        kx_full = 3.0 * kx
+        ky_full = 3.0 * ky
+        kz_full = kz
+
+        # Depressed cubic: x^3 + p x + q = 0, where t = x - kx_full/3
+        p = ky_full - kx_full*kx_full / 3.0
+        q = 2.0*kx_full*kx_full*kx_full/27.0 - kx_full*ky_full/3.0 + kz_full
+        
+        p3 = p*p*p
+        discriminant = q*q/4.0 + p3/27.0
+        
+        t_candidates = np.zeros((points.shape[0], 3))
+        num_roots = np.zeros(points.shape[0], dtype=int)
+        
+        # Case 1: D > 0 (One real root)
+        mask_d_pos = discriminant > 0
+        if np.any(mask_d_pos):
+            d_sqrt = np.sqrt(discriminant[mask_d_pos])
+            q_masked = q[mask_d_pos]
+            
+            u1 = -q_masked/2.0 + d_sqrt
+            u2 = -q_masked/2.0 - d_sqrt
+            
+            u1 = np.cbrt(u1)
+            u2 = np.cbrt(u2)
+            
+            t_candidates[mask_d_pos, 0] = u1 + u2 - kx_full/3.0
+            num_roots[mask_d_pos] = 1
+
+        # Case 2: D <= 0 (Three real roots)
+        mask_d_neg = ~mask_d_pos
+        if np.any(mask_d_neg):
+            p3_masked = p3[mask_d_neg]
+            q_masked = q[mask_d_neg]
+            p_masked = p[mask_d_neg]
+            kx_neg = kx_full if np.isscalar(kx_full) else kx_full
+            
+            val = -27.0 / (p3_masked + 1e-14)
+            val_sqrt = np.sqrt(np.abs(val)) 
+            
+            arg = -val_sqrt * q_masked / 2.0
+            arg = np.clip(arg, -1.0, 1.0)
+            
+            v = np.arccos(arg) / 3.0
+            m = np.cos(v)
+            n = np.sin(v) * 1.732050808
+            
+            sqrt_neg_p_3 = np.sqrt(np.abs(-p_masked/3.0))
+            
+            offset = -kx_neg/3.0
+            t_candidates[mask_d_neg, 0] = (m + m) * sqrt_neg_p_3 + offset
+            t_candidates[mask_d_neg, 1] = (-n - m) * sqrt_neg_p_3 + offset
+            t_candidates[mask_d_neg, 2] = (n - m) * sqrt_neg_p_3 + offset
+            num_roots[mask_d_neg] = 3
+
+        t0 = np.clip(t_candidates[:, 0], 0.0, 1.0)
+        # Fixed distance calc: d + c*t + b*t^2
+        q0 = d + np.outer(t0, c) + np.outer(t0**2, b)
+        dist_sq = np.sum(q0*q0, axis=1)
+        
+        mask_3 = num_roots == 3
+        if np.any(mask_3):
+            t1 = np.clip(t_candidates[mask_3, 1], 0.0, 1.0)
+            q1 = d[mask_3] + np.outer(t1, c) + np.outer(t1**2, b)
+            dist_sq[mask_3] = np.minimum(dist_sq[mask_3], np.sum(q1*q1, axis=1))
+            
+            t2 = np.clip(t_candidates[mask_3, 2], 0.0, 1.0)
+            q2 = d[mask_3] + np.outer(t2, c) + np.outer(t2**2, b)
+            dist_sq[mask_3] = np.minimum(dist_sq[mask_3], np.sum(q2*q2, axis=1))
+
+        return np.sqrt(dist_sq) - r
+    
+    return _callable
+
+# --- Primitive Classes ---
+
 class Sphere(SDFNode):
     """Represents a sphere primitive."""
     glsl_dependencies = {"primitives"}
@@ -333,6 +444,302 @@ def line(start, end, radius: float = 0.1, rounded_caps: bool = True) -> SDFNode:
     """
     return Line(start, end, radius, rounded_caps)
 
+class Polyline(SDFNode):
+    """Represents a continuous chain of line segments."""
+    glsl_dependencies = {"primitives", "operations"}
+
+    def __init__(self, points, radius: float = 0.1, closed: bool = False):
+        super().__init__()
+        self.points = np.array(points)
+        if self.points.shape[1] != 3:
+            raise ValueError("Points must be a list of 3D coordinates.")
+        self.radius = radius
+        self.closed = closed
+
+    def to_glsl(self, ctx: GLSLContext) -> str:
+        ctx.dependencies.update(self.glsl_dependencies)
+        
+        r = _glsl_format(self.radius)
+        points = self.points
+        
+        num_segments = len(points) if self.closed else len(points) - 1
+        if num_segments < 1:
+            return "vec4(1e9, -1.0, 0.0, 0.0)" # Empty
+
+        dist_exprs = []
+        for i in range(num_segments):
+            p0 = points[i]
+            p1 = points[(i + 1) % len(points)]
+            
+            p0_str = f"vec3({_glsl_format(p0[0])},{_glsl_format(p0[1])},{_glsl_format(p0[2])})"
+            p1_str = f"vec3({_glsl_format(p1[0])},{_glsl_format(p1[1])},{_glsl_format(p1[2])})"
+            
+            dist_exprs.append(f"sdCapsule({ctx.p}, {p0_str}, {p1_str}, {r})")
+        
+        current_expr = dist_exprs[0]
+        for expr in dist_exprs[1:]:
+            current_expr = f"min({current_expr}, {expr})"
+            
+        return ctx.new_variable('vec4', f"vec4({current_expr}, -1.0, 0.0, 0.0)")
+
+    def to_profile_glsl(self, ctx: GLSLContext) -> str:
+        ctx.dependencies.update(self.glsl_dependencies)
+        r = _glsl_format(self.radius)
+        points = self.points
+        num_segments = len(points) if self.closed else len(points) - 1
+        
+        p_flat = f"vec3({ctx.p}.x, {ctx.p}.y, 0.0)"
+        dist_exprs = []
+        
+        for i in range(num_segments):
+            p0 = points[i]
+            p1 = points[(i + 1) % len(points)]
+            
+            p0_str = f"vec3({_glsl_format(p0[0])},{_glsl_format(p0[1])}, 0.0)"
+            p1_str = f"vec3({_glsl_format(p1[0])},{_glsl_format(p1[1])}, 0.0)"
+            
+            dist_exprs.append(f"sdCapsule({p_flat}, {p0_str}, {p1_str}, {r})")
+            
+        current_expr = dist_exprs[0]
+        for expr in dist_exprs[1:]:
+            current_expr = f"min({current_expr}, {expr})"
+            
+        return ctx.new_variable('vec4', f"vec4({current_expr}, -1.0, 0.0, 0.0)")
+
+    def to_callable(self):
+        if isinstance(self.radius, (str, Param)):
+            raise TypeError("Cannot save mesh of an object with animated parameters.")
+        
+        pts = self.points
+        r = self.radius
+        closed = self.closed
+        
+        def _callable(points: np.ndarray) -> np.ndarray:
+            d_min = np.full(len(points), np.inf)
+            num_segments = len(pts) if closed else len(pts) - 1
+            
+            for i in range(num_segments):
+                a = pts[i]
+                b = pts[(i + 1) % len(pts)]
+                
+                pa = points - a
+                ba = b - a
+                h = np.clip(np.dot(pa, ba) / np.dot(ba, ba), 0.0, 1.0)
+                d_seg = np.linalg.norm(pa - ba * h[:, np.newaxis], axis=-1) - r
+                
+                d_min = np.minimum(d_min, d_seg)
+            
+            return d_min
+        return _callable
+
+    def to_profile_callable(self):
+        if isinstance(self.radius, (str, Param)):
+            raise TypeError("Cannot save mesh of an object with animated parameters.")
+        
+        pts_2d = self.points.copy()
+        pts_2d[:, 2] = 0.0
+        r = self.radius
+        closed = self.closed
+        
+        def _callable(points: np.ndarray) -> np.ndarray:
+            p = points.copy()
+            p[:, 2] = 0.0
+            
+            d_min = np.full(len(points), np.inf)
+            num_segments = len(pts_2d) if closed else len(pts_2d) - 1
+            
+            for i in range(num_segments):
+                a = pts_2d[i]
+                b = pts_2d[(i + 1) % len(pts_2d)]
+                
+                pa = p - a
+                ba = b - a
+                h = np.clip(np.dot(pa, ba) / np.dot(ba, ba), 0.0, 1.0)
+                d_seg = np.linalg.norm(pa - ba * h[:, np.newaxis], axis=-1) - r
+                
+                d_min = np.minimum(d_min, d_seg)
+            
+            return d_min
+        return _callable
+
+def polyline(points, radius: float = 0.1, closed: bool = False) -> SDFNode:
+    """
+    Creates a continuous chain of line segments (capsules) connecting the points.
+
+    Args:
+        points (list): A list of (x, y, z) coordinates.
+        radius (float, optional): The thickness of the line. Defaults to 0.1.
+        closed (bool, optional): If True, connects the last point back to the first. Defaults to False.
+    """
+    return Polyline(points, radius, closed)
+
+class Polycurve(SDFNode):
+    """Represents a continuous smooth chain of Quadratic Bezier segments connecting points."""
+    glsl_dependencies = {"primitives", "operations"}
+
+    def __init__(self, points, radius: float = 0.1, closed: bool = False):
+        super().__init__()
+        self.points = np.array(points)
+        if self.points.shape[1] != 3:
+            raise ValueError("Points must be a list of 3D coordinates.")
+        self.radius = radius
+        self.closed = closed
+
+    def _generate_segments(self):
+        """Generates (Start, Control, End) tuples for each Bezier segment."""
+        points = self.points
+        n = len(points)
+        segments = []
+        
+        if n < 2:
+            return []
+        
+        if n == 2 and not self.closed:
+            # Just a straight line treated as a Bezier (Control point is midpoint)
+            mid = (points[0] + points[1]) / 2.0
+            return [(points[0], mid, points[1])]
+
+        if self.closed:
+            # Loop: Mid(i-1, i) -> P(i) -> Mid(i, i+1)
+            for i in range(n):
+                p_prev = points[(i - 1) % n]
+                p_curr = points[i]
+                p_next = points[(i + 1) % n]
+                
+                start = (p_prev + p_curr) / 2.0
+                ctrl = p_curr
+                end = (p_curr + p_next) / 2.0
+                segments.append((start, ctrl, end))
+        else:
+            # First segment: P0 -> P1 -> Mid(1,2)
+            segments = [(points[0], points[1], (points[1] + points[2]) / 2.0)]
+            
+            # Middle segments
+            # i ranges from 1 to N-3
+            for i in range(1, n - 2):
+                start = (points[i] + points[i+1]) / 2.0
+                ctrl = points[i+1]
+                end = (points[i+1] + points[i+2]) / 2.0
+                segments.append((start, ctrl, end))
+                
+            # Last segment: Linear extension from previous midpoint to P_last
+            # Previous segment ended at Mid(N-2, N-1) which is (points[-2] + points[-1])/2
+            # We define a degenerate Bezier (line) from there to P_last.
+            segments.append(((points[-2] + points[-1]) / 2.0, points[-1], points[-1]))
+            
+        return segments
+
+    def to_glsl(self, ctx: GLSLContext) -> str:
+        ctx.dependencies.update(self.glsl_dependencies)
+        r_str = _glsl_format(self.radius)
+        segments = self._generate_segments()
+        
+        if not segments:
+            return "vec4(1e9, -1.0, 0.0, 0.0)"
+
+        dist_exprs = []
+        for A, B, C in segments:
+            A_str = f"vec3({_glsl_format(A[0])},{_glsl_format(A[1])},{_glsl_format(A[2])})"
+            B_str = f"vec3({_glsl_format(B[0])},{_glsl_format(B[1])},{_glsl_format(B[2])})"
+            C_str = f"vec3({_glsl_format(C[0])},{_glsl_format(C[1])},{_glsl_format(C[2])})"
+            
+            # Optimization: Use capsule if degenerate (linear)
+            if np.allclose(B, C) or np.allclose(A, B):
+                dist_exprs.append(f"sdCapsule({ctx.p}, {A_str}, {C_str}, {r_str})")
+            else:
+                dist_exprs.append(f"sdBezier({ctx.p}, {A_str}, {B_str}, {C_str}, {r_str})")
+            
+        current_expr = dist_exprs[0]
+        for expr in dist_exprs[1:]:
+            current_expr = f"min({current_expr}, {expr})"
+            
+        return ctx.new_variable('vec4', f"vec4({current_expr}, -1.0, 0.0, 0.0)")
+
+    def to_profile_glsl(self, ctx: GLSLContext) -> str:
+        ctx.dependencies.update(self.glsl_dependencies)
+        r_str = _glsl_format(self.radius)
+        segments = self._generate_segments()
+        
+        if not segments:
+            return "vec4(1e9, -1.0, 0.0, 0.0)"
+            
+        p_flat = f"vec3({ctx.p}.x, {ctx.p}.y, 0.0)"
+        dist_exprs = []
+        
+        for A, B, C in segments:
+            A_str = f"vec3({_glsl_format(A[0])},{_glsl_format(A[1])}, 0.0)"
+            B_str = f"vec3({_glsl_format(B[0])},{_glsl_format(B[1])}, 0.0)"
+            C_str = f"vec3({_glsl_format(C[0])},{_glsl_format(C[1])}, 0.0)"
+            
+            if np.allclose(B, C) or np.allclose(A, B):
+                dist_exprs.append(f"sdCapsule({p_flat}, {A_str}, {C_str}, {r_str})")
+            else:
+                dist_exprs.append(f"sdBezier({p_flat}, {A_str}, {B_str}, {C_str}, {r_str})")
+            
+        current_expr = dist_exprs[0]
+        for expr in dist_exprs[1:]:
+            current_expr = f"min({current_expr}, {expr})"
+            
+        return ctx.new_variable('vec4', f"vec4({current_expr}, -1.0, 0.0, 0.0)")
+
+    def to_callable(self):
+        if isinstance(self.radius, (str, Param)):
+            raise TypeError("Cannot save mesh of an object with animated parameters.")
+        
+        segments = self._generate_segments()
+        r = self.radius
+        
+        # Precompute functions for each segment
+        segment_funcs = []
+        for A, B, C in segments:
+            segment_funcs.append(_bezier_distance_callable(A, B, C, r))
+            
+        def _callable(points: np.ndarray) -> np.ndarray:
+            d_min = np.full(len(points), np.inf)
+            for func in segment_funcs:
+                d_min = np.minimum(d_min, func(points))
+            return d_min
+        return _callable
+
+    def to_profile_callable(self):
+        if isinstance(self.radius, (str, Param)):
+            raise TypeError("Cannot save mesh of an object with animated parameters.")
+        
+        segments = self._generate_segments()
+        r = self.radius
+        
+        # Create segment functions that operate on flattened input
+        segment_funcs = []
+        for A, B, C in segments:
+            A_flat = np.array([A[0], A[1], 0.0])
+            B_flat = np.array([B[0], B[1], 0.0])
+            C_flat = np.array([C[0], C[1], 0.0])
+            segment_funcs.append(_bezier_distance_callable(A_flat, B_flat, C_flat, r))
+            
+        def _callable(points: np.ndarray) -> np.ndarray:
+            p = points.copy()
+            p[:, 2] = 0.0
+            d_min = np.full(len(points), np.inf)
+            for func in segment_funcs:
+                d_min = np.minimum(d_min, func(p))
+            return d_min
+        return _callable
+
+def polycurve(points, radius: float = 0.1, closed: bool = False) -> SDFNode:
+    """
+    Creates a smooth continuous curve passing near the points (except endpoints).
+    
+    Uses a Corner-Cutting / Chaikin / Quadratic B-Spline approach.
+    - For open curves: Passes through the first and last points exactly.
+    - For closed curves: Creates a smooth loop controlled by the points.
+
+    Args:
+        points (list): A list of (x, y, z) control points.
+        radius (float, optional): The thickness of the curve tube. Defaults to 0.1.
+        closed (bool, optional): If True, creates a closed loop. Defaults to False.
+    """
+    return Polycurve(points, radius, closed)
+
 class Bezier(SDFNode):
     """Represents a Quadratic Bezier tube."""
     glsl_dependencies = {"primitives"}
@@ -363,105 +770,11 @@ class Bezier(SDFNode):
         dist_expr = f"sdBezier({p_flat}, {A_str}, {B_str}, {C_str}, {_glsl_format(self.radius)})"
         return ctx.new_variable('vec4', f"vec4({dist_expr}, -1.0, 0.0, 0.0)")
 
-    def _get_callable_impl(self, A, B, C, r):
-        # Precompute constant curve vectors
-        a = B - A
-        b = A - 2.0*B + C
-        c = a * 2.0
-        
-        def _callable(points: np.ndarray) -> np.ndarray:
-            # d = A - pos
-            d = A[np.newaxis, :] - points
-            
-            kk = 1.0 / np.dot(b, b)
-            kx = kk * np.dot(a, b)
-            
-            dot_d_b = np.dot(d, b)
-            dot_d_a = np.dot(d, a)
-            
-            ky = kk * (2.0 * np.dot(a, a) + dot_d_b) / 3.0
-            kz = kk * dot_d_a
-            
-            # Align coefficients with standard cubic t^3 + kx_full*t^2 + ...
-            kx_full = 3.0 * kx
-            ky_full = 3.0 * ky
-            kz_full = kz
-
-            # Depressed cubic: x^3 + p x + q = 0, where t = x - kx_full/3
-            p = ky_full - kx_full*kx_full / 3.0
-            q = 2.0*kx_full*kx_full*kx_full/27.0 - kx_full*ky_full/3.0 + kz_full
-            
-            p3 = p*p*p
-            discriminant = q*q/4.0 + p3/27.0
-            
-            t_candidates = np.zeros((points.shape[0], 3))
-            num_roots = np.zeros(points.shape[0], dtype=int)
-            
-            # Case 1: D > 0 (One real root)
-            mask_d_pos = discriminant > 0
-            if np.any(mask_d_pos):
-                d_sqrt = np.sqrt(discriminant[mask_d_pos])
-                q_masked = q[mask_d_pos]
-                
-                u1 = -q_masked/2.0 + d_sqrt
-                u2 = -q_masked/2.0 - d_sqrt
-                
-                u1 = np.cbrt(u1)
-                u2 = np.cbrt(u2)
-                
-                t_candidates[mask_d_pos, 0] = u1 + u2 - kx_full/3.0
-                num_roots[mask_d_pos] = 1
-
-            # Case 2: D <= 0 (Three real roots)
-            mask_d_neg = ~mask_d_pos
-            if np.any(mask_d_neg):
-                p3_masked = p3[mask_d_neg]
-                q_masked = q[mask_d_neg]
-                p_masked = p[mask_d_neg]
-                kx_neg = kx_full if np.isscalar(kx_full) else kx_full
-                
-                val = -27.0 / (p3_masked + 1e-14)
-                val_sqrt = np.sqrt(np.abs(val)) 
-                
-                arg = -val_sqrt * q_masked / 2.0
-                arg = np.clip(arg, -1.0, 1.0)
-                
-                v = np.arccos(arg) / 3.0
-                m = np.cos(v)
-                n = np.sin(v) * 1.732050808
-                
-                sqrt_neg_p_3 = np.sqrt(np.abs(-p_masked/3.0))
-                
-                offset = -kx_neg/3.0
-                t_candidates[mask_d_neg, 0] = (m + m) * sqrt_neg_p_3 + offset
-                t_candidates[mask_d_neg, 1] = (-n - m) * sqrt_neg_p_3 + offset
-                t_candidates[mask_d_neg, 2] = (n - m) * sqrt_neg_p_3 + offset
-                num_roots[mask_d_neg] = 3
-
-            t0 = np.clip(t_candidates[:, 0], 0.0, 1.0)
-            # Fixed distance calc: d + c*t + b*t^2
-            q0 = d + np.outer(t0, c) + np.outer(t0**2, b)
-            dist_sq = np.sum(q0*q0, axis=1)
-            
-            mask_3 = num_roots == 3
-            if np.any(mask_3):
-                t1 = np.clip(t_candidates[mask_3, 1], 0.0, 1.0)
-                q1 = d[mask_3] + np.outer(t1, c) + np.outer(t1**2, b)
-                dist_sq[mask_3] = np.minimum(dist_sq[mask_3], np.sum(q1*q1, axis=1))
-                
-                t2 = np.clip(t_candidates[mask_3, 2], 0.0, 1.0)
-                q2 = d[mask_3] + np.outer(t2, c) + np.outer(t2**2, b)
-                dist_sq[mask_3] = np.minimum(dist_sq[mask_3], np.sum(q2*q2, axis=1))
-
-            return np.sqrt(dist_sq) - r
-        
-        return _callable
-
     def to_callable(self):
         if isinstance(self.radius, (str, Param)):
              raise TypeError("Cannot save mesh with animated parameters.")
         
-        return self._get_callable_impl(self.p0, self.p1, self.p2, self.radius)
+        return _bezier_distance_callable(self.p0, self.p1, self.p2, self.radius)
 
     def to_profile_callable(self):
         if isinstance(self.radius, (str, Param)):
@@ -472,7 +785,7 @@ class Bezier(SDFNode):
         B = np.array([self.p1[0], self.p1[1], 0.0])
         C = np.array([self.p2[0], self.p2[1], 0.0])
         
-        base_callable = self._get_callable_impl(A, B, C, self.radius)
+        base_callable = _bezier_distance_callable(A, B, C, self.radius)
         
         def _profile_callable(points: np.ndarray) -> np.ndarray:
             p = points.copy()

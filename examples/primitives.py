@@ -2,7 +2,7 @@ import sys
 from sdforge import (
     sphere, box, cylinder, torus, cone, 
     hex_prism, pyramid, curve,
-    circle, rectangle, triangle, trapezoid,
+    circle, rectangle, triangle, trapezoid, polyline, polycurve,
     X, Y, Z
 )
 
@@ -60,6 +60,21 @@ def trapezoid_example():
     """Returns a flat isosceles trapezoid."""
     return trapezoid(bottom_width=1.5, top_width=0.8, height=1.0)
 
+def polyline_example():
+    """Returns a continuous tube connecting multiple points."""
+    points = [
+        (-1, 0, 0), (0, 1, 0), (1, 0, 0), (2, 1, 0), (2, -1, 0)
+    ]
+    return polyline(points, radius=0.1)
+
+def polycurve_example():
+    """Returns a smooth loop passing near control points."""
+    points = [
+        (0, 0, 0), (1, 2, 0), (2, 0, 0), (3, 2, 0), (4, 0, 0)
+    ]
+    # Create a ribbon by extruding the curve
+    return polycurve(points, radius=0.1, closed=False)
+
 def main():
     """
     Renders an example based on a command-line argument.
@@ -79,6 +94,8 @@ def main():
         "rectangle": rectangle_example,
         "triangle": triangle_example,
         "trapezoid": trapezoid_example,
+        "polyline": polyline_example,
+        "polycurve": polycurve_example,
     }
 
     if len(sys.argv) < 2:

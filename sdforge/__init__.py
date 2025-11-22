@@ -23,6 +23,8 @@ from .api.primitives import (
     circle,
     triangle,
     trapezoid,
+    polyline,
+    polycurve,
 )
 
 # --- Custom GLSL ---

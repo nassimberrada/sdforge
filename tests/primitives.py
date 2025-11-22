@@ -3,7 +3,7 @@ import numpy as np
 from sdforge import (
     SDFNode, sphere, box, torus, line, cylinder, cone, plane, 
     octahedron, ellipsoid, circle, rectangle,
-    hex_prism, pyramid, curve, triangle, trapezoid
+    hex_prism, pyramid, curve, triangle, trapezoid, polyline, polycurve
 )
 from sdforge.render import SceneCompiler
 from tests.conftest import requires_glsl_validator
@@ -21,11 +21,13 @@ from examples.primitives import (
     circle_example,
     rectangle_example,
     triangle_example,
-    trapezoid_example
+    trapezoid_example,
+    polyline_example,
+    polycurve_example
 )
 from sdforge.api.primitives import (
     Sphere, Box, Cylinder, Torus, Cone, HexPrism, Pyramid, 
-    Bezier, Circle, Rectangle, Triangle, Trapezoid
+    Bezier, Circle, Rectangle, Triangle, Trapezoid, Polyline, Polycurve
 )
 from sdforge.api.operations import Union
 from sdforge.api.shaping import Round
@@ -134,7 +136,7 @@ def test_bezier_callable():
     # Simple curve: X-axis from -1 to 1, bending up to Y=1 at midpoint
     c = curve(p0=(-1,0,0), p1=(0,1,0), p2=(1,0,0), radius=0.1)
     c_callable = c.to_callable()
-
+    
     points = np.array([
         [-1, 0, 0], # Start (surface dist = -radius)
         [1, 0, 0],  # End (surface dist = -radius)
@@ -150,10 +152,10 @@ def test_bezier_callable():
 def test_circle_callable_is_finite():
     """Tests that the circle is now a finite disc, not an infinite cylinder."""
     c_callable = circle(radius=1.0).to_callable()
-
+    
     # Point inside on Z=0
     assert c_callable(np.array([[0,0,0]])) < 0
-
+    
     # Point "inside" the cylinder projection but far along Z
     # With old behavior, this would be negative. Now it should be positive.
     z_dist = 10.0
@@ -165,10 +167,10 @@ def test_circle_callable_is_finite():
 def test_rectangle_callable_is_finite():
     """Tests that the rectangle is now a finite plate, not an infinite prism."""
     r_callable = rectangle(size=(2.0, 2.0)).to_callable()
-
+    
     # Point inside on Z=0
     assert r_callable(np.array([[0,0,0]])) < 0
-
+    
     # Point "inside" the prism projection but far along Z
     z_dist = 10.0
     val = r_callable(np.array([[0,0,z_dist]]))
@@ -185,6 +187,51 @@ def test_trapezoid_callable_is_finite():
     tr_callable = trapezoid(bottom_width=1.0, top_width=0.5, height=0.5).to_callable()
     assert tr_callable(np.array([[0,0,0]])) < 0
     assert tr_callable(np.array([[0,0,10]])) > 0
+
+def test_polyline_callable():
+    """Tests polyline distance calculation."""
+    points = [(0,0,0), (1,0,0), (1,1,0)]
+    pl = polyline(points, radius=0.1)
+    pl_callable = pl.to_callable()
+    
+    # Check points on the line segments
+    test_points = np.array([
+        [0,0,0], # Vertex 1
+        [0.5,0,0], # Midpoint segment 1
+        [1,0,0], # Vertex 2
+        [1,0.5,0], # Midpoint segment 2
+        [1,1,0] # Vertex 3
+    ])
+    
+    dists = pl_callable(test_points)
+    # All should be -radius (inside)
+    assert np.allclose(dists, -0.1, atol=1e-5)
+    
+    # Check point far away
+    far_point = np.array([[2,2,0]])
+    # Distance to (1,1,0) is sqrt(2), minus radius
+    expected_dist = np.sqrt(2) - 0.1
+    assert np.allclose(pl_callable(far_point), expected_dist, atol=1e-5)
+
+def test_polycurve_callable():
+    """Tests polycurve distance calculation."""
+    # Points forming a sharp V shape
+    points = [(0,0,0), (1,1,0), (2,0,0)]
+    # Polycurve should smooth the corner near (1,1,0)
+    pc = polycurve(points, radius=0.1, closed=False)
+    pc_callable = pc.to_callable()
+    
+    # 1. Start point should be exactly on curve (distance -0.1)
+    assert np.isclose(pc_callable(np.array([[0,0,0]])), -0.1, atol=1e-5)
+    
+    # 2. End point should be exactly on curve
+    assert np.isclose(pc_callable(np.array([[2,0,0]])), -0.1, atol=1e-5)
+    
+    # 3. The middle control point (1,1,0) should be OUTSIDE the curve core
+    # (The curve cuts the corner)
+    dist_corner = pc_callable(np.array([[1,1,0]]))
+    # It should be positive or close to 0 depending on radius, but definitely further than -0.1
+    assert dist_corner > -0.1
 
 # --- Equivalence and Compilation Tests ---
 
@@ -206,7 +253,11 @@ PRIMITIVE_TEST_CASES = [
     trapezoid(bottom_width=1.0, top_width=0.5, height=0.8),
     hex_prism(radius=1.0, height=0.5),
     pyramid(height=1.2),
-    curve(p0=(0,0,0), p1=(0,1,0), p2=(1,0,0), radius=0.1)
+    curve(p0=(0,0,0), p1=(0,1,0), p2=(1,0,0), radius=0.1),
+    polyline([(0,0,0), (1,1,0), (2,0,0)], radius=0.1),
+    polyline([(0,0,0), (1,0,0), (0,1,0)], radius=0.1, closed=True),
+    polycurve([(0,0,0), (1,2,0), (2,0,0)], radius=0.1),
+    polycurve([(0,0,0), (1,2,0), (2,0,0), (3,2,0)], radius=0.1, closed=True),
 ]
 
 @pytest.mark.usefixtures("assert_equivalence")
@@ -238,6 +289,8 @@ EXAMPLE_TEST_CASES = [
     (rectangle_example, Rectangle),
     (triangle_example, Triangle),
     (trapezoid_example, Trapezoid),
+    (polyline_example, Polyline),
+    (polycurve_example, Polycurve),
 ]
 
 @pytest.mark.parametrize("example_func, expected_class", EXAMPLE_TEST_CASES, ids=[f[0].__name__ for f in EXAMPLE_TEST_CASES])

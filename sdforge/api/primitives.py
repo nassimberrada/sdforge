@@ -7,46 +7,39 @@ class Sphere(SDFNode):
     """Represents a sphere primitive."""
     glsl_dependencies = {"primitives"}
 
-    def __init__(self, r: float = 1.0):
+    def __init__(self, radius: float = 1.0):
         super().__init__()
-        self.r = r
+        self.radius = radius
 
     def to_glsl(self, ctx: GLSLContext) -> str:
         ctx.dependencies.update(self.glsl_dependencies)
-        dist_expr = f"sdSphere({ctx.p}, {_glsl_format(self.r)})"
+        dist_expr = f"sdSphere({ctx.p}, {_glsl_format(self.radius)})"
         return ctx.new_variable('vec4', f"vec4({dist_expr}, -1.0, 0.0, 0.0)")
 
     def to_callable(self):
-        if isinstance(self.r, (str, Param)):
+        if isinstance(self.radius, (str, Param)):
             raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
-        r_val = self.r
+        r_val = self.radius
         def _callable(points: np.ndarray) -> np.ndarray:
             return np.linalg.norm(points, axis=-1) - r_val
         return _callable
 
-def sphere(r: float = 1.0) -> SDFNode:
+def sphere(radius: float = 1.0) -> SDFNode:
     """
     Creates a sphere centered at the origin.
 
     Args:
-        r (float, optional): The radius of the sphere. Defaults to 1.0.
-
-    Returns:
-        SDFNode: A sphere primitive.
-    
-    Example:
-        >>> s = sphere(r=1.5)
+        radius (float, optional): The radius of the sphere. Defaults to 1.0.
     """
-    return Sphere(r)
+    return Sphere(radius)
 
 class Box(SDFNode):
-    """Represents a box primitive, possibly with rounded edges."""
+    """Represents a box primitive."""
     glsl_dependencies = {"primitives"}
 
-    def __init__(self, size: tuple = (1.0, 1.0, 1.0), radius: float = 0.0):
+    def __init__(self, size: tuple = (1.0, 1.0, 1.0)):
         super().__init__()
         self.size = size
-        self.radius = radius
 
     def to_glsl(self, ctx: GLSLContext) -> str:
         ctx.dependencies.update(self.glsl_dependencies)
@@ -59,120 +52,80 @@ class Box(SDFNode):
                 s.append(f"({_glsl_format(v)} / 2.0)")
         size_vec = f"vec3({s[0]}, {s[1]}, {s[2]})"
         
-        use_rounding = False
-        if isinstance(self.radius, (int, float)):
-            if self.radius > 1e-6:
-                use_rounding = True
-        else: # Param or string
-            use_rounding = True
-        
-        if use_rounding:
-            dist_expr = f"sdRoundedBox({ctx.p}, {size_vec}, {_glsl_format(self.radius)})"
-        else:
-            dist_expr = f"sdBox({ctx.p}, {size_vec})"
-            
+        dist_expr = f"sdBox({ctx.p}, {size_vec})"
         return ctx.new_variable('vec4', f"vec4({dist_expr}, -1.0, 0.0, 0.0)")
 
     def to_callable(self):
-        is_dynamic = any(isinstance(v, (str, Param)) for v in self.size) or isinstance(self.radius, (str, Param))
+        is_dynamic = any(isinstance(v, (str, Param)) for v in self.size)
         if is_dynamic:
             raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
         
         half_size = np.array(self.size) / 2.0
-        radius = self.radius
         
         def _callable(points: np.ndarray) -> np.ndarray:
             q = np.abs(points) - half_size
             dist = np.linalg.norm(np.maximum(q, 0.0), axis=-1)
-            if radius <= 1e-6:
-                dist += np.minimum(np.max(q, axis=-1), 0.0)
-            else:
-                dist -= radius
+            dist += np.minimum(np.max(q, axis=-1), 0.0)
             return dist
         return _callable
 
-def box(size=1.0, radius: float = 0.0, x: float = None, y: float = None, z: float = None) -> SDFNode:
+def box(size=1.0) -> SDFNode:
     """
-    Creates a box centered at the origin, optionally with rounded edges.
+    Creates a box centered at the origin.
 
     Args:
         size (float or tuple, optional): The size of the box. If a float,
                                          creates a cube. If a tuple, specifies
                                          (width, height, depth). Defaults to 1.0.
-        radius (float, optional): The radius for rounding the box's edges.
-                                  Defaults to 0.0 (sharp edges).
-        x (float, optional): A convenience argument to specify the x-size.
-                             If x, y, and z are all provided, they override `size`.
-        y (float, optional): Convenience for y-size.
-        z (float, optional): Convenience for z-size.
-
-    Returns:
-        SDFNode: A box primitive.
-    
-    Example:
-        >>> # A 2x2x2 cube
-        >>> cube = box(2.0)
-        >>> # A 1x2x3 cuboid with rounded corners
-        >>> rounded_box = box(size=(1, 2, 3), radius=0.1)
     """
-    if x is not None and y is not None and z is not None:
-        size = (x, y, z)
-    elif isinstance(size, (int, float, str, Param)):
+    if isinstance(size, (int, float, str, Param)):
         size = (size, size, size)
-    return Box(size=tuple(size), radius=radius)
+    return Box(size=tuple(size))
 
 class Torus(SDFNode):
     """Represents a torus primitive."""
     glsl_dependencies = {"primitives"}
 
-    def __init__(self, major: float = 1.0, minor: float = 0.25):
+    def __init__(self, radius_major: float = 1.0, radius_minor: float = 0.25):
         super().__init__()
-        self.major, self.minor = major, minor
+        self.radius_major, self.radius_minor = radius_major, radius_minor
         
     def to_glsl(self, ctx: GLSLContext) -> str:
         ctx.dependencies.update(self.glsl_dependencies)
-        dist_expr = f"sdTorus({ctx.p}, vec2({_glsl_format(self.major)}, {_glsl_format(self.minor)}))"
+        dist_expr = f"sdTorus({ctx.p}, vec2({_glsl_format(self.radius_major)}, {_glsl_format(self.radius_minor)}))"
         return ctx.new_variable('vec4', f"vec4({dist_expr}, -1.0, 0.0, 0.0)")
 
     def to_callable(self):
-        if isinstance(self.major, (str, Param)) or isinstance(self.minor, (str, Param)):
+        if isinstance(self.radius_major, (str, Param)) or isinstance(self.radius_minor, (str, Param)):
             raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
-        major, minor = self.major, self.minor
+        major, minor = self.radius_major, self.radius_minor
         def _callable(points: np.ndarray) -> np.ndarray:
             q = np.array([np.linalg.norm(points[:, [0, 2]], axis=-1) - major, points[:, 1]]).T
             return np.linalg.norm(q, axis=-1) - minor
         return _callable
 
-def torus(major: float = 1.0, minor: float = 0.25) -> SDFNode:
+def torus(radius_major: float = 1.0, radius_minor: float = 0.25) -> SDFNode:
     """
     Creates a torus centered at the origin, oriented in the XZ plane.
 
     Args:
-        major (float, optional): The major radius (from the center of the
-                                 torus to the center of the tube). Defaults to 1.0.
-        minor (float, optional): The minor radius (the radius of the tube
-                                 itself). Defaults to 0.25.
-
-    Returns:
-        SDFNode: A torus primitive.
-        
-    Example:
-        >>> t = torus(major=2.0, minor=0.1)
+        radius_major (float): Distance from the origin to the center of the tube.
+        radius_minor (float): Radius of the tube itself.
     """
-    return Torus(major, minor)
+    return Torus(radius_major, radius_minor)
 
 class Line(SDFNode):
     """Represents a line segment primitive with a radius."""
     glsl_dependencies = {"primitives"}
 
-    def __init__(self, a, b, radius: float = 0.1, rounded_caps: bool = True):
+    def __init__(self, start, end, radius: float = 0.1, rounded_caps: bool = True):
         super().__init__()
-        self.a, self.b, self.radius = np.array(a), np.array(b), radius
+        self.start, self.end, self.radius = np.array(start), np.array(end), radius
         self.rounded_caps = rounded_caps
 
     def to_glsl(self, ctx: GLSLContext) -> str:
         ctx.dependencies.update(self.glsl_dependencies)
-        a, b, r = self.a, self.b, _glsl_format(self.radius)
+        a, b, r = self.start, self.end, _glsl_format(self.radius)
         a_str = f"vec3({a[0]},{a[1]},{a[2]})"
         b_str = f"vec3({b[0]},{b[1]},{b[2]})"
         func = "sdCapsule" if self.rounded_caps else "sdCappedCylinder"
@@ -182,7 +135,7 @@ class Line(SDFNode):
     def to_callable(self):
         if isinstance(self.radius, (str, Param)):
             raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
-        a, b, r = self.a, self.b, self.radius
+        a, b, r = self.start, self.end, self.radius
         if self.rounded_caps:
             def _callable(points: np.ndarray) -> np.ndarray:
                 pa = points - a; ba = b - a
@@ -203,129 +156,91 @@ class Line(SDFNode):
                 return np.sign(d_inner) * np.sqrt(np.abs(d_inner)) / baba
             return _callable
 
-def line(a, b, radius: float = 0.1, rounded_caps: bool = True) -> SDFNode:
+def line(start, end, radius: float = 0.1, rounded_caps: bool = True) -> SDFNode:
     """
     Creates a line segment between two points with a given radius.
 
     Args:
-        a (tuple or np.ndarray): The starting point of the line segment.
-        b (tuple or np.ndarray): The ending point of the line segment.
-        radius (float, optional): The radius of the line. Defaults to 0.1.
-        rounded_caps (bool, optional): If True, creates a capsule with hemispherical
-                                       ends. If False, creates a cylinder with flat
-                                       ends. Defaults to True.
-
-    Returns:
-        SDFNode: A capsule or cylinder primitive.
-    
-    Example:
-        >>> from sdforge import X
-        >>> # A capsule from the origin to a point on the X axis
-        >>> l = line(a=(0,0,0), b=X*2, radius=0.1)
+        start (tuple): Start point.
+        end (tuple): End point.
+        radius (float): Thickness.
+        rounded_caps (bool): True for spherical caps, False for flat.
     """
-    return Line(a, b, radius, rounded_caps)
+    return Line(start, end, radius, rounded_caps)
 
 class Cylinder(SDFNode):
-    """Represents a cylinder primitive, possibly with rounded edges."""
+    """Represents a cylinder primitive."""
     glsl_dependencies = {"primitives"}
 
-    def __init__(self, radius: float = 0.5, height: float = 1.0, round_radius: float = 0.0):
+    def __init__(self, radius: float = 0.5, height: float = 1.0):
         super().__init__()
-        self.radius, self.height, self.round_radius = radius, height, round_radius
+        self.radius, self.height = radius, height
 
     def to_glsl(self, ctx: GLSLContext) -> str:
         ctx.dependencies.update(self.glsl_dependencies)
-        
-        use_rounding = False
-        if isinstance(self.round_radius, (int, float)):
-            if self.round_radius > 1e-6:
-                use_rounding = True
-        else: # Param or string
-            use_rounding = True
-
-        if use_rounding:
-            dist_expr = f"sdRoundedCylinder({ctx.p}, {_glsl_format(self.radius)}, {_glsl_format(self.round_radius)}, {_glsl_format(self.height)})"
-        else:
-            h_half = _glsl_format(self.height / 2.0) if not isinstance(self.height, (str, Param)) else f"({_glsl_format(self.height)})/2.0"
-            dist_expr = f"sdCylinder({ctx.p}, vec2({_glsl_format(self.radius)}, {h_half}))"
+        h_half = _glsl_format(self.height / 2.0) if not isinstance(self.height, (str, Param)) else f"({_glsl_format(self.height)})/2.0"
+        dist_expr = f"sdCylinder({ctx.p}, vec2({_glsl_format(self.radius)}, {h_half}))"
         return ctx.new_variable('vec4', f"vec4({dist_expr}, -1.0, 0.0, 0.0)")
 
     def to_callable(self):
-        is_dynamic = isinstance(self.radius, (str, Param)) or isinstance(self.height, (str, Param)) or isinstance(self.round_radius, (str, Param))
+        is_dynamic = isinstance(self.radius, (str, Param)) or isinstance(self.height, (str, Param))
         if is_dynamic:
             raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
 
-        radius, height, round_radius = self.radius, self.height, self.round_radius
-        if round_radius > 1e-6:
-            def _callable_rounded(points: np.ndarray) -> np.ndarray:
-                d_x = np.linalg.norm(points[:, [0, 2]], axis=-1) - 2.0 * radius + round_radius
-                d_y = np.abs(points[:, 1]) - height
-                d = np.stack([d_x, d_y], axis=-1)
-                return np.minimum(np.maximum(d[:, 0], d[:, 1]), 0.0) + np.linalg.norm(np.maximum(d, 0.0), axis=-1) - round_radius
-            return _callable_rounded
-        else:
-            h_half = height / 2.0
-            def _callable_sharp(points: np.ndarray) -> np.ndarray:
-                d = np.abs(np.array([np.linalg.norm(points[:, [0, 2]], axis=-1), points[:, 1]]).T) - np.array([radius, h_half])
-                return np.minimum(np.maximum(d[:, 0], d[:, 1]), 0.0) + np.linalg.norm(np.maximum(d, 0.0), axis=-1)
-            return _callable_sharp
+        radius, height = self.radius, self.height
+        h_half = height / 2.0
+        def _callable_sharp(points: np.ndarray) -> np.ndarray:
+            d = np.abs(np.array([np.linalg.norm(points[:, [0, 2]], axis=-1), points[:, 1]]).T) - np.array([radius, h_half])
+            return np.minimum(np.maximum(d[:, 0], d[:, 1]), 0.0) + np.linalg.norm(np.maximum(d, 0.0), axis=-1)
+        return _callable_sharp
 
-def cylinder(radius: float = 0.5, height: float = 1.0, round_radius: float = 0.0) -> SDFNode:
+def cylinder(radius: float = 0.5, height: float = 1.0) -> SDFNode:
     """
     Creates a cylinder centered at the origin, oriented along the Y-axis.
 
     Args:
-        radius (float, optional): The radius of the cylinder. Defaults to 0.5.
-        height (float, optional): The total height of the cylinder. Defaults to 1.0.
-        round_radius (float, optional): If > 0, rounds the top and bottom edges
-                                        of the cylinder. Defaults to 0.0.
-
-    Returns:
-        SDFNode: A cylinder primitive.
-        
-    Example:
-        >>> # A tall, thin cylinder
-        >>> c = cylinder(radius=0.2, height=3.0)
+        radius (float): The radius of the cylinder.
+        height (float): The total height of the cylinder.
     """
-    return Cylinder(radius, height, round_radius)
+    return Cylinder(radius, height)
 
 class Cone(SDFNode):
     """Represents a cone or frustum primitive."""
     glsl_dependencies = {"primitives"}
 
-    def __init__(self, height: float = 1.0, radius1: float = 0.5, radius2: float = 0.0):
+    def __init__(self, height: float = 1.0, radius_base: float = 0.5, radius_top: float = 0.0):
         super().__init__()
-        self.height, self.radius1, self.radius2 = height, radius1, radius2
+        self.height, self.radius_base, self.radius_top = height, radius_base, radius_top
         
     def to_glsl(self, ctx: GLSLContext) -> str:
         ctx.dependencies.update(self.glsl_dependencies)
-        h, r1 = _glsl_format(self.height), _glsl_format(self.radius1)
+        h, r1 = _glsl_format(self.height), _glsl_format(self.radius_base)
         
         use_capped = False
-        if isinstance(self.radius2, (int, float)):
-            if self.radius2 > 1e-6:
+        if isinstance(self.radius_top, (int, float)):
+            if self.radius_top > 1e-6:
                 use_capped = True
         else:
             use_capped = True
             
         if use_capped:
-            dist_expr = f"sdCappedCone({ctx.p}, {h}, {r1}, {_glsl_format(self.radius2)})"
+            dist_expr = f"sdCappedCone({ctx.p}, {h}, {r1}, {_glsl_format(self.radius_top)})"
         else:
             dist_expr = f"sdCone({ctx.p}, vec2({h}, {r1}))"
         return ctx.new_variable('vec4', f"vec4({dist_expr}, -1.0, 0.0, 0.0)")
 
     def to_callable(self):
-        is_dynamic = isinstance(self.height, (str, Param)) or isinstance(self.radius1, (str, Param)) or isinstance(self.radius2, (str, Param))
+        is_dynamic = isinstance(self.height, (str, Param)) or isinstance(self.radius_base, (str, Param)) or isinstance(self.radius_top, (str, Param))
         if is_dynamic:
             raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
             
-        h, r1, r2 = self.height, self.radius1, self.radius2
+        h, r1, r2 = self.height, self.radius_base, self.radius_top
 
         use_capped = False
         if isinstance(r2, (int, float)):
             if r2 > 1e-6:
                 use_capped = True
-        else: # Should already be caught by is_dynamic check, but for safety
+        else: 
             use_capped = True
 
         if use_capped:
@@ -340,13 +255,12 @@ class Cone(SDFNode):
                 ca = np.stack([ca_x, ca_y], axis=-1)
                 k1_q = k1 - q
                 dot_k2k2 = np.dot(k2, k2)
-                # Add epsilon to prevent division by zero if h=0 and r1=r2
                 clamp_val = np.clip(np.sum(k1_q * k2, axis=-1) / (dot_k2k2 + 1e-9), 0.0, 1.0)
                 cb = q - k1 + k2 * clamp_val[:, np.newaxis]
                 s = np.where((cb[:, 0] < 0.0) & (ca[:, 1] < 0.0), -1.0, 1.0)
                 return s * np.sqrt(np.minimum(np.sum(ca * ca, axis=-1), np.sum(cb * cb, axis=-1)))
             return _callable_capped
-        else: # Sharp cone logic
+        else: # Sharp cone
             def _callable_sharp(points: np.ndarray) -> np.ndarray:
                 q = np.stack([np.linalg.norm(points[:, [0, 2]], axis=-1), points[:, 1]], axis=-1)
                 w = np.array([r1, h])
@@ -358,38 +272,28 @@ class Cone(SDFNode):
                 return np.sqrt(d) * np.sign(s)
             return _callable_sharp
 
-
-def cone(height: float = 1.0, radius1: float = 0.5, radius2: float = 0.0) -> SDFNode:
+def cone(height: float = 1.0, radius_base: float = 0.5, radius_top: float = 0.0) -> SDFNode:
     """
     Creates a cone or frustum centered at the origin, oriented along the Y-axis.
 
-    The cone's base (radius1) is at y = -height/2 and its top (radius2) is at
-    y = +height/2.
-
     Args:
-        height (float, optional): The total height of the cone. Defaults to 1.0.
-        radius1 (float, optional): The radius of the base. Defaults to 0.5.
-        radius2 (float, optional): The radius of the top. A value of 0 creates a
-                                   sharp point. Defaults to 0.0.
-
-    Returns:
-        SDFNode: A cone or frustum primitive.
-        
-    Example:
-        >>> # A sharp cone
-        >>> c1 = cone(height=2.0, radius1=0.8, radius2=0.0)
-        >>> # A frustum (a cone with the top cut off)
-        >>> c2 = cone(height=1.5, radius1=0.6, radius2=0.2)
+        height (float): Total height.
+        radius_base (float): Bottom radius.
+        radius_top (float): Top radius.
     """
-    return Cone(height, radius1, radius2)
+    return Cone(height, radius_base, radius_top)
 
 class Plane(SDFNode):
     """Represents an infinite plane."""
     glsl_dependencies = {"primitives"}
 
-    def __init__(self, normal, offset: float = 0.0):
+    def __init__(self, normal, point=(0,0,0)):
         super().__init__()
-        self.normal, self.offset = np.array(normal), offset
+        self.normal = np.array(normal)
+        if np.linalg.norm(self.normal) > 0:
+            self.normal = self.normal / np.linalg.norm(self.normal)
+        self.point = np.array(point)
+        self.offset = -np.dot(self.point, self.normal)
         
     def to_glsl(self, ctx: GLSLContext) -> str:
         ctx.dependencies.update(self.glsl_dependencies)
@@ -405,27 +309,15 @@ class Plane(SDFNode):
             return np.dot(points, normal) + offset
         return _callable
 
-def plane(normal, offset: float = 0.0) -> SDFNode:
+def plane(normal, point=(0,0,0)) -> SDFNode:
     """
-    Creates an infinite plane.
+    Creates an infinite plane defined by a normal and a point.
 
     Args:
-        normal (tuple or np.ndarray): The normal vector of the plane, indicating
-                                      which direction it faces.
-        offset (float, optional): The distance of the plane from the origin
-                                  along its normal. Defaults to 0.0.
-
-    Returns:
-        SDFNode: An infinite plane primitive.
-        
-    Example:
-        >>> from sdforge import Y, box
-        >>> # Create a floor plane below a box
-        >>> floor = plane(normal=Y, offset=-1.0)
-        >>> b = box(1.0)
-        >>> scene = b | floor
+        normal (tuple): Normal vector.
+        point (tuple): A point on the plane. Defaults to origin.
     """
-    return Plane(normal, offset)
+    return Plane(normal, point)
 
 class Octahedron(SDFNode):
     """Represents an octahedron."""
@@ -451,17 +343,10 @@ class Octahedron(SDFNode):
 def octahedron(size: float = 1.0) -> SDFNode:
     """
     Creates an octahedron centered at the origin.
-
     Args:
         size (float, optional): The size of the octahedron, corresponding to the
                                 distance from the center to the center of a face.
-                                Defaults to 1.0.
-
-    Returns:
-        SDFNode: An octahedron primitive.
-        
-    Example:
-        >>> o = octahedron(size=1.5)
+                                Defaults to 1.0.    
     """
     return Octahedron(size)
 
@@ -489,71 +374,46 @@ class Ellipsoid(SDFNode):
             return k0 * (k0 - 1.0) / (k1 + 1e-9)
         return _callable
 
-def ellipsoid(radii=(1.0, 0.5, 0.5), x: float = None, y: float = None, z: float = None) -> SDFNode:
+def ellipsoid(radii=(1.0, 0.5, 0.5)) -> SDFNode:
     """
     Creates an ellipsoid centered at the origin.
 
     Args:
-        radii (tuple, optional): A tuple of the radii along the (X, Y, Z) axes.
-                                 Defaults to (1.0, 0.5, 0.5).
-        x (float, optional): A convenience argument to specify the x-radius.
-                             If x, y, and z are all provided, they override `radii`.
-        y (float, optional): Convenience for y-radius.
-        z (float, optional): Convenience for z-radius.
-
-    Returns:
-        SDFNode: An ellipsoid primitive.
-        
-    Example:
-        >>> # A tall, thin ellipsoid
-        >>> e = ellipsoid(radii=(0.2, 1.5, 0.2))
+        radii (tuple): Radii along (X, Y, Z).
     """
-    if x is not None and y is not None and z is not None:
-        radii = (x, y, z)
     return Ellipsoid(tuple(radii))
     
 class Circle(SDFNode):
-    """Represents a 2D circle primitive for extrusion or revolution."""
+    """Represents a 2D circle primitive."""
     glsl_dependencies = {"primitives"}
 
-    def __init__(self, r: float = 1.0):
+    def __init__(self, radius: float = 1.0):
         super().__init__()
-        self.r = r
+        self.radius = radius
 
     def to_glsl(self, ctx: GLSLContext) -> str:
         ctx.dependencies.update(self.glsl_dependencies)
-        dist_expr = f"sdCircle({ctx.p}.xy, {_glsl_format(self.r)})"
+        dist_expr = f"sdCircle({ctx.p}.xy, {_glsl_format(self.radius)})"
         return ctx.new_variable('vec4', f"vec4({dist_expr}, -1.0, 0.0, 0.0)")
 
     def to_callable(self):
-        if isinstance(self.r, (str, Param)):
+        if isinstance(self.radius, (str, Param)):
             raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
-        r_val = self.r
+        r_val = self.radius
         def _callable(points: np.ndarray) -> np.ndarray:
             return np.linalg.norm(points[:, :2], axis=-1) - r_val
         return _callable
 
-def circle(r: float = 1.0) -> SDFNode:
+def circle(radius: float = 1.0) -> SDFNode:
     """
     Creates a 2D circle in the XY plane.
-
-    This is a 2D primitive, primarily used as a profile for 3D shaping
-    operations like `.extrude()` or `.revolve()`.
-
     Args:
-        r (float, optional): The radius of the circle. Defaults to 1.0.
-
-    Returns:
-        SDFNode: A 2D circle primitive.
-    
-    Example:
-        >>> # Extrude a circle to create a cylinder
-        >>> c = circle(r=0.5).extrude(height=2.0)
+        radius (float): Radius of the circle.
     """
-    return Circle(r)
+    return Circle(radius)
 
 class Rectangle(SDFNode):
-    """Represents a 2D rectangle primitive for extrusion or revolution."""
+    """Represents a 2D rectangle primitive."""
     glsl_dependencies = {"primitives"}
 
     def __init__(self, size: tuple = (1.0, 1.0)):
@@ -579,22 +439,8 @@ class Rectangle(SDFNode):
 def rectangle(size=1.0) -> SDFNode:
     """
     Creates a 2D rectangle in the XY plane.
-
-    This is a 2D primitive, primarily used as a profile for 3D shaping
-    operations like `.extrude()` or `.revolve()`.
-
     Args:
-        size (float or tuple, optional): The size of the rectangle. If a float,
-                                         creates a square. If a tuple, specifies
-                                         (width, height). Defaults to 1.0.
-
-    Returns:
-        SDFNode: A 2D rectangle primitive.
-    
-    Example:
-        >>> from sdforge import X
-        >>> # Revolve a rectangle offset from the Y-axis to create a washer
-        >>> washer = rectangle(size=(0.2, 0.1)).translate(X*1.0).revolve()
+        size (float): Size of the rectangle.
     """
     if isinstance(size, (int, float, str, Param)):
         size = (size, size)

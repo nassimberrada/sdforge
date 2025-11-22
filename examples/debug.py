@@ -3,13 +3,13 @@ from sdforge import box, sphere, Debug
 
 def normals_debug_example():
     """Visualizes the surface normals as colors."""
-    scene = box(1.5, radius=0.1) - sphere(1.2)
+    scene = box(1.5).round(0.1) - sphere(radius=1.2)
     debug = Debug('normals')
     return scene, debug
 
 def steps_debug_example():
     """Visualizes the number of raymarching steps."""
-    scene = box(1.5, radius=0.1) - sphere(1.2)
+    scene = box(1.5).round(0.1) - sphere(radius=1.2)
     debug = Debug('steps')
     return scene, debug
 

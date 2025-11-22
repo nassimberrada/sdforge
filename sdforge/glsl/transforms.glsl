@@ -1,4 +1,3 @@
-// <file_path:/home/nb/Projects/sdforge/sdforge/glsl/transforms.glsl>
 // --- Transformations ---
 // For SDFs, we apply the INVERSE transformation to the point 'p'.
 
@@ -33,47 +32,37 @@ vec3 opRotateZ(vec3 p, float theta) {
   return vec3(p.x * c + p.y * s, -p.x * s + p.y * c, p.z);
 }
 
-vec3 opTwist(vec3 p, float k)
+vec3 opRotateAxis(vec3 p, vec3 k, float theta) {
+    // k must be normalized
+    // Rodrigues' rotation formula applied with inverse angle (-theta)
+    float c = cos(-theta);
+    float s = sin(-theta);
+    return p * c + cross(k, p) * s + k * dot(k, p) * (1.0 - c);
+}
+
+vec3 opTwist(vec3 p, float strength)
 {
     // Inverse twist
-    float c = cos(-k*p.y);
-    float s = sin(-k*p.y);
+    float c = cos(-strength * p.y);
+    float s = sin(-strength * p.y);
     mat2 m = mat2(c, -s, s, c);
     p.xz = m * p.xz;
     return p;
 }
 
-vec3 opShearXY(vec3 p, vec2 shear) {
-    // Inverse shear
-    return vec3(p.x - shear.x * p.z, p.y - shear.y * p.z, p.z);
-}
-
-vec3 opShearXZ(vec3 p, vec2 shear) {
-    // Inverse shear
-    return vec3(p.x - shear.x * p.y, p.y, p.z - shear.y * p.y);
-}
-
-vec3 opShearYZ(vec3 p, vec2 shear) {
-    // Inverse shear
-    return vec3(p.x, p.y - shear.x * p.x, p.z - shear.y * p.x);
-}
-
 vec3 opBendX(vec3 p, float k) {
-    // Inverse bend
     float c = cos(k * p.x);
     float s = sin(k * p.x);
     return vec3(p.x, c * p.y + s * p.z, -s * p.y + c * p.z);
 }
 
 vec3 opBendY(vec3 p, float k) {
-    // Inverse bend
     float c = cos(k * p.y);
     float s = sin(k * p.y);
     return vec3(c * p.x - s * p.z, p.y, s * p.x + c * p.z);
 }
 
 vec3 opBendZ(vec3 p, float k) {
-    // Inverse bend
     float c = cos(k * p.z);
     float s = sin(k * p.z);
     return vec3(c * p.x + s * p.y, -s * p.x + c * p.y, p.z);

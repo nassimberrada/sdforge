@@ -4,7 +4,7 @@ from sdforge import sphere, box, Param, Forge
 
 def test_export_shader_creates_file(tmp_path):
     """Tests that a file is created and has the basic shader structure."""
-    s = sphere(1.0) & box(1.5)
+    s = sphere(radius=1.0) & box(size=1.5)
     output_file = tmp_path / "test_shader.glsl"
     
     s.export_shader(str(output_file))
@@ -19,7 +19,7 @@ def test_export_shader_creates_file(tmp_path):
 
 def test_export_shader_includes_dependencies(tmp_path):
     """Tests that GLSL code for used nodes is included in the export."""
-    s = sphere(1.0).twist(2.0)
+    s = sphere(radius=1.0).twist(2.0)
     output_file = tmp_path / "deps_shader.glsl"
     
     s.export_shader(str(output_file))

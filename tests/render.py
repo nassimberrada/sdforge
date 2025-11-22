@@ -59,13 +59,13 @@ def test_reload_logic_updates_scene(mock_compile, tmp_path):
     script_content_v1 = """
 from sdforge import sphere
 def main():
-    return sphere(1.0)
+    return sphere(radius=1.0)
 """
     temp_script_path = tmp_path / "test_script.py"
     temp_script_path.write_text(script_content_v1)
 
     # 2. Initialize the renderer pointing to this script
-    initial_obj = sphere(99.0) # Start with a distinctly different object
+    initial_obj = sphere(radius=99.0) # Start with a distinctly different object
     with patch('sys.argv', [str(temp_script_path)]):
         renderer = NativeRenderer(initial_obj)
         # Manually create a mock context and assign it
@@ -75,21 +75,21 @@ def main():
 
     # Assert initial state
     assert isinstance(renderer.sdf_obj, Sphere)
-    assert renderer.sdf_obj.r == 99.0
-    
+    assert renderer.sdf_obj.radius == 99.0
+
     # 3. Modify the script content to represent a file change
     script_content_v2 = """
 from sdforge import sphere
 def main():
-    return sphere(2.5)
+    return sphere(radius=2.5)
 """
     temp_script_path.write_text(script_content_v2)
-    
+
     # 4. Manually call the reload method
     renderer._reload_script()
-    
+
     # 5. Assert that the scene object was updated
     assert isinstance(renderer.sdf_obj, Sphere)
-    assert renderer.sdf_obj.r == 2.5
+    assert renderer.sdf_obj.radius == 2.5
     mock_compile.assert_called_once()
     renderer.ctx.simple_vertex_array.assert_called_once()

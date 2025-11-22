@@ -6,7 +6,7 @@ def static_camera_example():
     Returns a scene and a fixed Camera object.
     The renderer will use this camera's position and target.
     """
-    scene = box(1.5, radius=0.1) | sphere(1.2)
+    scene = box(1.5).round(0.1) | sphere(radius=1.2)
     
     # Define a camera positioned at (4, 3, 4), looking at the origin.
     cam = Camera(position=(4, 3, 4), target=(0, 0, 0), zoom=1.5)
@@ -19,7 +19,7 @@ def interactive_camera_example():
     When no camera is provided to the render function, it defaults
     to an interactive orbit camera controlled by the mouse.
     """
-    scene = box(1.5, radius=0.1) | sphere(1.2)
+    scene = box(1.5).round(0.1) | sphere(radius=1.2)
     return scene
 
 def main():

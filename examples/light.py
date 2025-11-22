@@ -4,13 +4,13 @@ from sdforge import box, sphere, Light, Camera
 
 def static_light_example():
     """A scene lit by a single, fixed-position light."""
-    scene = box(1.5, radius=0.1) | sphere(1.2)
+    scene = box(1.5).round(0.1) | sphere(radius=1.2)
     light = Light(position=(4, 5, 3), shadow_softness=16.0)
     return scene, light
 
 def headlight_example():
     """A scene lit by a headlight attached to the camera."""
-    scene = box(1.5, radius=0.1) | sphere(1.2)
+    scene = box(1.5).round(0.1) | sphere(radius=1.2)
     # When Light() is created with no position, it defaults to the camera's position.
     light = Light(shadow_softness=32.0, ao_strength=5.0)
     return scene, light

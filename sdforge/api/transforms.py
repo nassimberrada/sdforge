@@ -11,13 +11,13 @@ class _Transform(SDFNode):
 
     def to_glsl(self, ctx: GLSLContext) -> str:
         ctx.dependencies.update(self.glsl_dependencies)
-        
+
         transform_expr = self._get_transform_glsl_expr(ctx.p)
         transformed_p = ctx.new_variable('vec3', transform_expr)
-        
+
         sub_ctx = ctx.with_p(transformed_p)
         child_var = self.child.to_glsl(sub_ctx)
-        
+
         ctx.merge_from(sub_ctx)
         return child_var
 
@@ -26,37 +26,23 @@ class _Transform(SDFNode):
         raise NotImplementedError
 
 class Translate(_Transform):
-    """
-    Internal node to translate a child object.
-    
-    Note: This class is not typically instantiated directly. Use the
-    `.translate()` method or the `+` operator on an SDFNode object.
-    """
+    """Internal node to translate a child object."""
     glsl_dependencies = {"transforms"}
-
     def __init__(self, child: SDFNode, offset: tuple):
         super().__init__(child)
         self.offset = np.array(offset)
-
     def _get_transform_glsl_expr(self, p_expr: str) -> str:
         o = self.offset
         offset_str = f"vec3({_glsl_format(o[0])}, {_glsl_format(o[1])}, {_glsl_format(o[2])})"
         return f"opTranslate({p_expr}, {offset_str})"
-        
     def to_callable(self):
         child_callable = self.child.to_callable()
         offset = self.offset
         return lambda points: child_callable(points - offset)
-        
-class Scale(SDFNode):
-    """
-    Internal node to scale a child object.
-    
-    Note: This class is not typically instantiated directly. Use the
-    `.scale()` method or the `*` operator on an SDFNode object.
-    """
-    glsl_dependencies = {"transforms"}
 
+class Scale(SDFNode):
+    """Internal node to scale a child object."""
+    glsl_dependencies = {"transforms"}
     def __init__(self, child: SDFNode, factor):
         super().__init__()
         self.child = child
@@ -64,90 +50,72 @@ class Scale(SDFNode):
             self.factor = np.array([factor, factor, factor])
         else:
             self.factor = np.array(factor)
-            
     def to_glsl(self, ctx: GLSLContext) -> str:
         ctx.dependencies.update(self.glsl_dependencies)
         f = self.factor
         factor_str = f"vec3({_glsl_format(f[0])}, {_glsl_format(f[1])}, {_glsl_format(f[2])})"
-        
         transformed_p = ctx.new_variable('vec3', f"opScale({ctx.p}, {factor_str})")
-        
         sub_ctx = ctx.with_p(transformed_p)
         child_var = self.child.to_glsl(sub_ctx)
         ctx.merge_from(sub_ctx)
-        
-        # Calculate scale correction factor in GLSL
         if isinstance(self.factor[0], (int, float)) and isinstance(self.factor[1], (int, float)) and isinstance(self.factor[2], (int, float)):
             scale_correction = np.mean(self.factor)
             scale_corr_str = _glsl_format(scale_correction)
         else:
             scale_corr_str = f"({_glsl_format(self.factor[0])} + {_glsl_format(self.factor[1])} + {_glsl_format(self.factor[2])}) / 3.0"
-        
         result_expr = f"vec4({child_var}.x * ({scale_corr_str}), {child_var}.yzw)"
         return ctx.new_variable('vec4', result_expr)
-        
     def to_callable(self):
         is_dynamic = any(isinstance(v, (str, Param)) for v in self.factor)
-        if is_dynamic:
-            raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
-        
+        if is_dynamic: raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
         child_callable = self.child.to_callable()
         factor = self.factor
         scale_correction = np.mean(factor)
         return lambda points: child_callable(points / factor) * scale_correction
 
 class Rotate(_Transform):
-    """
-    Internal node to rotate a child object around a cardinal axis.
-
-    Note: This class is not typically instantiated directly. Use the
-    `.rotate()` method on an SDFNode object.
-    """
+    """Internal node to rotate a child object."""
     glsl_dependencies = {"transforms"}
-
     def __init__(self, child: SDFNode, axis: tuple, angle: float):
         super().__init__(child)
-        self.axis = np.array(axis)
+        self.axis = np.array(axis, dtype=float)
+        if np.linalg.norm(self.axis) == 0:
+            raise ValueError("Rotation axis cannot be zero vector")
+        self.axis /= np.linalg.norm(self.axis)
         self.angle = angle
-        
     def _get_transform_glsl_expr(self, p_expr: str) -> str:
         if np.allclose(self.axis, X): func = "opRotateX"
         elif np.allclose(self.axis, Y): func = "opRotateY"
         elif np.allclose(self.axis, Z): func = "opRotateZ"
-        else: raise ValueError(f"Rotation axis {self.axis} must be a cardinal axis.")
+        else:
+            ax = self.axis
+            axis_str = f"vec3({_glsl_format(ax[0])}, {_glsl_format(ax[1])}, {_glsl_format(ax[2])})"
+            return f"opRotateAxis({p_expr}, {axis_str}, {_glsl_format(self.angle)})"
         return f"{func}({p_expr}, {_glsl_format(self.angle)})"
-
     def to_callable(self):
-        if isinstance(self.angle, (str, Param)):
-            raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
+        if isinstance(self.angle, (str, Param)): raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
         child_callable = self.child.to_callable()
         axis, angle = self.axis, self.angle
-        
         c, s = np.cos(angle), np.sin(angle)
         if np.allclose(axis, X): rot_matrix = np.array([[1,0,0],[0,c,s],[0,-s,c]])
         elif np.allclose(axis, Y): rot_matrix = np.array([[c,0,-s],[0,1,0],[s,0,c]])
-        else: rot_matrix = np.array([[c,s,0],[-s,c,0],[0,0,1]])
-            
+        elif np.allclose(axis, Z): rot_matrix = np.array([[c,s,0],[-s,c,0],[0,0,1]])
+        else:
+            kx, ky, kz = axis
+            K = np.array([[0, -kz, ky], [kz, 0, -kx], [-ky, kx, 0]])
+            rot_matrix = np.eye(3) + s * K + (1 - c) * (K @ K)
         return lambda points: child_callable(points @ rot_matrix.T)
 
 class Orient(_Transform):
-    """
-    Internal node to orient a child object by swizzling coordinates.
-
-    Note: This class is not typically instantiated directly. Use the
-    `.orient()` method on an SDFNode object.
-    """
+    """Internal node to orient a child object."""
     glsl_dependencies = set()
-
     def __init__(self, child: SDFNode, axis: tuple):
         super().__init__(child)
         self.axis = axis
-
     def _get_transform_glsl_expr(self, p_expr: str) -> str:
         if np.allclose(self.axis, X): return f"{p_expr}.zyx"
         if np.allclose(self.axis, Y): return f"{p_expr}.xzy"
-        return p_expr # Z is default, no-op
-        
+        return p_expr 
     def to_callable(self):
         child_callable = self.child.to_callable()
         if np.allclose(self.axis, X): return lambda p: child_callable(p[:, [2,1,0]])
@@ -155,52 +123,40 @@ class Orient(_Transform):
         return child_callable
 
 class Twist(_Transform):
-    """
-    Internal node to twist a child object.
-
-    Note: This class is not typically instantiated directly. Use the
-    `.twist()` method on an SDFNode object.
-    """
+    """Internal node to twist a child object."""
     glsl_dependencies = {"transforms"}
-    def __init__(self, child: SDFNode, k: float):
+    def __init__(self, child: SDFNode, strength: float):
         super().__init__(child)
-        self.k = k
+        self.strength = strength
     def _get_transform_glsl_expr(self, p_expr: str) -> str:
-        return f"opTwist({p_expr}, {_glsl_format(self.k)})"
+        return f"opTwist({p_expr}, {_glsl_format(self.strength)})"
     def to_callable(self):
-        if isinstance(self.k, (str, Param)):
+        if isinstance(self.strength, (str, Param)):
             raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
-        child_callable, k = self.child.to_callable(), self.k
+        child_callable, s = self.child.to_callable(), self.strength
         def _callable(p):
-            c, s = np.cos(k * p[:,1]), np.sin(k * p[:,1])
-            x_new, z_new = p[:,0]*c - p[:,2]*s, p[:,0]*s + p[:,2]*c
+            c, s_val = np.cos(s * p[:,1]), np.sin(s * p[:,1])
+            x_new, z_new = p[:,0]*c - p[:,2]*s_val, p[:,0]*s_val + p[:,2]*c
             q = np.stack([x_new, p[:,1], z_new], axis=-1)
             return child_callable(q)
         return _callable
 
 class Bend(_Transform):
-    """
-    Internal node to bend a child object along a cardinal axis.
-
-    Note: This class is not typically instantiated directly. Use the
-    `.bend()` method on an SDFNode object.
-    """
+    """Internal node to bend a child object."""
     glsl_dependencies = {"transforms"}
-    def __init__(self, child: SDFNode, axis: np.ndarray, k: float):
+    def __init__(self, child: SDFNode, axis: np.ndarray, curvature: float):
         super().__init__(child)
         self.axis = axis
-        self.k = k
-
+        self.curvature = curvature
     def _get_transform_glsl_expr(self, p_expr: str) -> str:
         if np.allclose(self.axis, X): func = "opBendX"
         elif np.allclose(self.axis, Y): func = "opBendY"
         else: func = "opBendZ"
-        return f"{func}({p_expr}, {_glsl_format(self.k)})"
-        
+        return f"{func}({p_expr}, {_glsl_format(self.curvature)})"
     def to_callable(self):
-        if isinstance(self.k, (str, Param)):
+        if isinstance(self.curvature, (str, Param)):
             raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
-        child_callable, k = self.child.to_callable(), self.k
+        child_callable, k = self.child.to_callable(), self.curvature
         def _callable(p):
             if np.allclose(self.axis, X):
                 c, s = np.cos(k * p[:,0]), np.sin(k * p[:,0])
@@ -218,12 +174,7 @@ class Bend(_Transform):
         return _callable
 
 class Repeat(_Transform):
-    """
-    Internal node to repeat a child object infinitely.
-
-    Note: This class is not typically instantiated directly. Use the
-    `.repeat()` method on an SDFNode object.
-    """
+    """Internal node to repeat a child object."""
     glsl_dependencies = {"transforms"}
     def __init__(self, child, spacing):
         super().__init__(child)
@@ -236,19 +187,13 @@ class Repeat(_Transform):
         child_callable, s = self.child.to_callable(), self.spacing
         def _callable(p):
             q = p.copy()
-            # Only apply modulo where spacing is non-zero to avoid division by zero
             mask = s != 0
             q[:, mask] = np.mod(p[:, mask] + 0.5 * s[mask], s[mask]) - 0.5 * s[mask]
             return child_callable(q)
         return _callable
 
 class LimitedRepeat(_Transform):
-    """
-    Internal node to repeat a child object a limited number of times.
-
-    Note: This class is not typically instantiated directly. Use the
-    `.limited_repeat()` method on an SDFNode object.
-    """
+    """Internal node to repeat a child object."""
     glsl_dependencies = {"transforms"}
     def __init__(self, child, spacing, limits):
         super().__init__(child)
@@ -263,24 +208,17 @@ class LimitedRepeat(_Transform):
         child_callable, s, l = self.child.to_callable(), self.spacing, self.limits
         def _callable(p):
             q = p.copy()
-            # Only apply repeat logic where spacing is non-zero
             mask = s != 0
             s_masked = s[mask]
             p_masked = p[:, mask]
             l_masked = l[mask]
-            # Add a small epsilon to avoid division by zero if s_masked still contains zero (shouldn't happen with mask)
             rounded = np.round(p_masked / (s_masked + 1e-9))
             q[:, mask] = p_masked - s_masked * np.clip(rounded, -l_masked, l_masked)
             return child_callable(q)
         return _callable
 
 class PolarRepeat(_Transform):
-    """
-    Internal node to repeat a child object in a circle.
-
-    Note: This class is not typically instantiated directly. Use the
-    `.polar_repeat()` method on an SDFNode object.
-    """
+    """Internal node to repeat a child object."""
     glsl_dependencies = {"transforms"}
     def __init__(self, child, repetitions):
         super().__init__(child)
@@ -301,12 +239,7 @@ class PolarRepeat(_Transform):
         return _callable
 
 class Mirror(_Transform):
-    """
-    Internal node to mirror a child object.
-
-    Note: This class is not typically instantiated directly. Use the
-    `.mirror()` method on an SDFNode object.
-    """
+    """Internal node to mirror a child object."""
     glsl_dependencies = {"transforms"}
     def __init__(self, child, axes):
         super().__init__(child)

@@ -7,7 +7,7 @@ def auto_bounds_save_example():
     Creates a simple object and saves it to a file.
     The '.save()' method will automatically estimate the necessary bounds.
     """
-    scene = box(1.5, radius=0.1) | sphere(1.2)
+    scene = box(1.5).round(0.1) | sphere(radius=1.2)
     
     output_path = "auto_bounds_model.stl"
     print(f"\nSaving model to '{output_path}' with automatic bounds estimation...")
@@ -26,7 +26,7 @@ def manual_bounds_save_example():
     Creates an object and saves it with manually specified bounds and resolution.
     This gives more control but requires knowing the object's size.
     """
-    scene = box(1.5, radius=0.1) | sphere(1.2)
+    scene = box(1.5).round(0.1) | sphere(radius=1.2)
     
     output_path = "manual_bounds_model.obj"
     print(f"\nSaving model to '{output_path}' with manual bounds...")
@@ -48,7 +48,7 @@ def decimated_save_example():
     This requires the 'trimesh' library to be installed.
     """
     # A box has large flat faces, making it a good candidate for decimation.
-    scene = box(size=(2, 1, 1.5), radius=0.1)
+    scene = box(size=(2, 1, 1.5)).round(0.1)
     
     output_path = "decimated_model.stl"
     print(f"\nSaving model to '{output_path}' with 90% triangle reduction...")
@@ -71,7 +71,7 @@ def adaptive_save_example():
     """
     # A hollow box is a perfect example where adaptive meshing shines.
     # Uniform sampling would waste millions of points inside the hollow area.
-    scene = box(2.0, radius=0.1).shell(0.05)
+    scene = box(2.0).round(0.1).shell(0.05)
     
     output_path = "adaptive_model.stl"
     print(f"\nSaving model to '{output_path}' with adaptive meshing...")
@@ -93,7 +93,7 @@ def dual_contouring_save_example():
     Marching Cubes, at the cost of being slower.
     """
     # A box with no rounding is a good test case for sharp edges.
-    scene = box(size=(1.5, 1.0, 1.0), radius=0.0)
+    scene = box(size=(1.5, 1.0, 1.0))
 
     output_path = "dual_contouring_model.stl"
     print(f"\nSaving model to '{output_path}' with Dual Contouring...")

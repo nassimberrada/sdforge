@@ -7,14 +7,14 @@ from tests.conftest import requires_glsl_validator
 
 def test_displace_api():
     """Tests the API and GLSL generation for generic displacement."""
-    s = sphere(1.0).displace("p.x * 0.1")
+    s = sphere(radius=1.0).displace("p.x * 0.1")
     scene_code = SceneCompiler().compile(s)
     assert "opDisplace" in scene_code
     assert "p.x * 0.1" in scene_code
 
 def test_displace_by_noise_api():
     """Tests the API and GLSL generation for noise displacement."""
-    s = sphere(1.0).displace_by_noise(scale=5.0, strength=0.2)
+    s = sphere(radius=1.0).displace_by_noise(scale=5.0, strength=0.2)
     scene_code = SceneCompiler().compile(s)
     assert "opDisplace" in scene_code
     assert "snoise" in scene_code
@@ -25,21 +25,21 @@ def test_displace_by_noise_api():
 
 def test_displace_fails_callable():
     """Ensures that GLSL-based displacement cannot be used for meshing."""
-    s = sphere(1.0).displace("p.x * 0.1")
+    s = sphere(radius=1.0).displace("p.x * 0.1")
     with pytest.raises(TypeError, match="Cannot create a callable"):
         s.to_callable()
 
 def test_displace_by_noise_fails_callable():
     """Ensures that noise displacement cannot be used for meshing."""
-    s = sphere(1.0).displace_by_noise()
+    s = sphere(radius=1.0).displace_by_noise()
     with pytest.raises(TypeError, match="Cannot create a callable"):
         s.to_callable()
-        
+
 # --- GLSL Validation Tests ---
 
 NOISE_TEST_CASES = [
-    sphere(1.0).displace("sin(p.y * 10.0) * 0.1"),
-    sphere(1.0).displace_by_noise(),
+    sphere(radius=1.0).displace("sin(p.y * 10.0) * 0.1"),
+    sphere(radius=1.0).displace_by_noise(),
 ]
 
 @requires_glsl_validator

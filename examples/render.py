@@ -17,7 +17,7 @@ def main():
     # Try uncommenting the line below and save the file.
     # sphere_radius = 0.5
     
-    scene = box(box_size, radius=0.1) | sphere(sphere_radius)
+    scene = box(box_size).round(0.1) | sphere(radius=sphere_radius)
     
     print(f"Reloaded: Box Size = {box_size}, Sphere Radius = {sphere_radius}")
     

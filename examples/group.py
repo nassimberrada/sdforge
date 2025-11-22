@@ -7,8 +7,8 @@ def group_transform_example():
     Demonstrates applying a single transformation to a group of objects.
     """
     # Create two separate objects, offset from the origin.
-    b = box(size=(1.5, 0.5, 0.5), radius=0.1).translate((-1, 0, 0))
-    s = sphere(0.5).translate((1, 0, 0))
+    b = box(size=(1.5, 0.5, 0.5)).round(0.1).translate((-1, 0, 0))
+    s = sphere(radius=0.5).translate((1, 0, 0))
     
     # Combine them into a group.
     g = Group(b, s)

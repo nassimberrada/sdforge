@@ -10,7 +10,7 @@ def main():
 
     # Create a scene with some complexity and a parameter.
     p_radius = Param("Sphere Radius", 0.8, 0.5, 1.5)
-    scene = box(1.5, radius=0.1) - sphere(p_radius)
+    scene = box(1.5).round(0.1) - sphere(radius=p_radius)
 
     output_path = "exported_shader.glsl"
     print(f"Exporting scene to '{output_path}'...")

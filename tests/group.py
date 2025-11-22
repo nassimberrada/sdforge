@@ -7,7 +7,7 @@ from sdforge.api.transforms import Translate
 @pytest.fixture
 def shapes():
     """Provides two basic shapes for grouping tests."""
-    return sphere(r=1.0), box(size=1.5)
+    return sphere(radius=1.0), box(size=1.5)
 
 def test_group_acts_as_union(shapes):
     """Tests that a Group's GLSL and callable are equivalent to a Union."""
@@ -57,8 +57,8 @@ def test_group_equivalence(assert_equivalence):
     """
     Tests numeric equivalence between Python and GLSL for a transformed group.
     """
-    s = sphere(0.5).translate(-X)
-    b = box(0.5).translate(X)
+    s = sphere(radius=0.5).translate(-X)
+    b = box(size=0.5).translate(X)
     g = Group(s, b)
     
     # A complex scene involving a transformed group

@@ -1,5 +1,4 @@
 import numpy as np
-import re
 from ..core import SDFNode, GLSLContext
 from ..utils import _glsl_format
 from .params import Param
@@ -7,9 +6,6 @@ from .params import Param
 class Round(SDFNode):
     """
     Internal node to round the edges of a child object.
-
-    Note: This class is not typically instantiated directly. Use the
-    `.round()` method on an SDFNode object instead.
     """
     glsl_dependencies = {"shaping"}
     def __init__(self, child: SDFNode, radius: float):
@@ -27,12 +23,9 @@ class Round(SDFNode):
         child_callable = self.child.to_callable()
         return lambda p: child_callable(p) - self.radius
 
-class Bevel(SDFNode):
+class Shell(SDFNode):
     """
     Internal node to create a shell or outline of a child object.
-
-    Note: This class is not typically instantiated directly. Use the
-    `.shell()` or `.bevel()` methods on an SDFNode object.
     """
     glsl_dependencies = {"shaping"}
     def __init__(self, child: SDFNode, thickness: float):
@@ -42,7 +35,7 @@ class Bevel(SDFNode):
     def to_glsl(self, ctx: GLSLContext) -> str:
         ctx.dependencies.update(self.glsl_dependencies)
         child_var = self.child.to_glsl(ctx)
-        result_expr = f"opBevel({child_var}, {_glsl_format(self.thickness)})"
+        result_expr = f"opShell({child_var}, {_glsl_format(self.thickness)})"
         return ctx.new_variable('vec4', result_expr)
     def to_callable(self):
         if isinstance(self.thickness, (str, Param)):
@@ -53,9 +46,6 @@ class Bevel(SDFNode):
 class Extrude(SDFNode):
     """
     Internal node to extrude a 2D SDF shape.
-
-    Note: This class is not typically instantiated directly. Use the
-    `.extrude()` method on a 2D SDFNode object.
     """
     glsl_dependencies = {"shaping"}
     def __init__(self, child: SDFNode, height: float):
@@ -81,29 +71,20 @@ class Extrude(SDFNode):
 class Revolve(SDFNode):
     """
     Internal node to revolve a 2D SDF shape around the Y-axis.
-
-    Note: This class is not typically instantiated directly. Use the
-    `.revolve()` method on a 2D SDFNode object.
     """
     def to_glsl(self, ctx: GLSLContext) -> str:
-        # Create a new point variable for the revolved coordinate space
         revolved_p_xy = f"vec2(length({ctx.p}.xz), {ctx.p}.y)"
-        
-        # This is a special transform that modifies the coordinate space for its child.
-        # We manually create the transformed 'p' and pass it to a sub-context.
-        # Note: we need a vec3, so we add a 0.0 z-component.
         transformed_p = ctx.new_variable('vec3', f"vec3({revolved_p_xy}, 0.0)")
-        
+
         sub_ctx = ctx.with_p(transformed_p)
         child_var = self.child.to_glsl(sub_ctx)
-        
+
         ctx.merge_from(sub_ctx)
         return child_var
 
     def to_callable(self):
         child_callable_2d = self.child.to_callable()
         def _callable_3d(p_3d):
-            # Create a 2D point (as a vec3 for the callable) from the 3D point
             p_2d_x = np.linalg.norm(p_3d[:, [0, 2]], axis=-1)
             p_2d_y = p_3d[:, 1]
             p_2d = np.stack([p_2d_x, p_2d_y, np.zeros(p_3d.shape[0])], axis=-1)

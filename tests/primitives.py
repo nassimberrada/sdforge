@@ -13,6 +13,7 @@ from examples.primitives import (
     cone_example,
 )
 from sdforge.api.primitives import Sphere, Box, Cylinder, Torus, Cone
+from sdforge.api.shaping import Round
 
 # --- API and Callable Tests ---
 
@@ -20,13 +21,13 @@ def test_sphere_api():
     """Tests basic API usage of the sphere primitive."""
     s1 = sphere()
     assert isinstance(s1, SDFNode)
-    assert s1.r == 1.0
-    s2 = sphere(r=1.5)
-    assert s2.r == 1.5
+    assert s1.radius == 1.0
+    s2 = sphere(radius=1.5)
+    assert s2.radius == 1.5
 
 def test_sphere_callable():
     """Tests the numeric accuracy of the sphere's Python callable."""
-    s_callable = sphere(r=1.0).to_callable()
+    s_callable = sphere(radius=1.0).to_callable()
     points = np.array([[0, 0, 0], [0.5, 0, 0], [1, 0, 0], [2, 0, 0]])
     expected = np.array([-1.0, -0.5, 0.0, 1.0])
     assert np.allclose(s_callable(points), expected)
@@ -36,11 +37,8 @@ def test_box_api():
     assert np.allclose(b1.size, (1,1,1))
     b2 = box(size=2.0)
     assert np.allclose(b2.size, (2,2,2))
-    b3 = box(size=(1,2,3), radius=0.1)
+    b3 = box(size=(1,2,3))
     assert np.allclose(b3.size, (1,2,3))
-    assert b3.radius == 0.1
-    b4 = box(x=1,y=2,z=3)
-    assert np.allclose(b4.size, (1,2,3))
 
 def test_box_callable():
     b_callable = box(size=2.0).to_callable()
@@ -49,31 +47,37 @@ def test_box_callable():
     assert np.allclose(b_callable(points), expected)
 
 def test_torus_api():
-    t = torus(major=2.0, minor=0.5)
-    assert t.major == 2.0
-    assert t.minor == 0.5
-    
+    t = torus(radius_major=2.0, radius_minor=0.5)
+    assert t.radius_major == 2.0
+    assert t.radius_minor == 0.5
+
 def test_torus_callable():
-    t_callable = torus(major=1.0, minor=0.2).to_callable()
+    t_callable = torus(radius_major=1.0, radius_minor=0.2).to_callable()
     points = np.array([[1, 0, 0], [1, 0.2, 0], [1, 0.3, 0], [0, 0, 0]])
     expected = np.array([-0.2, 0.0, 0.1, 0.8])
     assert np.allclose(t_callable(points), expected)
 
 def test_line_api():
-    l1 = line(a=(0,0,0), b=(1,1,1), radius=0.2, rounded_caps=True)
+    l1 = line(start=(0,0,0), end=(1,1,1), radius=0.2, rounded_caps=True)
     assert l1.rounded_caps is True
-    l2 = line(a=(0,0,0), b=(1,1,1), radius=0.2, rounded_caps=False)
+    l2 = line(start=(0,0,0), end=(1,1,1), radius=0.2, rounded_caps=False)
     assert l2.rounded_caps is False
-    
+
 def test_cylinder_callable():
     c_callable = cylinder(radius=1.0, height=2.0).to_callable()
     points = np.array([[0,0,0], [1,0,0], [0,1,0], [1,1,0], [1.5,0,0]])
     expected = np.array([-1.0, 0.0, 0.0, 0.0, 0.5])
     assert np.allclose(c_callable(points), expected)
 
+def test_plane_api():
+    # Plane passing through point (0, 1, 0) with normal (0, 1, 0)
+    p = plane(normal=(0, 1, 0), point=(0, 1, 0))
+    # Offset should be -dot((0,1,0), (0,1,0)) = -1.0
+    assert p.offset == -1.0
+
 def test_plane_callable():
-    p_callable = plane(normal=(0,1,0), offset=0.5).to_callable()
-    points = np.array([[10, -0.5, 0], [10, 0.5, 0], [10, -1.5, 0]])
+    p_callable = plane(normal=(0,1,0), point=(0,0.5,0)).to_callable()
+    points = np.array([[10, 0.5, 0], [10, 1.5, 0], [10, -0.5, 0]])
     expected = np.array([0.0, 1.0, -1.0])
     assert np.allclose(p_callable(points), expected)
 
@@ -92,20 +96,18 @@ def test_ellipsoid_callable():
 # --- Equivalence and Compilation Tests ---
 
 PRIMITIVE_TEST_CASES = [
-    sphere(r=1.2),
+    sphere(radius=1.2),
     box(size=(1.0, 0.5, 0.8)),
-    box(size=1.2, radius=0.1),
-    torus(major=1.0, minor=0.25),
-    line(a=(0,0,0), b=(0,1,0), radius=0.1, rounded_caps=True),
-    line(a=(0,0,0), b=(0,1,0), radius=0.1, rounded_caps=False),
+    torus(radius_major=1.0, radius_minor=0.25),
+    line(start=(0,0,0), end=(0,1,0), radius=0.1, rounded_caps=True),
+    line(start=(0,0,0), end=(0,1,0), radius=0.1, rounded_caps=False),
     cylinder(radius=0.5, height=1.5),
-    cylinder(radius=0.5, height=1.5, round_radius=0.1),
-    cone(height=1.2, radius1=0.6, radius2=0.2),
-    cone(height=1.2, radius1=0.6, radius2=0.0),
-    plane(normal=(0.6, 0.8, 0), offset=0.5),
+    cone(height=1.2, radius_base=0.6, radius_top=0.2),
+    cone(height=1.2, radius_base=0.6, radius_top=0.0),
+    plane(normal=(0.6, 0.8, 0), point=(0, 0.5, 0)),
     octahedron(size=1.3),
     ellipsoid(radii=(1.0, 0.5, 0.7)),
-    circle(r=1.5),
+    circle(radius=1.5),
     rectangle(size=(1.0, 0.5))
 ]
 
@@ -127,7 +129,7 @@ def test_primitive_glsl_compiles(validate_glsl, sdf_obj):
 
 EXAMPLE_TEST_CASES = [
     (sphere_example, Sphere),
-    (box_example, Box),
+    (box_example, Round), # box().round() returns a Round node
     (cylinder_example, Cylinder),
     (torus_example, Torus),
     (cone_example, Cone),

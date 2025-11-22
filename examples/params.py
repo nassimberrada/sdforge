@@ -5,7 +5,7 @@ import numpy as np
 def main():
     """
     Demonstrates using interactive parameters.
-    
+
     While this script is running, a UI would typically appear allowing you
     to drag sliders to change the model in real-time. This example sets up
     the backend for that functionality.
@@ -19,8 +19,8 @@ def main():
     p_twist = Param("Twist", 0.0, -10.0, 10.0)
 
     # Use the Param objects just like regular numbers.
-    scene = box(size=p_size, radius=p_radius).twist(p_twist)
-    
+    scene = box(size=p_size).round(p_radius).twist(strength=p_twist)
+
     # You can also use them in GLSL expressions for animation.
     # Note: `save()` will fail if string expressions are used.
     # animated_box = box(1.0).translate((np.sin(time) * p_size, 0, 0))

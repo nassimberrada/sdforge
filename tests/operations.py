@@ -15,7 +15,7 @@ from sdforge.api.operations import Union, Intersection, Difference
 @pytest.fixture
 def shapes():
     """Provides two basic shapes for operation tests."""
-    return sphere(r=1.0), box(size=1.5)
+    return sphere(radius=1.0), box(size=1.5)
 
 # --- API and Callable Tests ---
 
@@ -23,7 +23,7 @@ def test_union_api_and_callable(shapes):
     s, b = shapes
     u = s.union(b)
     u_op = s | b
-    
+
     # Check GLSL generation
     ctx = GLSLContext(compiler=None)
     u.to_glsl(ctx)
@@ -34,7 +34,7 @@ def test_union_api_and_callable(shapes):
     u_op.to_glsl(ctx_op)
     generated_code_op = "\n".join(ctx_op.statements)
     assert generated_code == generated_code_op
-    
+
     # Check Python callable
     u_callable = u.to_callable()
     points = np.array([[0.8, 0, 0], [1.2, 0, 0]])
@@ -51,7 +51,7 @@ def test_intersection_api_and_callable(shapes):
     i.to_glsl(ctx)
     generated_code = "\n".join(ctx.statements)
     assert "opI(" in generated_code
-    
+
     ctx_op = GLSLContext(compiler=None)
     i_op.to_glsl(ctx_op)
     generated_code_op = "\n".join(ctx_op.statements)
@@ -78,48 +78,45 @@ def test_difference_api_and_callable(shapes):
     d_op.to_glsl(ctx_op)
     generated_code_op = "\n".join(ctx_op.statements)
     assert generated_code == generated_code_op
-    
+
     # Check Python callable
     d_callable = d.to_callable()
     points = np.array([[0.8, 0, 0], [1.2, 0, 0]])
     expected = np.maximum(s.to_callable()(points), -b.to_callable()(points))
     assert np.allclose(d_callable(points), expected)
 
-def test_exclusive_blend_params_api(shapes):
-    """Tests that using multiple blend types (k, fillet, chamfer) raises an error."""
+def test_blend_params_api(shapes):
+    """Tests that using blend and blend_type sets properties correctly."""
     s, b = shapes
-    with pytest.raises(ValueError):
-        s.difference(b, k=0.1, fillet=0.1)
-    with pytest.raises(ValueError):
-        s.difference(b, k=0.1, chamfer=0.1)
-    with pytest.raises(ValueError):
-        s.difference(b, fillet=0.1, chamfer=0.1)
+    # Test smooth (default)
+    d1 = s.difference(b, blend=0.1)
+    assert isinstance(d1, Difference)
+    assert d1.blend == 0.1
+    assert d1.blend_type == 'smooth'
 
-def test_convenience_methods(shapes):
-    s, b = shapes
-    # Just test that they construct the correct underlying object
-    d1 = s.fillet_difference(b, radius=0.1)
-    assert isinstance(d1, Difference) and d1.k == 0.1 and d1.chamfer == 0.0
+    # Test linear
+    d2 = s.difference(b, blend=0.2, blend_type='linear')
+    assert isinstance(d2, Difference)
+    assert d2.blend == 0.2
+    assert d2.blend_type == 'linear'
 
-    d2 = s.chamfer_difference(b, distance=0.2)
-    assert isinstance(d2, Difference) and d2.k == 0.0 and d2.chamfer == 0.2
 
 # --- Equivalence and Compilation Tests ---
 
 OPERATION_TEST_CASES = [
-    sphere(r=1.0) | box(size=1.5),
-    sphere(r=1.0) & box(size=1.5),
-    sphere(r=1.0) - box(size=1.5),
-    # Fillet (smooth)
-    sphere(r=1.0).union(box(size=1.5), fillet=0.2),
-    sphere(r=1.0).intersection(box(size=1.5), fillet=0.2),
-    sphere(r=1.0).difference(box(size=1.5), fillet=0.2),
-    # Chamfer (linear)
-    sphere(r=1.0).union(box(size=1.5), chamfer=0.2),
-    sphere(r=1.0).intersection(box(size=1.5), chamfer=0.2),
-    sphere(r=1.0).difference(box(size=1.5), chamfer=0.2),
+    sphere(radius=1.0) | box(size=1.5),
+    sphere(radius=1.0) & box(size=1.5),
+    sphere(radius=1.0) - box(size=1.5),
+    # Smooth blend
+    sphere(radius=1.0).union(box(size=1.5), blend=0.2),
+    sphere(radius=1.0).intersection(box(size=1.5), blend=0.2),
+    sphere(radius=1.0).difference(box(size=1.5), blend=0.2),
+    # linear blend
+    sphere(radius=1.0).union(box(size=1.5), blend=0.2, blend_type='linear'),
+    sphere(radius=1.0).intersection(box(size=1.5), blend=0.2, blend_type='linear'),
+    sphere(radius=1.0).difference(box(size=1.5), blend=0.2, blend_type='linear'),
     # Test chaining
-    (sphere(r=1.0) | box(size=0.8)) - sphere(0.5)
+    (sphere(radius=1.0) | box(size=0.8)) - sphere(radius=0.5)
 ]
 
 @pytest.mark.usefixtures("assert_equivalence")
@@ -141,7 +138,7 @@ EXAMPLE_TEST_CASES = [
     (union_example, Union),
     (intersection_example, Intersection),
     (difference_example, Difference),
-    (smooth_union_example, Union), # smooth_union is still a Union node
+    (smooth_union_example, Union),
 ]
 
 @pytest.mark.parametrize("example_func, expected_class", EXAMPLE_TEST_CASES, ids=[f[0].__name__ for f in EXAMPLE_TEST_CASES])

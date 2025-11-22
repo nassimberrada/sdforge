@@ -3,12 +3,12 @@ from sdforge import sphere, box, cylinder, torus, cone
 
 def sphere_example():
     """Returns a simple sphere scene."""
-    s = sphere(r=1.0)
+    s = sphere(radius=1.0)
     return s
 
 def box_example():
     """Returns a simple box scene."""
-    return box(size=(1.5, 1.0, 0.5), radius=0.1)
+    return box(size=(1.5, 1.0, 0.5)).round(0.1)
 
 def cylinder_example():
     """Returns a simple cylinder scene."""
@@ -16,11 +16,11 @@ def cylinder_example():
 
 def torus_example():
     """Returns a simple torus scene."""
-    return torus(major=1.0, minor=0.25)
+    return torus(radius_major=1.0, radius_minor=0.25)
     
 def cone_example():
     """Returns a frustum (capped cone) scene."""
-    return cone(height=1.2, radius1=0.6, radius2=0.2)
+    return cone(height=1.2, radius_base=0.6, radius_top=0.2)
 
 def main():
     """

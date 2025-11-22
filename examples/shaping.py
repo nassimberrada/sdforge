@@ -8,13 +8,13 @@ def round_example():
 
 def shell_example():
     """Creates a hollow shell from a sphere."""
-    s = sphere(r=1.0)
+    s = sphere(radius=1.0)
     # The parameter controls the thickness of the shell.
     return s.shell(0.1)
 
 def extrude_example():
     """Extrudes a 2D circle into a 3D cylinder."""
-    c = circle(r=0.8)
+    c = circle(radius=0.8)
     return c.extrude(1.5)
 
 def revolve_example():

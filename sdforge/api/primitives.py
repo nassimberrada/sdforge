@@ -82,6 +82,119 @@ def box(size=1.0) -> SDFNode:
         size = (size, size, size)
     return Box(size=tuple(size))
 
+class HexPrism(SDFNode):
+    """Represents a hexagonal prism."""
+    glsl_dependencies = {"primitives"}
+
+    def __init__(self, radius: float = 1.0, height: float = 1.0):
+        super().__init__()
+        self.radius = radius
+        self.height = height
+
+    def to_glsl(self, ctx: GLSLContext) -> str:
+        ctx.dependencies.update(self.glsl_dependencies)
+        # h.x = radius, h.y = half-height
+        r = _glsl_format(self.radius)
+        h = _glsl_format(self.height / 2.0) if not isinstance(self.height, (str, Param)) else f"({_glsl_format(self.height)})/2.0"
+        
+        dist_expr = f"sdHexPrism({ctx.p}, vec2({r}, {h}))"
+        return ctx.new_variable('vec4', f"vec4({dist_expr}, -1.0, 0.0, 0.0)")
+
+    def to_callable(self):
+        if isinstance(self.radius, (str, Param)) or isinstance(self.height, (str, Param)):
+            raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
+        
+        radius = self.radius
+        half_height = self.height / 2.0
+        k = np.array([-0.8660254, 0.5, 0.57735026])
+
+        def _callable(points: np.ndarray) -> np.ndarray:
+            # Convert to float to allow in-place operations on integer inputs
+            p = np.abs(points).astype(float)
+            
+            dot_k_p = p[:,0] * k[0] + p[:,1] * k[1]
+            min_dot = np.minimum(dot_k_p, 0.0)
+            p[:,0] -= 2.0 * min_dot * k[0]
+            p[:,1] -= 2.0 * min_dot * k[1]
+            
+            clamp_val = np.clip(p[:,0], -k[2] * radius, k[2] * radius)
+            vec_sub = p[:, :2] - np.stack([clamp_val, np.full_like(p[:,0], radius)], axis=-1)
+            len_xy = np.linalg.norm(vec_sub, axis=-1)
+            d_x = len_xy * np.sign(p[:,1] - radius)
+            d_y = p[:,2] - half_height
+            
+            d = np.stack([d_x, d_y], axis=-1)
+            return np.minimum(np.maximum(d[:,0], d[:,1]), 0.0) + np.linalg.norm(np.maximum(d, 0.0), axis=-1)
+        return _callable
+
+def hex_prism(radius: float = 1.0, height: float = 1.0) -> SDFNode:
+    """
+    Creates a hexagonal prism oriented along the Z axis.
+
+    Args:
+        radius (float): The radius (apothem) of the hexagon.
+        height (float): The total height (depth) of the prism.
+    """
+    return HexPrism(radius, height)
+
+class Pyramid(SDFNode):
+    """Represents a pyramid with a square base."""
+    glsl_dependencies = {"primitives"}
+
+    def __init__(self, height: float = 1.0):
+        super().__init__()
+        self.height = height
+
+    def to_glsl(self, ctx: GLSLContext) -> str:
+        ctx.dependencies.update(self.glsl_dependencies)
+        dist_expr = f"sdPyramid({ctx.p}, {_glsl_format(self.height)})"
+        return ctx.new_variable('vec4', f"vec4({dist_expr}, -1.0, 0.0, 0.0)")
+
+    def to_callable(self):
+        if isinstance(self.height, (str, Param)):
+             raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
+        
+        h = self.height
+        m2 = h*h + 0.25
+        
+        def _callable(points: np.ndarray) -> np.ndarray:
+            # Cast to float to support in-place subtraction
+            p = points.astype(float)
+            
+            # Center vertically logic (matching GLSL shift)
+            p[:, 1] += h * 0.5
+
+            p[:, [0, 2]] = np.abs(p[:, [0, 2]])
+            
+            mask = p[:,2] > p[:,0]
+            p[mask] = p[mask][:, [2, 1, 0]] # Swap x and z
+            
+            p[:, [0, 2]] -= 0.5
+            
+            q = np.stack([p[:,2], h*p[:,1] - 0.5*p[:,0], h*p[:,0] + 0.5*p[:,1]], axis=-1)
+            
+            s = np.maximum(-q[:,0], 0.0)
+            t = np.clip((q[:,1] - 0.5*p[:,2]) / (m2 + 0.25), 0.0, 1.0)
+            
+            a = m2 * (q[:,0] + s)**2 + q[:,1]**2
+            b = m2 * (q[:,0] + 0.5*t)**2 + (q[:,1] - m2*t)**2
+            
+            d2_cond = np.minimum(q[:,1], -q[:,0]*m2 - q[:,1]*0.5) > 0.0
+            d2 = np.where(d2_cond, 0.0, np.minimum(a, b))
+            
+            return np.sqrt((d2 + q[:,2]**2) / m2) * np.sign(np.maximum(q[:,2], -p[:,1]))
+
+        return _callable
+
+def pyramid(height: float = 1.0) -> SDFNode:
+    """
+    Creates a pyramid with a square base centered at (0,0,0).
+
+    Args:
+        height (float): The vertical height of the pyramid.
+    """
+    return Pyramid(height)
+
 class Torus(SDFNode):
     """Represents a torus primitive."""
     glsl_dependencies = {"primitives"}
@@ -158,15 +271,144 @@ class Line(SDFNode):
 
 def line(start, end, radius: float = 0.1, rounded_caps: bool = True) -> SDFNode:
     """
-    Creates a line segment between two points with a given radius.
+    Creates a line segment between two points.
 
     Args:
-        start (tuple): Start point.
-        end (tuple): End point.
-        radius (float): Thickness.
-        rounded_caps (bool): True for spherical caps, False for flat.
+        start (tuple): The starting point (x, y, z).
+        end (tuple): The ending point (x, y, z).
+        radius (float, optional): The thickness of the line. Defaults to 0.1.
+        rounded_caps (bool, optional): Whether to round the ends. Defaults to True.
     """
     return Line(start, end, radius, rounded_caps)
+
+class Bezier(SDFNode):
+    """Represents a Quadratic Bezier tube."""
+    glsl_dependencies = {"primitives"}
+
+    def __init__(self, p0, p1, p2, radius: float = 0.1):
+        super().__init__()
+        self.p0, self.p1, self.p2 = np.array(p0), np.array(p1), np.array(p2)
+        self.radius = radius
+
+    def to_glsl(self, ctx: GLSLContext) -> str:
+        ctx.dependencies.update(self.glsl_dependencies)
+        A_str = f"vec3({self.p0[0]},{self.p0[1]},{self.p0[2]})"
+        B_str = f"vec3({self.p1[0]},{self.p1[1]},{self.p1[2]})"
+        C_str = f"vec3({self.p2[0]},{self.p2[1]},{self.p2[2]})"
+        dist_expr = f"sdBezier({ctx.p}, {A_str}, {B_str}, {C_str}, {_glsl_format(self.radius)})"
+        return ctx.new_variable('vec4', f"vec4({dist_expr}, -1.0, 0.0, 0.0)")
+
+    def to_callable(self):
+        if isinstance(self.radius, (str, Param)):
+             raise TypeError("Cannot save mesh with animated parameters.")
+        
+        A, B, C, r = self.p0, self.p1, self.p2, self.radius
+        
+        # Precompute constant curve vectors
+        a = B - A
+        b = A - 2.0*B + C
+        c = a * 2.0
+        
+        def _callable(points: np.ndarray) -> np.ndarray:
+            # d = A - pos
+            d = A[np.newaxis, :] - points
+            
+            kk = 1.0 / np.dot(b, b)
+            kx = kk * np.dot(a, b)
+            
+            dot_d_b = np.dot(d, b)
+            dot_d_a = np.dot(d, a)
+            
+            ky = kk * (2.0 * np.dot(a, a) + dot_d_b) / 3.0
+            kz = kk * dot_d_a
+            
+            # Align coefficients with standard cubic t^3 + kx_full*t^2 + ...
+            kx_full = 3.0 * kx
+            ky_full = 3.0 * ky
+            kz_full = kz
+
+            # Depressed cubic: x^3 + p x + q = 0, where t = x - kx_full/3
+            p = ky_full - kx_full*kx_full / 3.0
+            q = 2.0*kx_full*kx_full*kx_full/27.0 - kx_full*ky_full/3.0 + kz_full
+            
+            p3 = p*p*p
+            discriminant = q*q/4.0 + p3/27.0
+            
+            t_candidates = np.zeros((points.shape[0], 3))
+            num_roots = np.zeros(points.shape[0], dtype=int)
+            
+            # Case 1: D > 0 (One real root)
+            mask_d_pos = discriminant > 0
+            if np.any(mask_d_pos):
+                d_sqrt = np.sqrt(discriminant[mask_d_pos])
+                q_masked = q[mask_d_pos]
+                
+                u1 = -q_masked/2.0 + d_sqrt
+                u2 = -q_masked/2.0 - d_sqrt
+                
+                # Use cbrt to handle negative bases correctly
+                u1 = np.cbrt(u1)
+                u2 = np.cbrt(u2)
+                
+                t_candidates[mask_d_pos, 0] = u1 + u2 - kx_full/3.0
+                num_roots[mask_d_pos] = 1
+
+            # Case 2: D <= 0 (Three real roots)
+            mask_d_neg = ~mask_d_pos
+            if np.any(mask_d_neg):
+                p3_masked = p3[mask_d_neg]
+                q_masked = q[mask_d_neg]
+                p_masked = p[mask_d_neg]
+                kx_neg = kx_full if np.isscalar(kx_full) else kx_full
+                
+                val = -27.0 / (p3_masked + 1e-14)
+                val_sqrt = np.sqrt(np.abs(val)) 
+                
+                arg = -val_sqrt * q_masked / 2.0
+                arg = np.clip(arg, -1.0, 1.0)
+                
+                v = np.arccos(arg) / 3.0
+                m = np.cos(v)
+                n = np.sin(v) * 1.732050808
+                
+                sqrt_neg_p_3 = np.sqrt(np.abs(-p_masked/3.0))
+                
+                offset = -kx_neg/3.0
+                t_candidates[mask_d_neg, 0] = (m + m) * sqrt_neg_p_3 + offset
+                t_candidates[mask_d_neg, 1] = (-n - m) * sqrt_neg_p_3 + offset
+                t_candidates[mask_d_neg, 2] = (n - m) * sqrt_neg_p_3 + offset
+                num_roots[mask_d_neg] = 3
+
+            t0 = np.clip(t_candidates[:, 0], 0.0, 1.0)
+            # Fixed distance calc: d + c*t + b*t^2
+            q0 = d + np.outer(t0, c) + np.outer(t0**2, b)
+            dist_sq = np.sum(q0*q0, axis=1)
+            
+            mask_3 = num_roots == 3
+            if np.any(mask_3):
+                t1 = np.clip(t_candidates[mask_3, 1], 0.0, 1.0)
+                q1 = d[mask_3] + np.outer(t1, c) + np.outer(t1**2, b)
+                dist_sq[mask_3] = np.minimum(dist_sq[mask_3], np.sum(q1*q1, axis=1))
+                
+                t2 = np.clip(t_candidates[mask_3, 2], 0.0, 1.0)
+                q2 = d[mask_3] + np.outer(t2, c) + np.outer(t2**2, b)
+                dist_sq[mask_3] = np.minimum(dist_sq[mask_3], np.sum(q2*q2, axis=1))
+
+            return np.sqrt(dist_sq) - r
+
+        return _callable
+
+def curve(p0, p1, p2, radius: float = 0.1) -> SDFNode:
+    """
+    Creates a Quadratic Bezier tube (curve) defined by 3 points.
+
+    Args:
+        p0 (tuple): The starting point (x, y, z).
+        p1 (tuple): The control point (x, y, z).
+        p2 (tuple): The ending point (x, y, z).
+        radius (float, optional): The thickness of the tube. Defaults to 0.1.
+    """
+    return Bezier(p0, p1, p2, radius)
 
 class Cylinder(SDFNode):
     """Represents a cylinder primitive."""
@@ -343,6 +585,7 @@ class Octahedron(SDFNode):
 def octahedron(size: float = 1.0) -> SDFNode:
     """
     Creates an octahedron centered at the origin.
+
     Args:
         size (float, optional): The size of the octahedron, corresponding to the
                                 distance from the center to the center of a face.
@@ -407,6 +650,7 @@ class Circle(SDFNode):
 def circle(radius: float = 1.0) -> SDFNode:
     """
     Creates a 2D circle in the XY plane.
+
     Args:
         radius (float): Radius of the circle.
     """
@@ -439,6 +683,7 @@ class Rectangle(SDFNode):
 def rectangle(size=1.0) -> SDFNode:
     """
     Creates a 2D rectangle in the XY plane.
+
     Args:
         size (float): Size of the rectangle.
     """

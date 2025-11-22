@@ -1,5 +1,9 @@
 import sys
-from sdforge import sphere, box, cylinder, torus, cone
+from sdforge import (
+    sphere, box, cylinder, torus, cone, 
+    hex_prism, pyramid, curve,
+    X, Y, Z
+)
 
 def sphere_example():
     """Returns a simple sphere scene."""
@@ -17,25 +21,45 @@ def cylinder_example():
 def torus_example():
     """Returns a simple torus scene."""
     return torus(radius_major=1.0, radius_minor=0.25)
-    
+
 def cone_example():
     """Returns a frustum (capped cone) scene."""
     return cone(height=1.2, radius_base=0.6, radius_top=0.2)
+
+def hex_prism_example():
+    """Returns a hexagonal prism."""
+    return hex_prism(radius=1.0, height=0.5)
+
+def pyramid_example():
+    """Returns a pyramid."""
+    return pyramid(height=1.2)
+
+def curve_example():
+    """Returns a curved tube (Quadratic Bezier)."""
+    return curve(
+        p0=(-1.0, 0.0, 0.0), 
+        p1=(0.0, 1.5, 0.0), 
+        p2=(1.0, 0.0, 0.0), 
+        radius=0.1
+    )
 
 def main():
     """
     Renders an example based on a command-line argument.
     """
     print("--- SDForge Primitive Examples ---")
-    
+
     examples = {
         "sphere": sphere_example,
         "box": box_example,
         "cylinder": cylinder_example,
         "torus": torus_example,
         "cone": cone_example,
+        "hex": hex_prism_example,
+        "pyramid": pyramid_example,
+        "curve": curve_example,
     }
-    
+
     if len(sys.argv) < 2:
         print("\nPlease provide the name of an example to run.")
         print("Available examples:")
@@ -46,7 +70,7 @@ def main():
 
     example_name = sys.argv[1]
     scene_func = examples.get(example_name)
-    
+
     if not scene_func:
         print(f"\nError: Example '{example_name}' not found.")
         print("Available examples are:")

@@ -1,6 +1,10 @@
 import pytest
 import numpy as np
-from sdforge import SDFNode, sphere, box, torus, line, cylinder, cone, plane, octahedron, ellipsoid, circle, rectangle
+from sdforge import (
+    SDFNode, sphere, box, torus, line, cylinder, cone, plane, 
+    octahedron, ellipsoid, circle, rectangle,
+    hex_prism, pyramid, curve
+)
 from sdforge.render import SceneCompiler
 from tests.conftest import requires_glsl_validator
 
@@ -11,8 +15,15 @@ from examples.primitives import (
     cylinder_example,
     torus_example,
     cone_example,
+    hex_prism_example,
+    pyramid_example,
+    curve_example
 )
-from sdforge.api.primitives import Sphere, Box, Cylinder, Torus, Cone
+from sdforge.api.primitives import (
+    Sphere, Box, Cylinder, Torus, Cone, HexPrism, Pyramid, 
+    Bezier
+)
+from sdforge.api.operations import Union
 from sdforge.api.shaping import Round
 
 # --- API and Callable Tests ---
@@ -92,6 +103,45 @@ def test_ellipsoid_callable():
     points = np.array([[1,0,0], [0,2,0], [0,0,3]])
     assert np.allclose(e_callable(points), 0.0, atol=1e-6)
 
+def test_hex_prism_callable():
+    h_callable = hex_prism(radius=1.0, height=0.5).to_callable()
+    # Point inside
+    assert h_callable(np.array([[0,0,0]])) < 0
+    # Point outside Z
+    assert h_callable(np.array([[0,0,0.3]])) > 0
+    # Point outside Hex radius X (radius is distance to flats (1.0))
+    # 1.2 is outside the flat at x=1.15 (vertex)? No, flat is closer.
+    # The vertex is at 1.1547. The flat is at 1.0.
+    # A point at (1.2, 0, 0) is outside.
+    assert h_callable(np.array([[1.2,0,0]])) > 0
+
+def test_pyramid_callable():
+    p_callable = pyramid(height=1.0).to_callable()
+    # Apex is at (0, 0.5, 0) for height=1
+    # Base is at (0, -0.5, 0)
+    # Center (0,0,0) should be inside
+    assert p_callable(np.array([[0,0,0]])) < 0
+    # Above Apex
+    assert p_callable(np.array([[0,0.6,0]])) > 0
+    # Below Base
+    assert p_callable(np.array([[0,-0.6,0]])) > 0
+
+def test_bezier_callable():
+    # Simple curve: X-axis from -1 to 1, bending up to Y=1 at midpoint
+    c = curve(p0=(-1,0,0), p1=(0,1,0), p2=(1,0,0), radius=0.1)
+    c_callable = c.to_callable()
+    
+    points = np.array([
+        [-1, 0, 0], # Start (surface dist = -radius)
+        [1, 0, 0],  # End (surface dist = -radius)
+        [0, 0.5, 0], # Midpoint roughly inside
+        [0, 2, 0]   # Far away
+    ])
+    dists = c_callable(points)
+    assert dists[0] < 0
+    assert dists[1] < 0
+    assert dists[2] < 0
+    assert dists[3] > 0
 
 # --- Equivalence and Compilation Tests ---
 
@@ -108,7 +158,10 @@ PRIMITIVE_TEST_CASES = [
     octahedron(size=1.3),
     ellipsoid(radii=(1.0, 0.5, 0.7)),
     circle(radius=1.5),
-    rectangle(size=(1.0, 0.5))
+    rectangle(size=(1.0, 0.5)),
+    hex_prism(radius=1.0, height=0.5),
+    pyramid(height=1.2),
+    curve(p0=(0,0,0), p1=(0,1,0), p2=(1,0,0), radius=0.1)
 ]
 
 @pytest.mark.usefixtures("assert_equivalence")
@@ -133,6 +186,9 @@ EXAMPLE_TEST_CASES = [
     (cylinder_example, Cylinder),
     (torus_example, Torus),
     (cone_example, Cone),
+    (hex_prism_example, HexPrism),
+    (pyramid_example, Pyramid),
+    (curve_example, Bezier),
 ]
 
 @pytest.mark.parametrize("example_func, expected_class", EXAMPLE_TEST_CASES, ids=[f[0].__name__ for f in EXAMPLE_TEST_CASES])

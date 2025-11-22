@@ -25,7 +25,7 @@ class Round(SDFNode):
 
 class Shell(SDFNode):
     """
-    Internal node to create a shell or outline of a child object.
+    Internal node to create a hollow shell or outline of a child object.
     """
     glsl_dependencies = {"shaping"}
     def __init__(self, child: SDFNode, thickness: float):
@@ -54,13 +54,13 @@ class Extrude(SDFNode):
         self.height = height
     def to_glsl(self, ctx: GLSLContext) -> str:
         ctx.dependencies.update(self.glsl_dependencies)
-        child_var = self.child.to_glsl(ctx)
+        child_var = self.child.to_profile_glsl(ctx)
         result_expr = f"opExtrude({child_var}, {ctx.p}, {_glsl_format(self.height)})"
         return ctx.new_variable('vec4', result_expr)
     def to_callable(self):
         if isinstance(self.height, (str, Param)):
             raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
-        child_callable_2d = self.child.to_callable()
+        child_callable_2d = self.child.to_profile_callable()
         h = self.height
         def _callable(p_3d):
             d = child_callable_2d(p_3d)
@@ -77,13 +77,13 @@ class Revolve(SDFNode):
         transformed_p = ctx.new_variable('vec3', f"vec3({revolved_p_xy}, 0.0)")
 
         sub_ctx = ctx.with_p(transformed_p)
-        child_var = self.child.to_glsl(sub_ctx)
+        child_var = self.child.to_profile_glsl(sub_ctx)
 
         ctx.merge_from(sub_ctx)
         return child_var
 
     def to_callable(self):
-        child_callable_2d = self.child.to_callable()
+        child_callable_2d = self.child.to_profile_callable()
         def _callable_3d(p_3d):
             p_2d_x = np.linalg.norm(p_3d[:, [0, 2]], axis=-1)
             p_2d_y = p_3d[:, 1]

@@ -21,6 +21,8 @@ from .api.primitives import (
     ellipsoid,
     rectangle,
     circle,
+    triangle,
+    trapezoid,
 )
 
 # --- Custom GLSL ---

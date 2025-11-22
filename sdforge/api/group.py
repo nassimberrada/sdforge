@@ -23,14 +23,9 @@ class Group(SDFNode):
                                  in the group.
         
         Example:
-            >>> from sdforge import Group, sphere, box, Y
-            >>> import numpy as np
-            >>> # Create two objects
             >>> s = sphere(0.5).translate((-1, 0, 0))
             >>> b = box(0.5).translate((1, 0, 0))
-            >>> # Group them together
             >>> g = Group(s, b)
-            >>> # Now, a single rotation is applied to the entire group
             >>> scene = g.rotate(Y, np.pi / 4)
         """
         super().__init__()
@@ -42,12 +37,24 @@ class Group(SDFNode):
             return "vec4(1e9, -1.0, 0.0, 0.0)"
         return Union(children=list(self.children)).to_glsl(ctx)
 
+    def to_profile_glsl(self, ctx: GLSLContext) -> str:
+        """Returns the GLSL representation of the union of all children's profiles."""
+        if not self.children:
+            return "vec4(1e9, -1.0, 0.0, 0.0)"
+        return Union(children=list(self.children)).to_profile_glsl(ctx)
+
     def to_callable(self):
         """Returns a callable for the union of all children."""
         if not self.children:
             return lambda p: np.full(p.shape[0] if p.ndim > 1 else 1, 1e9)
         return Union(children=list(self.children)).to_callable()
-    
+
+    def to_profile_callable(self):
+        """Returns a callable for the union of all children's profiles."""
+        if not self.children:
+            return lambda p: np.full(p.shape[0] if p.ndim > 1 else 1, 1e9)
+        return Union(children=list(self.children)).to_profile_callable()
+
     def _apply_to_children(self, method_name, *args, **kwargs):
         """
         Applies a method to each child and returns a new Group with the results.

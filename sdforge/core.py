@@ -111,6 +111,23 @@ class SDFNode(ABC):
         """
         raise NotImplementedError
 
+    def to_profile_glsl(self, ctx: GLSLContext) -> str:
+        """
+        Returns the GLSL for the 2D profile of this object (ignoring Z).
+        Used for Extrusion and Revolution.
+
+        By default, this behaves exactly like to_glsl (treating the object 
+        as an infinite column or existing 3D shape). 2D primitives (Circle, Rectangle)
+        override this to return their infinite form while to_glsl returns their capped form.
+        """
+        return self.to_glsl(ctx)
+
+    def to_profile_callable(self):
+        """
+        Returns a callable for the 2D profile of this object.
+        """
+        return self.to_callable()
+
     def render(self, camera=None, light=None, debug=None, **kwargs):
         """Renders the SDF object in a live-updating viewer."""
         from .render import render as render_func

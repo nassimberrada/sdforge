@@ -16,10 +16,13 @@ class Union(SDFNode):
         self.blend = blend
         self.blend_type = blend_type
 
-    def to_glsl(self, ctx: GLSLContext) -> str:
+    def _base_to_glsl(self, ctx: GLSLContext, profile_mode: bool) -> str:
         ctx.dependencies.update(self.glsl_dependencies)
 
-        child_vars = [c.to_glsl(ctx) for c in self.children]
+        if profile_mode:
+            child_vars = [c.to_profile_glsl(ctx) for c in self.children]
+        else:
+            child_vars = [c.to_glsl(ctx) for c in self.children]
 
         is_blending = (isinstance(self.blend, (int, float)) and self.blend > 1e-6) or isinstance(self.blend, (str, Param))
 
@@ -34,20 +37,21 @@ class Union(SDFNode):
         result_expr = reduce(op, child_vars)
         return ctx.new_variable('vec4', result_expr)
 
-    def to_callable(self):
-        if isinstance(self.blend, (str, Param)):
-            raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
+    def to_glsl(self, ctx: GLSLContext) -> str:
+        return self._base_to_glsl(ctx, profile_mode=False)
 
-        child_callables = [c.to_callable() for c in self.children]
+    def to_profile_glsl(self, ctx: GLSLContext) -> str:
+        return self._base_to_glsl(ctx, profile_mode=True)
+
+    def _make_callable(self, child_callables):
+        if isinstance(self.blend, (str, Param)): raise TypeError("Cannot save mesh...")
         blend = self.blend
-
         if blend <= 1e-6:
             def _callable(points: np.ndarray) -> np.ndarray:
                 return reduce(np.minimum, [c(points) for c in child_callables])
             return _callable
         else:
             is_linear = self.blend_type == 'linear'
-
             def _callable_smooth(points: np.ndarray) -> np.ndarray:
                 dists = [c(points) for c in child_callables]
                 res = dists[0]
@@ -59,6 +63,12 @@ class Union(SDFNode):
                         res -= blend * h * (1.0 - h)
                 return res
             return _callable_smooth
+
+    def to_callable(self):
+        return self._make_callable([c.to_callable() for c in self.children])
+
+    def to_profile_callable(self):
+        return self._make_callable([c.to_profile_callable() for c in self.children])
 
 class Intersection(SDFNode):
     """
@@ -72,9 +82,12 @@ class Intersection(SDFNode):
         self.blend = blend
         self.blend_type = blend_type
 
-    def to_glsl(self, ctx: GLSLContext) -> str:
+    def _base_to_glsl(self, ctx: GLSLContext, profile_mode: bool) -> str:
         ctx.dependencies.update(self.glsl_dependencies)
-        child_vars = [c.to_glsl(ctx) for c in self.children]
+        if profile_mode:
+            child_vars = [c.to_profile_glsl(ctx) for c in self.children]
+        else:
+            child_vars = [c.to_glsl(ctx) for c in self.children]
 
         is_blending = (isinstance(self.blend, (int, float)) and self.blend > 1e-6) or isinstance(self.blend, (str, Param))
 
@@ -88,18 +101,16 @@ class Intersection(SDFNode):
         result_expr = reduce(op, child_vars)
         return ctx.new_variable('vec4', result_expr)
 
-    def to_callable(self):
-        if isinstance(self.blend, (str, Param)):
-            raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
+    def to_glsl(self, ctx: GLSLContext) -> str: return self._base_to_glsl(ctx, False)
+    def to_profile_glsl(self, ctx: GLSLContext) -> str: return self._base_to_glsl(ctx, True)
 
-        child_callables = [c.to_callable() for c in self.children]
+    def _make_callable(self, child_callables):
+        if isinstance(self.blend, (str, Param)): raise TypeError("Cannot save mesh...")
         blend = self.blend
-
         if blend <= 1e-6:
             return lambda p: reduce(np.maximum, [c(p) for c in child_callables])
         else:
             is_linear = self.blend_type == 'linear'
-
             def _callable_smooth(p):
                 dists = [c(p) for c in child_callables]
                 res = dists[0]
@@ -111,6 +122,10 @@ class Intersection(SDFNode):
                          res += blend * h * (1.0 - h)
                 return res
             return _callable_smooth
+
+    def to_callable(self): return self._make_callable([c.to_callable() for c in self.children])
+    def to_profile_callable(self): return self._make_callable([c.to_profile_callable() for c in self.children])
+
 
 class Difference(SDFNode):
     """
@@ -125,9 +140,12 @@ class Difference(SDFNode):
         self.blend = blend
         self.blend_type = blend_type
 
-    def to_glsl(self, ctx: GLSLContext) -> str:
+    def _base_to_glsl(self, ctx: GLSLContext, profile_mode: bool) -> str:
         ctx.dependencies.update(self.glsl_dependencies)
-        a_var, b_var = self.a.to_glsl(ctx), self.b.to_glsl(ctx)
+        if profile_mode:
+            a_var, b_var = self.a.to_profile_glsl(ctx), self.b.to_profile_glsl(ctx)
+        else:
+            a_var, b_var = self.a.to_glsl(ctx), self.b.to_glsl(ctx)
 
         is_blending = (isinstance(self.blend, (int, float)) and self.blend > 1e-6) or isinstance(self.blend, (str, Param))
 
@@ -140,18 +158,16 @@ class Difference(SDFNode):
             result_expr = f"opS({a_var}, {b_var})"
         return ctx.new_variable('vec4', result_expr)
 
-    def to_callable(self):
-        if isinstance(self.blend, (str, Param)):
-            raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
+    def to_glsl(self, ctx: GLSLContext) -> str: return self._base_to_glsl(ctx, False)
+    def to_profile_glsl(self, ctx: GLSLContext) -> str: return self._base_to_glsl(ctx, True)
 
-        a_call, b_call = self.a.to_callable(), self.b.to_callable()
+    def _make_callable(self, a_call, b_call):
+        if isinstance(self.blend, (str, Param)): raise TypeError("Cannot save mesh...")
         blend = self.blend
-
         if blend <= 1e-6:
             return lambda p: np.maximum(a_call(p), -b_call(p))
         else:
             is_linear = self.blend_type == 'linear'
-
             def _callable_smooth(p):
                 d1, d2 = a_call(p), -b_call(p)
                 h = np.clip(0.5 - 0.5 * (d1 - d2) / blend, 0.0, 1.0)
@@ -160,6 +176,9 @@ class Difference(SDFNode):
                     res += blend * h * (1.0 - h)
                 return res
             return _callable_smooth
+
+    def to_callable(self): return self._make_callable(self.a.to_callable(), self.b.to_callable())
+    def to_profile_callable(self): return self._make_callable(self.a.to_profile_callable(), self.b.to_profile_callable())
 
     def _collect_materials(self, materials: list):
         self.a._collect_materials(materials)

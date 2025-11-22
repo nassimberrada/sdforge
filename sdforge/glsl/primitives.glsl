@@ -169,3 +169,22 @@ float sdRectangle(in vec2 p, in vec2 b) {
     vec2 d = abs(p) - b;
     return length(max(d, vec2(0.0))) + min(max(d.x, d.y), 0.0);
 }
+
+float sdEquilateralTriangle(in vec2 p, in float r) {
+    const float k = sqrt(3.0);
+    p.x = abs(p.x) - r;
+    p.y = p.y + r/k;
+    if( p.x+k*p.y > 0.0 ) p = vec2(p.x-k*p.y,-k*p.x-p.y)/2.0;
+    p.x -= clamp( p.x, -2.0*r, 0.0 );
+    return -length(p)*sign(p.y);
+}
+
+float sdTrapezoid(in vec2 p, in float r1, in float r2, in float he) {
+    vec2 k1 = vec2(r2,he);
+    vec2 k2 = vec2(r2-r1,2.0*he);
+    p.x = abs(p.x);
+    vec2 ca = vec2(p.x-min(p.x,(p.y<0.0)?r1:r2), abs(p.y)-he);
+    vec2 cb = p - k1 + k2*clamp( dot(k1-p,k2)/dot(k2,k2), 0.0, 1.0 );
+    float s = (cb.x<0.0 && ca.y<0.0) ? -1.0 : 1.0;
+    return s*sqrt( min(dot(ca,ca),dot(cb,cb)) );
+}

@@ -21,6 +21,26 @@ class _Transform(SDFNode):
         ctx.merge_from(sub_ctx)
         return child_var
 
+    def to_profile_glsl(self, ctx: GLSLContext) -> str:
+        """Propagates profile intent down the transform chain."""
+        ctx.dependencies.update(self.glsl_dependencies)
+
+        transform_expr = self._get_transform_glsl_expr(ctx.p)
+        transformed_p = ctx.new_variable('vec3', transform_expr)
+
+        sub_ctx = ctx.with_p(transformed_p)
+        child_var = self.child.to_profile_glsl(sub_ctx)
+
+        ctx.merge_from(sub_ctx)
+        return child_var
+
+    def to_profile_callable(self):
+        """Propagates profile intent down the transform chain for callables."""
+        # This assumes the transform logic is identical, just the target callable changes
+        # We reuse the logic by temporarily patching the child's to_callable or refactoring.
+        # For simplicity, we reconstruct the transform callable using the child's profile callable.
+        raise NotImplementedError("Transforms must implement to_profile_callable manually or via helper.")
+
     def _get_transform_glsl_expr(self, p_expr: str) -> str:
         """Subclasses must implement this to return the GLSL transform expression."""
         raise NotImplementedError
@@ -39,6 +59,10 @@ class Translate(_Transform):
         child_callable = self.child.to_callable()
         offset = self.offset
         return lambda points: child_callable(points - offset)
+    def to_profile_callable(self):
+        child_callable = self.child.to_profile_callable()
+        offset = self.offset
+        return lambda points: child_callable(points - offset)
 
 class Scale(SDFNode):
     """Internal node to scale a child object."""
@@ -50,13 +74,19 @@ class Scale(SDFNode):
             self.factor = np.array([factor, factor, factor])
         else:
             self.factor = np.array(factor)
-    def to_glsl(self, ctx: GLSLContext) -> str:
+
+    def _base_to_glsl(self, ctx: GLSLContext, profile_mode: bool) -> str:
         ctx.dependencies.update(self.glsl_dependencies)
         f = self.factor
         factor_str = f"vec3({_glsl_format(f[0])}, {_glsl_format(f[1])}, {_glsl_format(f[2])})"
         transformed_p = ctx.new_variable('vec3', f"opScale({ctx.p}, {factor_str})")
         sub_ctx = ctx.with_p(transformed_p)
-        child_var = self.child.to_glsl(sub_ctx)
+
+        if profile_mode:
+            child_var = self.child.to_profile_glsl(sub_ctx)
+        else:
+            child_var = self.child.to_glsl(sub_ctx)
+
         ctx.merge_from(sub_ctx)
         if isinstance(self.factor[0], (int, float)) and isinstance(self.factor[1], (int, float)) and isinstance(self.factor[2], (int, float)):
             scale_correction = np.mean(self.factor)
@@ -65,10 +95,25 @@ class Scale(SDFNode):
             scale_corr_str = f"({_glsl_format(self.factor[0])} + {_glsl_format(self.factor[1])} + {_glsl_format(self.factor[2])}) / 3.0"
         result_expr = f"vec4({child_var}.x * ({scale_corr_str}), {child_var}.yzw)"
         return ctx.new_variable('vec4', result_expr)
+
+    def to_glsl(self, ctx: GLSLContext) -> str:
+        return self._base_to_glsl(ctx, profile_mode=False)
+
+    def to_profile_glsl(self, ctx: GLSLContext) -> str:
+        return self._base_to_glsl(ctx, profile_mode=True)
+
     def to_callable(self):
         is_dynamic = any(isinstance(v, (str, Param)) for v in self.factor)
         if is_dynamic: raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
         child_callable = self.child.to_callable()
+        factor = self.factor
+        scale_correction = np.mean(factor)
+        return lambda points: child_callable(points / factor) * scale_correction
+
+    def to_profile_callable(self):
+        is_dynamic = any(isinstance(v, (str, Param)) for v in self.factor)
+        if is_dynamic: raise TypeError("Cannot save mesh with animated params.")
+        child_callable = self.child.to_profile_callable()
         factor = self.factor
         scale_correction = np.mean(factor)
         return lambda points: child_callable(points / factor) * scale_correction
@@ -92,9 +137,9 @@ class Rotate(_Transform):
             axis_str = f"vec3({_glsl_format(ax[0])}, {_glsl_format(ax[1])}, {_glsl_format(ax[2])})"
             return f"opRotateAxis({p_expr}, {axis_str}, {_glsl_format(self.angle)})"
         return f"{func}({p_expr}, {_glsl_format(self.angle)})"
-    def to_callable(self):
+
+    def _make_callable(self, child_func):
         if isinstance(self.angle, (str, Param)): raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
-        child_callable = self.child.to_callable()
         axis, angle = self.axis, self.angle
         c, s = np.cos(angle), np.sin(angle)
         if np.allclose(axis, X): rot_matrix = np.array([[1,0,0],[0,c,s],[0,-s,c]])
@@ -104,7 +149,12 @@ class Rotate(_Transform):
             kx, ky, kz = axis
             K = np.array([[0, -kz, ky], [kz, 0, -kx], [-ky, kx, 0]])
             rot_matrix = np.eye(3) + s * K + (1 - c) * (K @ K)
-        return lambda points: child_callable(points @ rot_matrix.T)
+        return lambda points: child_func(points @ rot_matrix.T)
+
+    def to_callable(self):
+        return self._make_callable(self.child.to_callable())
+    def to_profile_callable(self):
+        return self._make_callable(self.child.to_profile_callable())
 
 class Orient(_Transform):
     """Internal node to orient a child object."""
@@ -116,11 +166,12 @@ class Orient(_Transform):
         if np.allclose(self.axis, X): return f"{p_expr}.zyx"
         if np.allclose(self.axis, Y): return f"{p_expr}.xzy"
         return p_expr 
-    def to_callable(self):
-        child_callable = self.child.to_callable()
-        if np.allclose(self.axis, X): return lambda p: child_callable(p[:, [2,1,0]])
-        if np.allclose(self.axis, Y): return lambda p: child_callable(p[:, [0,2,1]])
-        return child_callable
+    def _make_callable(self, child_func):
+        if np.allclose(self.axis, X): return lambda p: child_func(p[:, [2,1,0]])
+        if np.allclose(self.axis, Y): return lambda p: child_func(p[:, [0,2,1]])
+        return child_func
+    def to_callable(self): return self._make_callable(self.child.to_callable())
+    def to_profile_callable(self): return self._make_callable(self.child.to_profile_callable())
 
 class Twist(_Transform):
     """Internal node to twist a child object."""
@@ -130,16 +181,17 @@ class Twist(_Transform):
         self.strength = strength
     def _get_transform_glsl_expr(self, p_expr: str) -> str:
         return f"opTwist({p_expr}, {_glsl_format(self.strength)})"
-    def to_callable(self):
-        if isinstance(self.strength, (str, Param)):
-            raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
-        child_callable, s = self.child.to_callable(), self.strength
+    def _make_callable(self, child_func):
+        if isinstance(self.strength, (str, Param)): raise TypeError("Cannot save mesh...")
+        s = self.strength
         def _callable(p):
             c, s_val = np.cos(s * p[:,1]), np.sin(s * p[:,1])
             x_new, z_new = p[:,0]*c - p[:,2]*s_val, p[:,0]*s_val + p[:,2]*c
             q = np.stack([x_new, p[:,1], z_new], axis=-1)
-            return child_callable(q)
+            return child_func(q)
         return _callable
+    def to_callable(self): return self._make_callable(self.child.to_callable())
+    def to_profile_callable(self): return self._make_callable(self.child.to_profile_callable())
 
 class Bend(_Transform):
     """Internal node to bend a child object."""
@@ -153,10 +205,9 @@ class Bend(_Transform):
         elif np.allclose(self.axis, Y): func = "opBendY"
         else: func = "opBendZ"
         return f"{func}({p_expr}, {_glsl_format(self.curvature)})"
-    def to_callable(self):
-        if isinstance(self.curvature, (str, Param)):
-            raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
-        child_callable, k = self.child.to_callable(), self.curvature
+    def _make_callable(self, child_func):
+        if isinstance(self.curvature, (str, Param)): raise TypeError("Cannot save mesh...")
+        k = self.curvature
         def _callable(p):
             if np.allclose(self.axis, X):
                 c, s = np.cos(k * p[:,0]), np.sin(k * p[:,0])
@@ -170,8 +221,10 @@ class Bend(_Transform):
                 c, s = np.cos(k * p[:,2]), np.sin(k * p[:,2])
                 x_new, y_new = c * p[:,0] + s * p[:,1], -s * p[:,0] + c * p[:,1]
                 q = np.stack([x_new, y_new, p[:,2]], axis=-1)
-            return child_callable(q)
+            return child_func(q)
         return _callable
+    def to_callable(self): return self._make_callable(self.child.to_callable())
+    def to_profile_callable(self): return self._make_callable(self.child.to_profile_callable())
 
 class Repeat(_Transform):
     """Internal node to repeat a child object."""
@@ -183,14 +236,16 @@ class Repeat(_Transform):
         s = self.spacing
         s_str = f"vec3({_glsl_format(s[0])}, {_glsl_format(s[1])}, {_glsl_format(s[2])})"
         return f"opRepeat({p_expr}, {s_str})"
-    def to_callable(self):
-        child_callable, s = self.child.to_callable(), self.spacing
+    def _make_callable(self, child_func):
+        s = self.spacing
         def _callable(p):
             q = p.copy()
             mask = s != 0
             q[:, mask] = np.mod(p[:, mask] + 0.5 * s[mask], s[mask]) - 0.5 * s[mask]
-            return child_callable(q)
+            return child_func(q)
         return _callable
+    def to_callable(self): return self._make_callable(self.child.to_callable())
+    def to_profile_callable(self): return self._make_callable(self.child.to_profile_callable())
 
 class LimitedRepeat(_Transform):
     """Internal node to repeat a child object."""
@@ -204,8 +259,8 @@ class LimitedRepeat(_Transform):
         s_str = f"vec3({_glsl_format(s[0])}, {_glsl_format(s[1])}, {_glsl_format(s[2])})"
         l_str = f"vec3({_glsl_format(l[0])}, {_glsl_format(l[1])}, {_glsl_format(l[2])})"
         return f"opLimitedRepeat({p_expr}, {s_str}, {l_str})"
-    def to_callable(self):
-        child_callable, s, l = self.child.to_callable(), self.spacing, self.limits
+    def _make_callable(self, child_func):
+        s, l = self.spacing, self.limits
         def _callable(p):
             q = p.copy()
             mask = s != 0
@@ -214,8 +269,10 @@ class LimitedRepeat(_Transform):
             l_masked = l[mask]
             rounded = np.round(p_masked / (s_masked + 1e-9))
             q[:, mask] = p_masked - s_masked * np.clip(rounded, -l_masked, l_masked)
-            return child_callable(q)
+            return child_func(q)
         return _callable
+    def to_callable(self): return self._make_callable(self.child.to_callable())
+    def to_profile_callable(self): return self._make_callable(self.child.to_profile_callable())
 
 class PolarRepeat(_Transform):
     """Internal node to repeat a child object."""
@@ -225,18 +282,19 @@ class PolarRepeat(_Transform):
         self.repetitions = repetitions
     def _get_transform_glsl_expr(self, p_expr: str) -> str:
         return f"opPolarRepeat({p_expr}, {_glsl_format(self.repetitions)})"
-    def to_callable(self):
-        if isinstance(self.repetitions, (str, Param)):
-            raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
-        child_callable, n = self.child.to_callable(), self.repetitions
+    def _make_callable(self, child_func):
+        if isinstance(self.repetitions, (str, Param)): raise TypeError("Cannot save mesh...")
+        n = self.repetitions
         def _callable(p):
             a = np.arctan2(p[:,0], p[:,2])
             r = np.linalg.norm(p[:,[0,2]], axis=-1)
             angle = 2 * np.pi / n
             newA = np.mod(a, angle) - 0.5 * angle
             q = np.stack([r * np.sin(newA), p[:,1], r * np.cos(newA)], axis=-1)
-            return child_callable(q)
+            return child_func(q)
         return _callable
+    def to_callable(self): return self._make_callable(self.child.to_callable())
+    def to_profile_callable(self): return self._make_callable(self.child.to_profile_callable())
 
 class Mirror(_Transform):
     """Internal node to mirror a child object."""
@@ -248,12 +306,14 @@ class Mirror(_Transform):
         a = self.axes
         a_str = f"vec3({_glsl_format(a[0])}, {_glsl_format(a[1])}, {_glsl_format(a[2])})"
         return f"opMirror({p_expr}, {a_str})"
-    def to_callable(self):
-        child_callable, a = self.child.to_callable(), self.axes
+    def _make_callable(self, child_func):
+        a = self.axes
         def _callable(p):
             q = p.copy()
             if a[0] > 0.5: q[:,0] = np.abs(q[:,0])
             if a[1] > 0.5: q[:,1] = np.abs(q[:,1])
             if a[2] > 0.5: q[:,2] = np.abs(q[:,2])
-            return child_callable(q)
+            return child_func(q)
         return _callable
+    def to_callable(self): return self._make_callable(self.child.to_callable())
+    def to_profile_callable(self): return self._make_callable(self.child.to_profile_callable())

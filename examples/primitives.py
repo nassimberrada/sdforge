@@ -2,6 +2,7 @@ import sys
 from sdforge import (
     sphere, box, cylinder, torus, cone, 
     hex_prism, pyramid, curve,
+    circle, rectangle, triangle, trapezoid,
     X, Y, Z
 )
 
@@ -43,6 +44,22 @@ def curve_example():
         radius=0.1
     )
 
+def circle_example():
+    """Returns a flat circle (disc)."""
+    return circle(radius=1.0)
+
+def rectangle_example():
+    """Returns a flat rectangle (plate)."""
+    return rectangle(size=(1.5, 1.0))
+
+def triangle_example():
+    """Returns a flat equilateral triangle."""
+    return triangle(radius=1.0)
+
+def trapezoid_example():
+    """Returns a flat isosceles trapezoid."""
+    return trapezoid(bottom_width=1.5, top_width=0.8, height=1.0)
+
 def main():
     """
     Renders an example based on a command-line argument.
@@ -58,6 +75,10 @@ def main():
         "hex": hex_prism_example,
         "pyramid": pyramid_example,
         "curve": curve_example,
+        "circle": circle_example,
+        "rectangle": rectangle_example,
+        "triangle": triangle_example,
+        "trapezoid": trapezoid_example,
     }
 
     if len(sys.argv) < 2:

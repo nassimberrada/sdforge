@@ -3,7 +3,7 @@ import numpy as np
 from sdforge import (
     SDFNode, sphere, box, torus, line, cylinder, cone, plane, 
     octahedron, ellipsoid, circle, rectangle,
-    hex_prism, pyramid, curve
+    hex_prism, pyramid, curve, triangle, trapezoid
 )
 from sdforge.render import SceneCompiler
 from tests.conftest import requires_glsl_validator
@@ -17,11 +17,15 @@ from examples.primitives import (
     cone_example,
     hex_prism_example,
     pyramid_example,
-    curve_example
+    curve_example,
+    circle_example,
+    rectangle_example,
+    triangle_example,
+    trapezoid_example
 )
 from sdforge.api.primitives import (
     Sphere, Box, Cylinder, Torus, Cone, HexPrism, Pyramid, 
-    Bezier
+    Bezier, Circle, Rectangle, Triangle, Trapezoid
 )
 from sdforge.api.operations import Union
 from sdforge.api.shaping import Round
@@ -130,7 +134,7 @@ def test_bezier_callable():
     # Simple curve: X-axis from -1 to 1, bending up to Y=1 at midpoint
     c = curve(p0=(-1,0,0), p1=(0,1,0), p2=(1,0,0), radius=0.1)
     c_callable = c.to_callable()
-    
+
     points = np.array([
         [-1, 0, 0], # Start (surface dist = -radius)
         [1, 0, 0],  # End (surface dist = -radius)
@@ -142,6 +146,45 @@ def test_bezier_callable():
     assert dists[1] < 0
     assert dists[2] < 0
     assert dists[3] > 0
+
+def test_circle_callable_is_finite():
+    """Tests that the circle is now a finite disc, not an infinite cylinder."""
+    c_callable = circle(radius=1.0).to_callable()
+
+    # Point inside on Z=0
+    assert c_callable(np.array([[0,0,0]])) < 0
+
+    # Point "inside" the cylinder projection but far along Z
+    # With old behavior, this would be negative. Now it should be positive.
+    z_dist = 10.0
+    val = c_callable(np.array([[0,0,z_dist]]))
+    # Distance should be dominated by Z: abs(z) - 0.001
+    assert np.isclose(val, z_dist - 0.001, atol=1e-4)
+    assert val > 0
+
+def test_rectangle_callable_is_finite():
+    """Tests that the rectangle is now a finite plate, not an infinite prism."""
+    r_callable = rectangle(size=(2.0, 2.0)).to_callable()
+
+    # Point inside on Z=0
+    assert r_callable(np.array([[0,0,0]])) < 0
+
+    # Point "inside" the prism projection but far along Z
+    z_dist = 10.0
+    val = r_callable(np.array([[0,0,z_dist]]))
+    assert np.isclose(val, z_dist - 0.001, atol=1e-4)
+    assert val > 0
+
+def test_triangle_callable_is_finite():
+    """Tests that the triangle is a finite plate."""
+    t_callable = triangle(radius=1.0).to_callable()
+    assert t_callable(np.array([[0,0,0]])) < 0
+    assert t_callable(np.array([[0,0,10]])) > 0
+
+def test_trapezoid_callable_is_finite():
+    tr_callable = trapezoid(bottom_width=1.0, top_width=0.5, height=0.5).to_callable()
+    assert tr_callable(np.array([[0,0,0]])) < 0
+    assert tr_callable(np.array([[0,0,10]])) > 0
 
 # --- Equivalence and Compilation Tests ---
 
@@ -159,6 +202,8 @@ PRIMITIVE_TEST_CASES = [
     ellipsoid(radii=(1.0, 0.5, 0.7)),
     circle(radius=1.5),
     rectangle(size=(1.0, 0.5)),
+    triangle(radius=1.0),
+    trapezoid(bottom_width=1.0, top_width=0.5, height=0.8),
     hex_prism(radius=1.0, height=0.5),
     pyramid(height=1.2),
     curve(p0=(0,0,0), p1=(0,1,0), p2=(1,0,0), radius=0.1)
@@ -189,6 +234,10 @@ EXAMPLE_TEST_CASES = [
     (hex_prism_example, HexPrism),
     (pyramid_example, Pyramid),
     (curve_example, Bezier),
+    (circle_example, Circle),
+    (rectangle_example, Rectangle),
+    (triangle_example, Triangle),
+    (trapezoid_example, Trapezoid),
 ]
 
 @pytest.mark.parametrize("example_func, expected_class", EXAMPLE_TEST_CASES, ids=[f[0].__name__ for f in EXAMPLE_TEST_CASES])

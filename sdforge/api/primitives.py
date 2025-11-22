@@ -634,12 +634,22 @@ class Circle(SDFNode):
         super().__init__()
         self.radius = radius
 
-    def to_glsl(self, ctx: GLSLContext) -> str:
+    def to_profile_glsl(self, ctx: GLSLContext) -> str:
+        """Returns the infinite column distance (true 2D profile)."""
         ctx.dependencies.update(self.glsl_dependencies)
         dist_expr = f"sdCircle({ctx.p}.xy, {_glsl_format(self.radius)})"
         return ctx.new_variable('vec4', f"vec4({dist_expr}, -1.0, 0.0, 0.0)")
 
-    def to_callable(self):
+    def to_glsl(self, ctx: GLSLContext) -> str:
+        """Returns the 3D finite disc distance (with thin Z slice)."""
+        # Get the 2D profile distance
+        profile_var = self.to_profile_glsl(ctx)
+        # Intersect with a very thin slab (thickness 0.001) to visualize as a disc
+        dist_expr = f"max({profile_var}.x, abs({ctx.p}.z) - 0.001)"
+        return ctx.new_variable('vec4', f"vec4({dist_expr}, {profile_var}.yzw)")
+
+    def to_profile_callable(self):
+        """Returns the infinite column callable."""
         if isinstance(self.radius, (str, Param)):
             raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
         r_val = self.radius
@@ -647,9 +657,20 @@ class Circle(SDFNode):
             return np.linalg.norm(points[:, :2], axis=-1) - r_val
         return _callable
 
+    def to_callable(self):
+        """Returns the finite disc callable."""
+        profile_func = self.to_profile_callable()
+        def _callable(points: np.ndarray) -> np.ndarray:
+            d_2d = profile_func(points)
+            d_z = np.abs(points[:, 2]) - 0.001
+            return np.maximum(d_2d, d_z)
+        return _callable
+
 def circle(radius: float = 1.0) -> SDFNode:
     """
-    Creates a 2D circle in the XY plane.
+    Creates a 2D circle in the XY plane. 
+    By default, this renders as a thin disc in 3D. 
+    Use .extrude() to create a cylinder.
 
     Args:
         radius (float): Radius of the circle.
@@ -664,14 +685,22 @@ class Rectangle(SDFNode):
         super().__init__()
         self.size = np.array(size)
 
-    def to_glsl(self, ctx: GLSLContext) -> str:
+    def to_profile_glsl(self, ctx: GLSLContext) -> str:
+        """Returns the infinite column distance (true 2D profile)."""
         ctx.dependencies.update(self.glsl_dependencies)
         s = [_glsl_format(v) for v in self.size]
         size_vec = f"vec2({s[0]}/2.0, {s[1]}/2.0)"
         dist_expr = f"sdRectangle({ctx.p}.xy, {size_vec})"
         return ctx.new_variable('vec4', f"vec4({dist_expr}, -1.0, 0.0, 0.0)")
 
-    def to_callable(self):
+    def to_glsl(self, ctx: GLSLContext) -> str:
+        """Returns the 3D finite plate distance (with thin Z slice)."""
+        profile_var = self.to_profile_glsl(ctx)
+        dist_expr = f"max({profile_var}.x, abs({ctx.p}.z) - 0.001)"
+        return ctx.new_variable('vec4', f"vec4({dist_expr}, {profile_var}.yzw)")
+
+    def to_profile_callable(self):
+        """Returns the infinite column callable."""
         if any(isinstance(v, (str, Param)) for v in self.size):
             raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
         half_size = self.size / 2.0
@@ -680,9 +709,20 @@ class Rectangle(SDFNode):
             return np.linalg.norm(np.maximum(q, 0.0), axis=-1) + np.minimum(np.maximum(q[:, 0], q[:, 1]), 0.0)
         return _callable
 
+    def to_callable(self):
+        """Returns the finite plate callable."""
+        profile_func = self.to_profile_callable()
+        def _callable(points: np.ndarray) -> np.ndarray:
+            d_2d = profile_func(points)
+            d_z = np.abs(points[:, 2]) - 0.001
+            return np.maximum(d_2d, d_z)
+        return _callable
+
 def rectangle(size=1.0) -> SDFNode:
     """
     Creates a 2D rectangle in the XY plane.
+    By default, this renders as a thin plate in 3D.
+    Use .extrude() to create a box.
 
     Args:
         size (float): Size of the rectangle.
@@ -690,3 +730,135 @@ def rectangle(size=1.0) -> SDFNode:
     if isinstance(size, (int, float, str, Param)):
         size = (size, size)
     return Rectangle(tuple(size))
+
+class Triangle(SDFNode):
+    """Represents an equilateral 2D triangle."""
+    glsl_dependencies = {"primitives"}
+
+    def __init__(self, radius: float = 1.0):
+        super().__init__()
+        self.radius = radius
+
+    def to_profile_glsl(self, ctx: GLSLContext) -> str:
+        ctx.dependencies.update(self.glsl_dependencies)
+        dist_expr = f"sdEquilateralTriangle({ctx.p}.xy, {_glsl_format(self.radius)})"
+        return ctx.new_variable('vec4', f"vec4({dist_expr}, -1.0, 0.0, 0.0)")
+
+    def to_glsl(self, ctx: GLSLContext) -> str:
+        profile_var = self.to_profile_glsl(ctx)
+        dist_expr = f"max({profile_var}.x, abs({ctx.p}.z) - 0.001)"
+        return ctx.new_variable('vec4', f"vec4({dist_expr}, {profile_var}.yzw)")
+
+    def to_profile_callable(self):
+        if isinstance(self.radius, (str, Param)): raise TypeError("Cannot save mesh with animated parameters.")
+        r = self.radius
+        k = np.sqrt(3.0)
+        def _callable(points: np.ndarray) -> np.ndarray:
+            p = points[:, :2].astype(np.float64).copy()
+            p[:,0] = np.abs(p[:,0]) - r
+            p[:,1] = p[:,1] + r/k
+            
+            # if( p.x+k*p.y > 0.0 ) p = vec2(p.x-k*p.y,-k*p.x-p.y)/2.0;
+            cond = (p[:,0] + k*p[:,1]) > 0.0
+            px_new = (p[:,0] - k*p[:,1])/2.0
+            py_new = (-k*p[:,0] - p[:,1])/2.0
+            p[cond, 0] = px_new[cond]
+            p[cond, 1] = py_new[cond]
+            
+            p[:,0] -= np.clip(p[:,0], -2.0*r, 0.0)
+            return -np.linalg.norm(p, axis=-1) * np.sign(p[:,1])
+        return _callable
+
+    def to_callable(self):
+        profile_func = self.to_profile_callable()
+        def _callable(points: np.ndarray) -> np.ndarray:
+            d_2d = profile_func(points)
+            d_z = np.abs(points[:, 2]) - 0.001
+            return np.maximum(d_2d, d_z)
+        return _callable
+
+def triangle(radius: float = 1.0) -> SDFNode:
+    """
+    Creates a 2D equilateral triangle.
+    
+    Args:
+        radius (float): The radius (apothem) of the triangle.
+    """
+    return Triangle(radius)
+
+class Trapezoid(SDFNode):
+    """Represents an isosceles trapezoid."""
+    glsl_dependencies = {"primitives"}
+
+    def __init__(self, bottom_width: float = 1.0, top_width: float = 0.5, height: float = 0.5):
+        super().__init__()
+        self.bottom_width = bottom_width
+        self.top_width = top_width
+        self.height = height
+
+    def to_profile_glsl(self, ctx: GLSLContext) -> str:
+        ctx.dependencies.update(self.glsl_dependencies)
+        r1 = _glsl_format(self.bottom_width / 2.0)
+        r2 = _glsl_format(self.top_width / 2.0)
+        he = _glsl_format(self.height / 2.0)
+        dist_expr = f"sdTrapezoid({ctx.p}.xy, {r1}, {r2}, {he})"
+        return ctx.new_variable('vec4', f"vec4({dist_expr}, -1.0, 0.0, 0.0)")
+
+    def to_glsl(self, ctx: GLSLContext) -> str:
+        profile_var = self.to_profile_glsl(ctx)
+        dist_expr = f"max({profile_var}.x, abs({ctx.p}.z) - 0.001)"
+        return ctx.new_variable('vec4', f"vec4({dist_expr}, {profile_var}.yzw)")
+
+    def to_profile_callable(self):
+        if any(isinstance(v, (str, Param)) for v in [self.bottom_width, self.top_width, self.height]):
+             raise TypeError("Cannot save mesh with animated parameters.")
+        
+        r1 = self.bottom_width / 2.0
+        r2 = self.top_width / 2.0
+        he = self.height / 2.0
+        
+        k1 = np.array([r2, he])
+        k2 = np.array([r2 - r1, 2.0 * he])
+        
+        def _callable(points: np.ndarray) -> np.ndarray:
+            p = points[:, :2].astype(np.float64).copy()
+            p[:,0] = np.abs(p[:,0])
+            
+            # vec2 ca = vec2(p.x-min(p.x,(p.y<0.0)?r1:r2), abs(p.y)-he);
+            r_limit = np.where(p[:,1] < 0.0, r1, r2)
+            ca_x = p[:,0] - np.minimum(p[:,0], r_limit)
+            ca_y = np.abs(p[:,1]) - he
+            ca = np.stack([ca_x, ca_y], axis=-1)
+            
+            # vec2 cb = p - k1 + k2*clamp( dot(k1-p,k2)/dot(k2,k2), 0.0, 1.0 );
+            k1_minus_p = k1 - p
+            dot_num = k1_minus_p[:,0]*k2[0] + k1_minus_p[:,1]*k2[1]
+            dot_den = np.dot(k2, k2)
+            t = np.clip(dot_num / dot_den, 0.0, 1.0)
+            cb = p - k1 + np.outer(t, k2)
+            
+            s = np.where((cb[:,0] < 0.0) & (ca[:,1] < 0.0), -1.0, 1.0)
+            
+            d_sq = np.minimum(np.sum(ca**2, axis=1), np.sum(cb**2, axis=1))
+            return s * np.sqrt(d_sq)
+            
+        return _callable
+
+    def to_callable(self):
+        profile_func = self.to_profile_callable()
+        def _callable(points: np.ndarray) -> np.ndarray:
+            d_2d = profile_func(points)
+            d_z = np.abs(points[:, 2]) - 0.001
+            return np.maximum(d_2d, d_z)
+        return _callable
+
+def trapezoid(bottom_width: float = 1.0, top_width: float = 0.5, height: float = 0.5) -> SDFNode:
+    """
+    Creates an isosceles trapezoid.
+
+    Args:
+        bottom_width (float): Width at the bottom.
+        top_width (float): Width at the top.
+        height (float): Height of the trapezoid.
+    """
+    return Trapezoid(bottom_width, top_width, height)

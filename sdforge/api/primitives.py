@@ -245,6 +245,22 @@ class Line(SDFNode):
         dist_expr = f"{func}({ctx.p}, {a_str}, {b_str}, {r})"
         return ctx.new_variable('vec4', f"vec4({dist_expr}, -1.0, 0.0, 0.0)")
 
+    def to_profile_glsl(self, ctx: GLSLContext) -> str:
+        ctx.dependencies.update(self.glsl_dependencies)
+        # Project start/end to Z=0 for 2D profile behavior
+        a = self.start
+        b = self.end
+        a_str = f"vec3({_glsl_format(a[0])}, {_glsl_format(a[1])}, 0.0)"
+        b_str = f"vec3({_glsl_format(b[0])}, {_glsl_format(b[1])}, 0.0)"
+        r = _glsl_format(self.radius)
+        
+        # Flatten query point
+        p_flat = f"vec3({ctx.p}.x, {ctx.p}.y, 0.0)"
+        
+        func = "sdCapsule" if self.rounded_caps else "sdCappedCylinder"
+        dist_expr = f"{func}({p_flat}, {a_str}, {b_str}, {r})"
+        return ctx.new_variable('vec4', f"vec4({dist_expr}, -1.0, 0.0, 0.0)")
+
     def to_callable(self):
         if isinstance(self.radius, (str, Param)):
             raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
@@ -259,6 +275,42 @@ class Line(SDFNode):
             def _callable(points: np.ndarray) -> np.ndarray:
                 ba = b - a
                 pa = points - a
+                baba = np.dot(ba, ba)
+                paba = np.dot(pa, ba)
+                x = np.linalg.norm(pa * baba - ba * paba[:, np.newaxis], axis=-1) - r * baba
+                y = np.abs(paba - baba * 0.5) - baba * 0.5
+                x2 = x*x
+                y2 = y*y*baba
+                d_inner = np.where(np.maximum(x, y) < 0.0, -np.minimum(x2, y2), (np.where(x > 0.0, x2, 0.0) + np.where(y > 0.0, y2, 0.0)))
+                return np.sign(d_inner) * np.sqrt(np.abs(d_inner)) / baba
+            return _callable
+
+    def to_profile_callable(self):
+        if isinstance(self.radius, (str, Param)):
+            raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
+        
+        # Flatten definition points
+        a = np.array([self.start[0], self.start[1], 0.0])
+        b = np.array([self.end[0], self.end[1], 0.0])
+        r = self.radius
+        
+        if self.rounded_caps:
+            def _callable(points: np.ndarray) -> np.ndarray:
+                # Flatten query points
+                p = points.copy()
+                p[:, 2] = 0.0
+                
+                pa = p - a; ba = b - a
+                h = np.clip(np.dot(pa, ba) / np.dot(ba, ba), 0.0, 1.0)
+                return np.linalg.norm(pa - ba * h[:, np.newaxis], axis=-1) - r
+            return _callable
+        else:
+            def _callable(points: np.ndarray) -> np.ndarray:
+                p = points.copy()
+                p[:, 2] = 0.0
+                
+                ba = b - a
+                pa = p - a
                 baba = np.dot(ba, ba)
                 paba = np.dot(pa, ba)
                 x = np.linalg.norm(pa * baba - ba * paba[:, np.newaxis], axis=-1) - r * baba
@@ -298,12 +350,20 @@ class Bezier(SDFNode):
         dist_expr = f"sdBezier({ctx.p}, {A_str}, {B_str}, {C_str}, {_glsl_format(self.radius)})"
         return ctx.new_variable('vec4', f"vec4({dist_expr}, -1.0, 0.0, 0.0)")
 
-    def to_callable(self):
-        if isinstance(self.radius, (str, Param)):
-             raise TypeError("Cannot save mesh with animated parameters.")
+    def to_profile_glsl(self, ctx: GLSLContext) -> str:
+        ctx.dependencies.update(self.glsl_dependencies)
+        # Flatten control points
+        A_str = f"vec3({self.p0[0]},{self.p0[1]}, 0.0)"
+        B_str = f"vec3({self.p1[0]},{self.p1[1]}, 0.0)"
+        C_str = f"vec3({self.p2[0]},{self.p2[1]}, 0.0)"
         
-        A, B, C, r = self.p0, self.p1, self.p2, self.radius
+        # Flatten query point
+        p_flat = f"vec3({ctx.p}.x, {ctx.p}.y, 0.0)"
         
+        dist_expr = f"sdBezier({p_flat}, {A_str}, {B_str}, {C_str}, {_glsl_format(self.radius)})"
+        return ctx.new_variable('vec4', f"vec4({dist_expr}, -1.0, 0.0, 0.0)")
+
+    def _get_callable_impl(self, A, B, C, r):
         # Precompute constant curve vectors
         a = B - A
         b = A - 2.0*B + C
@@ -346,7 +406,6 @@ class Bezier(SDFNode):
                 u1 = -q_masked/2.0 + d_sqrt
                 u2 = -q_masked/2.0 - d_sqrt
                 
-                # Use cbrt to handle negative bases correctly
                 u1 = np.cbrt(u1)
                 u2 = np.cbrt(u2)
                 
@@ -395,8 +454,31 @@ class Bezier(SDFNode):
                 dist_sq[mask_3] = np.minimum(dist_sq[mask_3], np.sum(q2*q2, axis=1))
 
             return np.sqrt(dist_sq) - r
-
+        
         return _callable
+
+    def to_callable(self):
+        if isinstance(self.radius, (str, Param)):
+             raise TypeError("Cannot save mesh with animated parameters.")
+        
+        return self._get_callable_impl(self.p0, self.p1, self.p2, self.radius)
+
+    def to_profile_callable(self):
+        if isinstance(self.radius, (str, Param)):
+             raise TypeError("Cannot save mesh with animated parameters.")
+        
+        # Flatten definition points
+        A = np.array([self.p0[0], self.p0[1], 0.0])
+        B = np.array([self.p1[0], self.p1[1], 0.0])
+        C = np.array([self.p2[0], self.p2[1], 0.0])
+        
+        base_callable = self._get_callable_impl(A, B, C, self.radius)
+        
+        def _profile_callable(points: np.ndarray) -> np.ndarray:
+            p = points.copy()
+            p[:, 2] = 0.0
+            return base_callable(p)
+        return _profile_callable
 
 def curve(p0, p1, p2, radius: float = 0.1) -> SDFNode:
     """

@@ -62,3 +62,12 @@ vec4 cDifference(vec4 a, vec4 b, float k)
     float dist = mix( a.x, -b.x, h );
     return vec4(dist, a.y, a.z, a.w);
 }
+
+// --- Morphing / Interpolation ---
+
+vec4 opMorph(vec4 a, vec4 b, float t) {
+    float factor = clamp(t, 0.0, 1.0);
+    float dist = mix(a.x, b.x, factor);
+    // Switch materials at the halfway point
+    return (factor < 0.5) ? vec4(dist, a.y, a.z, a.w) : vec4(dist, b.y, b.z, b.w);
+}

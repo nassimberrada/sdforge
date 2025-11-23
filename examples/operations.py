@@ -1,5 +1,6 @@
 import sys
-from sdforge import sphere, box, cylinder, X
+import numpy as np
+from sdforge import sphere, box, cylinder, X, Param
 
 def union_example():
     """A sphere and a box joined together."""
@@ -36,7 +37,7 @@ def fillet_difference_example():
     return scene
 
 def linear_difference_example():
-    """Demonstrates subtracting a shape with a linear (lineared) edge."""
+    """Demonstrates subtracting a shape with a linear (chamfered) edge."""
     plate = box(size=(2.0, 0.5, 2.0))
     hole = cylinder(radius=0.5, height=1.0)
 
@@ -53,6 +54,19 @@ def fillet_union_example():
     scene = s1.union(s2, blend=0.4)
     return scene
 
+def morphing_example():
+    """
+    Demonstrates interpolating between two shapes (morphing).
+    Uses a Param to make it interactive.
+    """
+    s = sphere(radius=1.0)
+    b = box(size=1.5)
+
+    # Use a parameter to control the morph factor (0.0 = sphere, 1.0 = box)
+    p_morph = Param("Morph Factor", 0.5, 0.0, 1.0)
+
+    return s.morph(b, factor=p_morph)
+
 def main():
     """
     Renders an example based on a command-line argument.
@@ -67,6 +81,7 @@ def main():
         "fillet_cut": fillet_difference_example,
         "linear_cut": linear_difference_example,
         "fillet_join": fillet_union_example,
+        "morph": morphing_example,
     }
 
     if len(sys.argv) < 2:

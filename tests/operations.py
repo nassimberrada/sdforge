@@ -9,8 +9,9 @@ from examples.operations import (
     intersection_example,
     difference_example,
     smooth_union_example,
+    morphing_example,
 )
-from sdforge.api.operations import Union, Intersection, Difference
+from sdforge.api.operations import Union, Intersection, Difference, Morph
 
 @pytest.fixture
 def shapes():
@@ -100,6 +101,28 @@ def test_blend_params_api(shapes):
     assert d2.blend == 0.2
     assert d2.blend_type == 'linear'
 
+def test_morph_api_and_callable(shapes):
+    s, b = shapes
+    m = s.morph(b, factor=0.75)
+
+    # Check GLSL generation
+    ctx = GLSLContext(compiler=None)
+    m.to_glsl(ctx)
+    generated_code = "\n".join(ctx.statements)
+    assert "opMorph(" in generated_code
+    # Check that factor is formatted correctly
+    assert "0.75" in generated_code
+
+    # Check Python callable
+    m_callable = m.to_callable()
+    points = np.array([[0.8, 0, 0], [1.2, 0, 0]])
+
+    dist_a = s.to_callable()(points)
+    dist_b = b.to_callable()(points)
+    t = 0.75
+    expected = (1.0 - t) * dist_a + t * dist_b
+
+    assert np.allclose(m_callable(points), expected)
 
 # --- Equivalence and Compilation Tests ---
 
@@ -115,6 +138,10 @@ OPERATION_TEST_CASES = [
     sphere(radius=1.0).union(box(size=1.5), blend=0.2, blend_type='linear'),
     sphere(radius=1.0).intersection(box(size=1.5), blend=0.2, blend_type='linear'),
     sphere(radius=1.0).difference(box(size=1.5), blend=0.2, blend_type='linear'),
+    # Morphing
+    sphere(radius=1.0).morph(box(size=1.5), factor=0.5),
+    sphere(radius=1.0).morph(box(size=1.5), factor=0.0),
+    sphere(radius=1.0).morph(box(size=1.5), factor=1.0),
     # Test chaining
     (sphere(radius=1.0) | box(size=0.8)) - sphere(radius=0.5)
 ]
@@ -139,6 +166,7 @@ EXAMPLE_TEST_CASES = [
     (intersection_example, Intersection),
     (difference_example, Difference),
     (smooth_union_example, Union),
+    (morphing_example, Morph),
 ]
 
 @pytest.mark.parametrize("example_func, expected_class", EXAMPLE_TEST_CASES, ids=[f[0].__name__ for f in EXAMPLE_TEST_CASES])

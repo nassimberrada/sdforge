@@ -183,3 +183,53 @@ class Difference(SDFNode):
     def _collect_materials(self, materials: list):
         self.a._collect_materials(materials)
         self.b._collect_materials(materials)
+
+class Morph(SDFNode):
+    """
+    Internal node representing the linear interpolation (morph) between two SDF objects.
+    """
+    glsl_dependencies = {"operations"}
+
+    def __init__(self, a: SDFNode, b: SDFNode, factor: float = 0.5):
+        super().__init__()
+        self.a = a
+        self.b = b
+        self.factor = factor
+
+    def _base_to_glsl(self, ctx: GLSLContext, profile_mode: bool) -> str:
+        ctx.dependencies.update(self.glsl_dependencies)
+        if profile_mode:
+            a_var, b_var = self.a.to_profile_glsl(ctx), self.b.to_profile_glsl(ctx)
+        else:
+            a_var, b_var = self.a.to_glsl(ctx), self.b.to_glsl(ctx)
+
+        result_expr = f"opMorph({a_var}, {b_var}, {_glsl_format(self.factor)})"
+        return ctx.new_variable('vec4', result_expr)
+
+    def to_glsl(self, ctx: GLSLContext) -> str: 
+        return self._base_to_glsl(ctx, False)
+
+    def to_profile_glsl(self, ctx: GLSLContext) -> str: 
+        return self._base_to_glsl(ctx, True)
+
+    def _make_callable(self, a_call, b_call):
+        if isinstance(self.factor, (str, Param)):
+             raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
+
+        t = np.clip(self.factor, 0.0, 1.0)
+
+        def _callable(p):
+            d1 = a_call(p)
+            d2 = b_call(p)
+            return (1.0 - t) * d1 + t * d2
+        return _callable
+
+    def to_callable(self):
+        return self._make_callable(self.a.to_callable(), self.b.to_callable())
+
+    def to_profile_callable(self):
+        return self._make_callable(self.a.to_profile_callable(), self.b.to_profile_callable())
+
+    def _collect_materials(self, materials: list):
+        self.a._collect_materials(materials)
+        self.b._collect_materials(materials)

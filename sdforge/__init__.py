@@ -35,3 +35,6 @@ from .api.params import Param
 
 # --- Operations and Grouping ---
 from .api.group import Group
+
+# --- Sketch API ---
+from .api.sketch import Sketch

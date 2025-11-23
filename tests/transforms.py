@@ -1,6 +1,7 @@
 import pytest
 import numpy as np
 from sdforge import sphere, box, X, Y, Z
+from sdforge.api.transforms import Warp
 from sdforge.render import SceneCompiler
 from tests.conftest import requires_glsl_validator
 
@@ -107,6 +108,46 @@ def test_mirror_callable(shape):
     point = np.array([[-0.1, 0.2, -0.3]])
     expected = shape.to_callable()(np.abs(point))
     assert np.allclose(m_callable(point), expected)
+
+# --- Warp Tests ---
+
+def test_warp_api_structure():
+    """Tests the fluent API and object structure."""
+    s = sphere(1.0)
+    warped_s = s.warp(frequency=2.0, strength=0.5)
+
+    assert isinstance(warped_s, Warp)
+    assert warped_s.child == s
+    assert warped_s.frequency == 2.0
+    assert warped_s.strength == 0.5
+
+def test_warp_glsl_generation():
+    """Tests that the GLSL string contains the correct function calls."""
+    s = sphere(1.0).warp(frequency=3.0, strength=1.0)
+    scene_code = SceneCompiler().compile(s)
+
+    assert "opWarp" in scene_code
+    # Check that dependencies are met (snoiseVec3 from noise.glsl)
+    assert "snoiseVec3" in scene_code 
+
+def test_warp_callable_raises_error():
+    """
+    Ensures that calling .to_callable() (used for meshing) raises a TypeError
+    because procedural noise is not yet supported in NumPy.
+    """
+    s = sphere(1.0).warp(frequency=2.0, strength=0.5)
+    with pytest.raises(TypeError, match="Cannot create a callable"):
+        s.to_callable()
+
+@requires_glsl_validator
+def test_warp_glsl_compiles(validate_glsl):
+    """
+    Validates that the generated GLSL for warping is syntactically correct
+    and that all dependencies (noise functions) are included.
+    """
+    s = box(1.0).warp(frequency=1.5, strength=0.2)
+    scene_code = SceneCompiler().compile(s)
+    validate_glsl(scene_code)
 
 
 # --- Equivalence and Compilation Tests ---

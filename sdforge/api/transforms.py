@@ -42,7 +42,7 @@ class _Transform(SDFNode):
     def _get_transform_glsl_expr(self, p_expr: str) -> str:
         """Subclasses must implement this to return the GLSL transform expression."""
         raise NotImplementedError
-    
+
     def _make_callable(self, child_func):
         raise NotImplementedError
 
@@ -71,19 +71,19 @@ class Scale(SDFNode):
             self.factor = np.array([factor, factor, factor])
         else:
             self.factor = np.array(factor)
-    
+
     def _base_to_glsl(self, ctx: GLSLContext, profile_mode: bool) -> str:
         ctx.dependencies.update(self.glsl_dependencies)
         f = self.factor
         factor_str = f"vec3({_glsl_format(f[0])}, {_glsl_format(f[1])}, {_glsl_format(f[2])})"
         transformed_p = ctx.new_variable('vec3', f"opScale({ctx.p}, {factor_str})")
         sub_ctx = ctx.with_p(transformed_p)
-        
+
         if profile_mode:
             child_var = self.child.to_profile_glsl(sub_ctx)
         else:
             child_var = self.child.to_glsl(sub_ctx)
-            
+
         ctx.merge_from(sub_ctx)
         if isinstance(self.factor[0], (int, float)) and isinstance(self.factor[1], (int, float)) and isinstance(self.factor[2], (int, float)):
             scale_correction = np.mean(self.factor)
@@ -127,7 +127,7 @@ class Rotate(_Transform):
             axis_str = f"vec3({_glsl_format(ax[0])}, {_glsl_format(ax[1])}, {_glsl_format(ax[2])})"
             return f"opRotateAxis({p_expr}, {axis_str}, {_glsl_format(self.angle)})"
         return f"{func}({p_expr}, {_glsl_format(self.angle)})"
-    
+
     def _make_callable(self, child_func):
         if isinstance(self.angle, (str, Param)): raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
         axis, angle = self.axis, self.angle
@@ -209,6 +209,24 @@ class Bend(_Transform):
             return child_func(q)
         return _callable
     def to_callable(self): return self._make_callable(self.child.to_callable())
+
+class Warp(_Transform):
+    """Internal node to apply domain warping using vector noise."""
+    glsl_dependencies = {"transforms", "noise"}
+    def __init__(self, child: SDFNode, frequency: float, strength: float):
+        super().__init__(child)
+        self.frequency = frequency
+        self.strength = strength
+
+    def _get_transform_glsl_expr(self, p_expr: str) -> str:
+        return f"opWarp({p_expr}, {_glsl_format(self.frequency)}, {_glsl_format(self.strength)})"
+
+    def _make_callable(self, child_func):
+        # We don't have a numpy implementation of Simplex Noise in the core library yet.
+        raise TypeError("Cannot create a callable (save mesh) for an object with procedural Domain Warping.")
+
+    def to_callable(self): return self._make_callable(None)
+
 
 class Repeat(_Transform):
     """Internal node to repeat a child object."""

@@ -222,7 +222,7 @@ class SDFNode(ABC):
     def export_shader(self, path: str):
         """
         Exports a complete, self-contained GLSL fragment shader for the current scene.
-        
+
         Args:
             path (str): The file path to save the GLSL shader to (e.g., 'my_scene.glsl').
         """
@@ -455,6 +455,18 @@ class SDFNode(ABC):
         """
         from .api.transforms import Bend
         return Bend(self, axis, curvature)
+
+    def warp(self, frequency: float, strength: float) -> 'SDFNode':
+        """
+        Warps the coordinate domain using a 3D vector noise field.
+        This creates organic, fluid-like distortions.
+
+        Args:
+            frequency (float): The scale of the noise features.
+            strength (float): The amplitude of the distortion.
+        """
+        from .api.transforms import Warp
+        return Warp(self, frequency, strength)
 
     def repeat(self, spacing) -> 'SDFNode':
         """

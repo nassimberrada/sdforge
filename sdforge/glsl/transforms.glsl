@@ -68,6 +68,12 @@ vec3 opBendZ(vec3 p, float k) {
     return vec3(c * p.x + s * p.y, -s * p.x + c * p.y, p.z);
 }
 
+// --- Domain Warping ---
+
+vec3 opWarp(vec3 p, float freq, float strength) {
+    return p + snoiseVec3(p * freq) * strength;
+}
+
 // --- Domain Repetition ---
 
 vec3 opRepeat(vec3 p, vec3 c)

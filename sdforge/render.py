@@ -89,8 +89,10 @@ class NativeRenderer:
                     if new_debug_obj: self.debug = new_debug_obj
 
                     # Re-compile shader and vertex array
-                    self.program = self._compile_shader()
-                    if self.program:
+                    new_program = self._compile_shader()
+                    if new_program:
+                        self.program = new_program
+                        # Recreate VAO with new program
                         self.vao = self.ctx.simple_vertex_array(self.program, self.vbo, 'in_vert')
             else:
                 print("WARNING: No valid `main` function found in script. Cannot reload.")
@@ -160,10 +162,7 @@ class NativeRenderer:
         """
 
         # --- SPECIAL CASE: SLICE DEBUGGING ---
-        # If debug mode is 'slice', we generate a completely different main() 
-        # that renders a 2D cross-section instead of a 3D raymarched view.
         if self.debug and self.debug.mode == 'slice':
-
             # Map screen coords (st) to 3D world coords (p) based on plane/scale
             scale = self.debug.view_scale
             h = self.debug.slice_height
@@ -295,7 +294,9 @@ class NativeRenderer:
             return new_program
         except Exception as e:
             print(f"ERROR: Shader compilation failed. Keeping previous shader. Details:\n{e}", file=sys.stderr)
-            return self.program # Return old program on failure
+            # NOTE: If this is the first run and compilation fails, 
+            # self.program will be None, leading to errors downstream.
+            return self.program 
 
     def run(self):
         import glfw
@@ -312,6 +313,11 @@ class NativeRenderer:
 
         self.ctx = moderngl.create_context()
         self.program = self._compile_shader()
+
+        if self.program is None:
+            print("FATAL: Initial shader compilation failed. Exiting.", file=sys.stderr)
+            glfw.terminate()
+            return
 
         vertices = np.array([-1.0, -1.0, -1.0, 1.0, 1.0, -1.0, 1.0, 1.0], dtype='f4')
         self.vbo = self.ctx.buffer(vertices) # Assign to instance

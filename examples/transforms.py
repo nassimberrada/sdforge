@@ -1,6 +1,6 @@
 import sys
 import numpy as np
-from sdforge import box, sphere, X, Y, Z
+from sdforge import box, sphere, X, Y, Z, Param, Group
 
 def translation_example():
     """Shows a shape and its translated copy, joined by a union."""
@@ -50,6 +50,42 @@ def bend_example():
     # We bend it around the Y-axis. The 'curvature' parameter controls the radius.
     return plank.bend(Y, curvature=0.5)
 
+def warp_sphere_example():
+    """
+    Applies domain warping to a sphere.
+    Unlike displacement, which moves the surface along the normal,
+    warping deforms the space itself, creating fluid-like distortions.
+    """
+    # Parameters for interactive tweaking
+    p_freq = Param("Frequency", 2.0, 0.5, 5.0)
+    p_strength = Param("Strength", 0.5, 0.0, 2.0)
+
+    s = sphere(radius=1.0)
+    return s.warp(frequency=p_freq, strength=p_strength)
+
+def warp_box_example():
+    """
+    Applies domain warping to a box.
+    Notice how the straight edges become wavy and organic.
+    """
+    b = box(size=1.5)
+    return b.warp(frequency=1.5, strength=0.3)
+
+def warp_comparison_example():
+    """
+    Compares Twist, Displacement, and Warping side-by-side.
+    """
+    # 1. Twist (Affine transform)
+    twisted = box(1.0).twist(strength=2.0).translate((-2.5, 0, 0))
+
+    # 2. Displace (Surface modification along normal)
+    displaced = box(1.0).displace_by_noise(scale=2.0, strength=0.2)
+
+    # 3. Warp (Domain deformation)
+    warped = box(1.0).warp(frequency=2.0, strength=0.4).translate((2.5, 0, 0))
+
+    return Group(twisted, displaced, warped)
+
 def repeat_example():
     """Shows infinite repetition of a shape."""
     # Start with a single sphere, offset from the origin.
@@ -95,6 +131,9 @@ def main():
         "orientation": orientation_example,
         "twist": twist_example,
         "bend": bend_example,
+        "warp_sphere": warp_sphere_example,
+        "warp_box": warp_box_example,
+        "warp_compare": warp_comparison_example,
         "repeat": repeat_example,
         "limited_repeat": limited_repeat_example,
         "polar_repeat": polar_repeat_example,

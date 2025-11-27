@@ -10,14 +10,14 @@ def test_material_api():
 
     assert isinstance(colored_s, Material)
     assert colored_s.child == s
-    assert colored_s.color == (1.0, 0.5, 0.2)
+    assert colored_s.rgb == (1.0, 0.5, 0.2)
 
 def test_material_api_tuple_input():
     """Tests that .color() accepts a tuple."""
     s = sphere(radius=1.0)
     colored_s = s.color((0.1, 0.2, 0.3))
     assert isinstance(colored_s, Material)
-    assert colored_s.color == (0.1, 0.2, 0.3)
+    assert colored_s.rgb == (0.1, 0.2, 0.3)
 
 def test_collect_materials():
     """Tests the recursive collection of unique materials."""
@@ -39,8 +39,8 @@ def test_collect_materials():
     # b1 shares a material object with s1, so it should have the same ID
     assert b1.material_id == 0
 
-    assert materials[0].color == (1, 0, 0)
-    assert materials[1].color == (0, 1, 0)
+    assert materials[0].rgb == (1, 0, 0)
+    assert materials[1].rgb == (0, 1, 0)
 
 def test_material_glsl_generation():
     """Tests that the material ID is correctly injected into the GLSL."""
@@ -53,3 +53,25 @@ def test_material_glsl_generation():
 
     # Check that the statements create a new vec4 with the correct material ID
     assert f"vec4 {result_var} = vec4(var_0.x, 5.0, var_0.zw);" in "\n".join(ctx.statements)
+
+def test_masked_material_glsl_generation():
+    """Tests that masked material generates mixing logic."""
+    s = sphere(1.0)
+    mask = box(0.5)
+    # Color Red, but only inside the mask box
+    mat = s.color(1, 0, 0, mask=mask)
+    mat.material_id = 2
+    
+    ctx = GLSLContext(compiler=None)
+    result_var = mat.to_glsl(ctx)
+    glsl_code = "\n".join(ctx.statements)
+    
+    # 1. Mask evaluation must happen
+    assert "sdBox" in glsl_code or "abs" in glsl_code # Box logic from mask
+    
+    # 2. Step function used for hard masking
+    assert "step(" in glsl_code
+    
+    # 3. Mixing IDs
+    # Should see logic like: mix(child.y, new_id, step(...))
+    assert "mix(" in glsl_code

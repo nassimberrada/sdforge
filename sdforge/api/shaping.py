@@ -2,70 +2,154 @@ import numpy as np
 from ..core import SDFNode, GLSLContext
 from ..utils import _glsl_format
 from .params import Param
+from .transforms import _smoothstep
 
 class Round(SDFNode):
     """
     Internal node to round the edges of a child object.
+    Supports masking to apply variable rounding.
     """
     glsl_dependencies = {"shaping"}
-    def __init__(self, child: SDFNode, radius: float):
+    def __init__(self, child: SDFNode, radius: float, mask: SDFNode = None, mask_falloff: float = 0.0):
         super().__init__()
         self.child = child
         self.radius = radius
+        self.mask = mask
+        self.mask_falloff = mask_falloff
+
     def to_glsl(self, ctx: GLSLContext) -> str:
         ctx.dependencies.update(self.glsl_dependencies)
         child_var = self.child.to_glsl(ctx)
-        result_expr = f"opRound({child_var}, {_glsl_format(self.radius)})"
+        
+        r_expr = _glsl_format(self.radius)
+        if self.mask:
+            mask_var = self.mask.to_glsl(ctx)
+            falloff_str = _glsl_format(self.mask_falloff)
+            factor_expr = f"(1.0 - smoothstep(0.0, max({falloff_str}, 1e-4), {mask_var}.x))"
+            r_expr = f"({r_expr} * {factor_expr})"
+
+        result_expr = f"opRound({child_var}, {r_expr})"
         return ctx.new_variable('vec4', result_expr)
     
     def to_profile_glsl(self, ctx: GLSLContext) -> str:
         ctx.dependencies.update(self.glsl_dependencies)
-        # Propagate to child's profile (e.g. rounding the corners of a 2D rectangle before extruding)
         child_var = self.child.to_profile_glsl(ctx)
-        result_expr = f"opRound({child_var}, {_glsl_format(self.radius)})"
+        
+        r_expr = _glsl_format(self.radius)
+        if self.mask:
+            mask_var = self.mask.to_glsl(ctx)
+            falloff_str = _glsl_format(self.mask_falloff)
+            factor_expr = f"(1.0 - smoothstep(0.0, max({falloff_str}, 1e-4), {mask_var}.x))"
+            r_expr = f"({r_expr} * {factor_expr})"
+
+        result_expr = f"opRound({child_var}, {r_expr})"
         return ctx.new_variable('vec4', result_expr)
 
     def to_callable(self):
         if isinstance(self.radius, (str, Param)):
             raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
         child_callable = self.child.to_callable()
+        
+        if self.mask:
+            mask_callable = self.mask.to_callable()
+            falloff = max(self.mask_falloff, 1e-4)
+            r = self.radius
+            def _masked_round(p):
+                d_mask = mask_callable(p)
+                factor = 1.0 - _smoothstep(0.0, falloff, d_mask)
+                return child_callable(p) - r * factor
+            return _masked_round
+        
         return lambda p: child_callable(p) - self.radius
 
     def to_profile_callable(self):
         if isinstance(self.radius, (str, Param)): raise TypeError("Cannot save mesh with animated params.")
         child_func = self.child.to_profile_callable()
+        
+        if self.mask:
+            mask_callable = self.mask.to_callable() # Note: masks are usually 3D, profile is 2D/3D agnostic
+            falloff = max(self.mask_falloff, 1e-4)
+            r = self.radius
+            def _masked_round(p):
+                d_mask = mask_callable(p)
+                factor = 1.0 - _smoothstep(0.0, falloff, d_mask)
+                return child_func(p) - r * factor
+            return _masked_round
+
         return lambda p: child_func(p) - self.radius
 
 class Shell(SDFNode):
     """
     Internal node to create a hollow shell or outline of a child object.
+    Supports masking for variable thickness.
     """
     glsl_dependencies = {"shaping"}
-    def __init__(self, child: SDFNode, thickness: float):
+    def __init__(self, child: SDFNode, thickness: float, mask: SDFNode = None, mask_falloff: float = 0.0):
         super().__init__()
         self.child = child
         self.thickness = thickness
+        self.mask = mask
+        self.mask_falloff = mask_falloff
+
     def to_glsl(self, ctx: GLSLContext) -> str:
         ctx.dependencies.update(self.glsl_dependencies)
         child_var = self.child.to_glsl(ctx)
-        result_expr = f"opShell({child_var}, {_glsl_format(self.thickness)})"
+        
+        th_expr = _glsl_format(self.thickness)
+        if self.mask:
+            mask_var = self.mask.to_glsl(ctx)
+            falloff_str = _glsl_format(self.mask_falloff)
+            factor_expr = f"(1.0 - smoothstep(0.0, max({falloff_str}, 1e-4), {mask_var}.x))"
+            th_expr = f"({th_expr} * {factor_expr})"
+
+        result_expr = f"opShell({child_var}, {th_expr})"
         return ctx.new_variable('vec4', result_expr)
 
     def to_profile_glsl(self, ctx: GLSLContext) -> str:
         ctx.dependencies.update(self.glsl_dependencies)
         child_var = self.child.to_profile_glsl(ctx)
-        result_expr = f"opShell({child_var}, {_glsl_format(self.thickness)})"
+        
+        th_expr = _glsl_format(self.thickness)
+        if self.mask:
+            mask_var = self.mask.to_glsl(ctx)
+            falloff_str = _glsl_format(self.mask_falloff)
+            factor_expr = f"(1.0 - smoothstep(0.0, max({falloff_str}, 1e-4), {mask_var}.x))"
+            th_expr = f"({th_expr} * {factor_expr})"
+
+        result_expr = f"opShell({child_var}, {th_expr})"
         return ctx.new_variable('vec4', result_expr)
 
     def to_callable(self):
         if isinstance(self.thickness, (str, Param)):
             raise TypeError("Cannot save mesh of an object with animated or interactive parameters.")
         child_callable = self.child.to_callable()
+        
+        if self.mask:
+            mask_callable = self.mask.to_callable()
+            falloff = max(self.mask_falloff, 1e-4)
+            th = self.thickness
+            def _masked_shell(p):
+                d_mask = mask_callable(p)
+                factor = 1.0 - _smoothstep(0.0, falloff, d_mask)
+                return np.abs(child_callable(p)) - th * factor
+            return _masked_shell
+
         return lambda p: np.abs(child_callable(p)) - self.thickness
 
     def to_profile_callable(self):
         if isinstance(self.thickness, (str, Param)): raise TypeError("Cannot save mesh with animated params.")
         child_func = self.child.to_profile_callable()
+        
+        if self.mask:
+            mask_callable = self.mask.to_callable()
+            falloff = max(self.mask_falloff, 1e-4)
+            th = self.thickness
+            def _masked_shell(p):
+                d_mask = mask_callable(p)
+                factor = 1.0 - _smoothstep(0.0, falloff, d_mask)
+                return np.abs(child_func(p)) - th * factor
+            return _masked_shell
+
         return lambda p: np.abs(child_func(p)) - self.thickness
 
 class Extrude(SDFNode):

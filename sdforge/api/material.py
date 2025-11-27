@@ -1,56 +1,85 @@
-from ..core import SDFNode
+from ..core import SDFNode, GLSLContext
 
 class Material(SDFNode):
-    """Applies a color material to a child object."""
-    def __init__(self, child, color):
+    """
+    Applies a color material to a child object.
+    Supports masking to apply color only to specific regions.
+    """
+    def __init__(self, child, color, mask: SDFNode = None):
         """
         Internal constructor for a Material node.
-
-        Note: This class is not typically instantiated directly. Use the
-        `.color()` method on an SDFNode object instead.
 
         Args:
             child (SDFNode): The SDF object to apply the material to.
             color (tuple): An (r, g, b) tuple with values from 0.0 to 1.0.
+            mask (SDFNode, optional): A mask object. If provided, the material
+                                      is only applied where the mask SDF is < 0 (inside).
         """
         super().__init__()
         self.child = child
-        self.color = tuple(color) # Ensure color is a tuple for hashing
+        self.rgb = tuple(color) # Renamed from 'color' to 'rgb' to avoid shadowing SDFNode.color()
+        self.mask = mask
         self.material_id = -1 # Will be set by the renderer during collection
 
     def __hash__(self):
         # Hash based on color, not object identity.
-        return hash(self.color)
+        return hash(self.rgb)
 
     def __eq__(self, other):
         # Equality is based on color, not object identity.
-        return isinstance(other, Material) and self.color == other.color
+        return isinstance(other, Material) and self.rgb == other.rgb
+
+    def _base_to_glsl(self, ctx: GLSLContext, profile_mode: bool) -> str:
+        if profile_mode:
+            child_var = self.child.to_profile_glsl(ctx)
+        else:
+            child_var = self.child.to_glsl(ctx)
+
+        new_id = float(self.material_id)
+        
+        if self.mask:
+            # We need to evaluate the mask to decide between the child's existing ID and this new ID.
+            # Ideally, the mask should be evaluated in the same space as the child.
+            mask_var = self.mask.to_glsl(ctx)
+            
+            # Logic: If mask.x < 0 (inside mask), use new_id. Else, keep child_var.y (original ID).
+            # step(edge, x) returns 0.0 if x < edge, 1.0 if x >= edge.
+            # step(mask.x, 0.0) returns 1.0 if mask < 0 (Inside), 0.0 if mask > 0 (Outside).
+            selector = f"step({mask_var}.x, 0.0)"
+            
+            id_expr = f"mix({child_var}.y, {new_id}, {selector})"
+        else:
+            # Apply to everything
+            id_expr = f"{new_id}"
+
+        # Result is vec4(distance, material_id, 0, 0)
+        result_expr = f"vec4({child_var}.x, {id_expr}, {child_var}.zw)"
+        return ctx.new_variable('vec4', result_expr)
 
     def to_glsl(self, ctx) -> str:
-        """
-        Wraps the child's GLSL result, injecting the material ID into the .y component.
-        """
-        child_var = self.child.to_glsl(ctx)
-        # Result is vec4(distance, material_id, 0, 0)
-        result_expr = f"vec4({child_var}.x, {float(self.material_id)}, {child_var}.zw)"
-        return ctx.new_variable('vec4', result_expr)
+        return self._base_to_glsl(ctx, profile_mode=False)
+
+    def to_profile_glsl(self, ctx) -> str:
+        return self._base_to_glsl(ctx, profile_mode=True)
 
     def to_callable(self):
         # Materials are a render-time concept; for mesh generation, we use the child's shape.
         return self.child.to_callable()
+    
+    def to_profile_callable(self):
+        return self.child.to_profile_callable()
 
     def _collect_materials(self, materials: list):
         """
         Adds this material to the list if not already present and assigns an ID,
         then continues traversal.
         """
-        # Using `__eq__` and `__hash__`, we can now check for presence by value.
         if self not in materials:
             self.material_id = len(materials)
             materials.append(self)
         else:
-            # If it's already in the list, find the original and use its ID.
-            # This ensures all Material objects with the same color get the same ID.
             self.material_id = materials[materials.index(self)].material_id
             
         self.child._collect_materials(materials)
+        if self.mask:
+            self.mask._collect_materials(materials)

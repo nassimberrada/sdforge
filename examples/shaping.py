@@ -6,11 +6,41 @@ def round_example():
     b = box(size=(1.5, 1.0, 0.5))
     return b.round(0.2)
 
+def masked_round_example():
+    """
+    Demonstrates rounding only specific parts of an object.
+    Here, only one corner of the box is rounded.
+    """
+    b = box(size=1.5)
+    
+    # Mask selects only the corner area at (+X, +Y, +Z)
+    # A sphere placed at that corner serves as the selection volume.
+    mask = sphere(0.8).translate((0.75, 0.75, 0.75))
+    
+    # Radius is 0.3 inside the mask, 0.0 outside.
+    return b.round(0.3, mask=mask, mask_falloff=0.1)
+
 def shell_example():
     """Creates a hollow shell from a sphere."""
     s = sphere(radius=1.0)
     # The parameter controls the thickness of the shell.
     return s.shell(0.1)
+
+def masked_shell_example():
+    """
+    Demonstrates a shell with variable thickness.
+    The object transitions from a thick wall to a thin (or zero) wall.
+    """
+    s = sphere(1.0)
+    
+    # Mask covers the top half.
+    # Top half: Thickness 0.1
+    # Bottom half: Thickness 0.0 (infinitely thin surface)
+    mask = box(2.0).translate((0, 1.0, 0))
+    
+    # Note: A thickness of 0.0 means the surface exists but has no volume.
+    # In the viewer, you will see the wall taper until it is paper-thin.
+    return s.shell(0.1, mask=mask, mask_falloff=0.2)
 
 def extrude_example():
     """Extrudes a 2D circle into a 3D cylinder."""
@@ -34,7 +64,9 @@ def main():
     
     examples = {
         "round": round_example,
+        "masked_round": masked_round_example,
         "shell": shell_example,
+        "masked_shell": masked_shell_example,
         "extrude": extrude_example,
         "revolve": revolve_example,
     }

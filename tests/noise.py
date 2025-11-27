@@ -1,5 +1,5 @@
 import pytest
-from sdforge import sphere
+from sdforge import sphere, box
 from sdforge.render import SceneCompiler
 from tests.conftest import requires_glsl_validator
 
@@ -11,6 +11,15 @@ def test_displace_api():
     scene_code = SceneCompiler().compile(s)
     assert "opDisplace" in scene_code
     assert "p.x * 0.1" in scene_code
+
+def test_displace_with_mask_glsl():
+    """Tests that displacement with mask generates mix logic."""
+    mask = box(1.0)
+    s = sphere(radius=1.0).displace("0.1", mask=mask, mask_falloff=0.2)
+    scene_code = SceneCompiler().compile(s)
+    assert "smoothstep" in scene_code
+    assert "mix" not in scene_code # Displace uses multiplication logic, not mix
+    assert "* (1.0 - smoothstep" in scene_code
 
 def test_displace_by_noise_api():
     """Tests the API and GLSL generation for noise displacement."""
@@ -39,7 +48,9 @@ def test_displace_by_noise_fails_callable():
 
 NOISE_TEST_CASES = [
     sphere(radius=1.0).displace("sin(p.y * 10.0) * 0.1"),
+    sphere(radius=1.0).displace("0.1", mask=box(0.5)),
     sphere(radius=1.0).displace_by_noise(),
+    sphere(radius=1.0).displace_by_noise(mask=box(0.5)),
 ]
 
 @requires_glsl_validator

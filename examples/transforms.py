@@ -5,116 +5,84 @@ from sdforge import box, sphere, X, Y, Z, Param, Group
 def translation_example():
     """Shows a shape and its translated copy, joined by a union."""
     s = sphere(radius=0.6)
-    # A union of the original sphere and a translated copy.
-    # The '+' operator is a shortcut for .translate()
     return s | (s + (X * 1.5))
 
 def scale_example():
     """Shows a shape and its non-uniformly scaled copy, joined by a union."""
     b = box(size=1.0)
-    # A union of the original box and a scaled/translated copy.
-    # The '*' operator is a shortcut for uniform scaling.
     return b | b.scale((0.5, 2.0, 0.5)).translate(Y * 1.5)
 
 def rotation_example():
     """Shows a shape and its rotated copy, joined by a union."""
-    # A non-symmetrical box makes rotation obvious.
     b = box(size=(1.5, 0.8, 0.3))
     return b | b.rotate(Z, np.pi / 3).rotate(X, np.pi / 6)
 
 def rotation_axis_example():
     """Shows rotation around an arbitrary axis."""
     b = box(size=(2.0, 0.2, 0.5))
-    # Rotate 45 degrees around the diagonal axis (1, 1, 0)
     axis = np.array([1.0, 1.0, 0.0])
     return b.rotate(axis, np.pi / 4)
 
 def orientation_example():
     """Shows how .orient() can re-orient a shape along a new axis."""
-    # A non-symmetrical box is used to make the orientation change clear.
     b = box(size=(1.5, 0.8, 0.3))
-    # The original shape is Z-aligned by default.
-    # .orient('x') re-orients it so its longest side is along the X-axis.
     return b | b.orient('x').translate(Y * 1.2)
 
 def twist_example():
     """Demonstrates twisting a tall shape around its Y-axis."""
     b = box(size=(0.5, 2.5, 0.5))
-    # The 'strength' parameter controls the amount of twist in radians per unit of height.
     return b.twist(strength=3.0)
+
+def masked_twist_example():
+    """
+    Demonstrates applying a twist only to the top half of a box.
+    """
+    b = box(size=(0.5, 2.5, 0.5))    
+    mask = box(size=(1.0, 1.5, 1.0)).translate((0, 1.0, 0))    
+    return b.twist(strength=5.0, mask=mask, mask_falloff=0.0)
 
 def bend_example():
     """Demonstrates bending a long shape into an arc."""
-    # A long, thin box is a good shape to visualize bending.
     plank = box(size=(3.0, 0.4, 0.8))
-    # We bend it around the Y-axis. The 'curvature' parameter controls the radius.
     return plank.bend(Y, curvature=0.5)
 
 def warp_sphere_example():
-    """
-    Applies domain warping to a sphere.
-    Unlike displacement, which moves the surface along the normal,
-    warping deforms the space itself, creating fluid-like distortions.
-    """
-    # Parameters for interactive tweaking
+    """Applies domain warping to a sphere."""
     p_freq = Param("Frequency", 2.0, 0.5, 5.0)
     p_strength = Param("Strength", 0.5, 0.0, 2.0)
-
     s = sphere(radius=1.0)
     return s.warp(frequency=p_freq, strength=p_strength)
 
 def warp_box_example():
-    """
-    Applies domain warping to a box.
-    Notice how the straight edges become wavy and organic.
-    """
+    """Applies domain warping to a box."""
     b = box(size=1.5)
     return b.warp(frequency=1.5, strength=0.3)
 
 def warp_comparison_example():
-    """
-    Compares Twist, Displacement, and Warping side-by-side.
-    """
-    # 1. Twist (Affine transform)
+    """Compares Twist, Displacement, and Warping side-by-side."""
     twisted = box(1.0).twist(strength=2.0).translate((-2.5, 0, 0))
-
-    # 2. Displace (Surface modification along normal)
     displaced = box(1.0).displace_by_noise(scale=2.0, strength=0.2)
-
-    # 3. Warp (Domain deformation)
     warped = box(1.0).warp(frequency=2.0, strength=0.4).translate((2.5, 0, 0))
-
     return Group(twisted, displaced, warped)
 
 def repeat_example():
     """Shows infinite repetition of a shape."""
-    # Start with a single sphere, offset from the origin.
     s = sphere(radius=0.4).translate(X * 0.8)
-    # Repeat it infinitely along the X and Y axes with a spacing of 2.0 units.
-    # The Z spacing of 0 means no repetition along that axis.
     return s.repeat((2.0, 2.0, 0.0))
 
 def limited_repeat_example():
     """Shows finite repetition of a shape."""
     s = sphere(radius=0.4)
-    # Repeat the sphere with a spacing of 1.2 units along the X-axis.
-    # The limits=(2, 0, 0) means it will repeat twice in the positive direction
-    # and twice in the negative direction, for a total of 5 spheres.
     return s.limited_repeat(spacing=(1.2, 0, 0), limits=(2, 0, 0))
 
 def polar_repeat_example():
     """Repeats a shape in a circle around the Y-axis."""
-    # Start with a shape that is offset from the origin (the axis of rotation).
     b = box(size=(0.8, 0.4, 0.2)).round(0.05).translate(X * 1.2)
-    # Repeat it 8 times.
     return b.polar_repeat(8)
 
 def mirror_example():
     """Creates symmetry by mirroring a shape across axes."""
-    # Start with one quarter of a shape, offset into one quadrant.
     b = box(size=(1.0, 0.5, 0.5)).round(0.1).translate((0.8, 0.5, 0))
-    # Mirror across the X and Y axes to create a symmetrical object.
-    # (X | Y) is equivalent to (1, 1, 0)
     return b.mirror(X | Y)
 
 def main():
@@ -130,6 +98,7 @@ def main():
         "rotation_axis": rotation_axis_example,
         "orientation": orientation_example,
         "twist": twist_example,
+        "masked_twist": masked_twist_example,
         "bend": bend_example,
         "warp_sphere": warp_sphere_example,
         "warp_box": warp_box_example,

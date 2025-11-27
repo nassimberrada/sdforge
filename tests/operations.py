@@ -124,6 +124,32 @@ def test_morph_api_and_callable(shapes):
 
     assert np.allclose(m_callable(points), expected)
 
+def test_masked_union_blend(shapes):
+    """Tests that blending can be localized with a mask."""
+    s, b = shapes
+    # Union with blend=0.5, but masked to only apply inside a small box.
+    mask = box(0.5) # Center 0.5x0.5x0.5
+    u = s.union(b, blend=0.5, mask=mask)
+    u_callable = u.to_callable()
+    
+    # Point near intersection at origin (inside mask).
+    # Should reflect blended distance.
+    # At origin, s=-1, b=-0.75. 
+    # Smooth union of -1, -0.75 with k=0.5:
+    # h = clamp(0.5 + 0.5*(-0.75 - -1)/0.5, 0, 1) = clamp(0.5 + 0.25/0.5) = clamp(1.0) = 1.0?
+    # Wait, simple min is -1. sMin pulls it further negative.
+    
+    # Point outside mask (2,2,2). Blend should be effectively 0.
+    # Distances are positive here.
+    p_out = np.array([[2,2,2]])
+    d_out = u_callable(p_out)
+    
+    # Reference sharp union
+    u_sharp = s | b
+    d_sharp = u_sharp.to_callable()(p_out)
+    
+    assert np.allclose(d_out, d_sharp, atol=1e-4)
+
 # --- Equivalence and Compilation Tests ---
 
 OPERATION_TEST_CASES = [
@@ -142,6 +168,10 @@ OPERATION_TEST_CASES = [
     sphere(radius=1.0).morph(box(size=1.5), factor=0.5),
     sphere(radius=1.0).morph(box(size=1.5), factor=0.0),
     sphere(radius=1.0).morph(box(size=1.5), factor=1.0),
+    # Masked Operations
+    sphere(1.0).union(box(1.5), blend=0.5, mask=box(0.5)),
+    sphere(1.0).difference(box(1.5), blend=0.5, mask=box(0.5)),
+    sphere(1.0).morph(box(1.5), factor=0.5, mask=box(0.5)),
     # Test chaining
     (sphere(radius=1.0) | box(size=0.8)) - sphere(radius=0.5)
 ]

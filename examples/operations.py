@@ -1,6 +1,6 @@
 import sys
 import numpy as np
-from sdforge import sphere, box, cylinder, X, Param
+from sdforge import sphere, box, cylinder, X, Y, Param
 
 def union_example():
     """A sphere and a box joined together."""
@@ -26,6 +26,22 @@ def smooth_union_example():
     s2 = sphere(radius=0.7).translate((0.5, 0, 0))
     # The 'blend' parameter controls the smoothness of the blend.
     return s1.union(s2, blend=0.3)
+
+def masked_blend_example():
+    """
+    Demonstrates using a mask to apply smoothing only to specific areas.
+    The union transitions from a sharp crease to a smooth fillet.
+    """
+    # Two spheres sitting next to each other
+    s1 = sphere(radius=0.7).translate((-0.6, 0, 0))
+    s2 = sphere(radius=0.7).translate((0.6, 0, 0))
+
+    # Mask: A box covering the top half (Y > 0)
+    # The blend will be 0.4 inside this box, and 0.0 (sharp) outside.
+    mask_obj = box(size=(3, 2, 3)).translate((0, 1.0, 0))
+
+    # Apply variable smoothing
+    return s1.union(s2, blend=0.4, mask=mask_obj, mask_falloff=0.2)
 
 def fillet_difference_example():
     """Demonstrates subtracting a shape with a rounded (filleted) edge."""
@@ -67,6 +83,21 @@ def morphing_example():
 
     return s.morph(b, factor=p_morph)
 
+def masked_morph_example():
+    """
+    Demonstrates a partial morph. The object is a sphere on the left
+    and transitions into a box on the right.
+    """
+    s = sphere(1.0)
+    b = box(1.5)
+    
+    # Mask covers the right side (X > 0).
+    # Inside mask -> Factor 1.0 (Box)
+    # Outside mask -> Factor 0.0 (Sphere)
+    mask_obj = box(3.0).translate((1.5, 0, 0))
+    
+    return s.morph(b, factor=1.0, mask=mask_obj, mask_falloff=0.5)
+
 def main():
     """
     Renders an example based on a command-line argument.
@@ -78,10 +109,12 @@ def main():
         "intersection": intersection_example,
         "difference": difference_example,
         "smooth_union": smooth_union_example,
+        "masked_blend": masked_blend_example,
         "fillet_cut": fillet_difference_example,
         "linear_cut": linear_difference_example,
         "fillet_join": fillet_union_example,
         "morph": morphing_example,
+        "masked_morph": masked_morph_example,
     }
 
     if len(sys.argv) < 2:

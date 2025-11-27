@@ -295,7 +295,7 @@ class NativeRenderer:
 
             # Upload material data
             for i, mat in enumerate(materials):
-                new_program[f'u_materials[{i}].color'].value = mat.color
+                new_program[f'u_materials[{i}].color'].value = mat.rgb
 
             return new_program
         except Exception as e:
@@ -386,7 +386,7 @@ def _render_mesh(sdf_obj: SDFNode, bounds=None, samples=2**18, adaptive=False, o
     if len(verts) == 0:
         print("WARNING: No geometry generated.", file=sys.stderr)
         return
-    mesh = trimesh.Trimesh(vertices=verts, faces=faces)
+    mesh = trimesh.Trimesh(vertices=verts, faces=faces)    
     mesh.visual.face_colors = [200, 200, 220, 255]    
     return mesh.show()
 

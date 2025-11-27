@@ -1,35 +1,35 @@
+import numpy as np
 from ..core import SDFNode, GLSLContext
 from ..utils import _glsl_format
 from .params import Param
+from .transforms import _smoothstep
 
 class Displace(SDFNode):
     """
     Internal node to displace the surface of a child object using a raw GLSL expression.
-    
-    Note: This class is not typically instantiated directly. Use the
-    `.displace()` method on an SDFNode object instead.
     """
     glsl_dependencies = {"shaping"}
 
-    def __init__(self, child: SDFNode, displacement_glsl: str):
-        """
-        Initializes the Displace node.
-
-        Args:
-            child (SDFNode): The object whose surface will be displaced.
-            displacement_glsl (str): A GLSL expression that evaluates to a float.
-                                     The expression can use `vec3 p` to get the
-                                     current sample point in space.
-        """
+    def __init__(self, child: SDFNode, displacement_glsl: str, mask: SDFNode = None, mask_falloff: float = 0.0):
         super().__init__()
         self.child = child
         self.displacement_glsl = displacement_glsl
+        self.mask = mask
+        self.mask_falloff = mask_falloff
 
     def to_glsl(self, ctx: GLSLContext) -> str:
         ctx.dependencies.update(self.glsl_dependencies)
         child_var = self.child.to_glsl(ctx)
-        # The GLSL expression can use 'p', so we use the current context's 'p'.
-        result_expr = f"opDisplace({child_var}, {self.displacement_glsl.replace('p', ctx.p)})"
+        
+        disp_expr = self.displacement_glsl.replace('p', ctx.p)
+        
+        if self.mask:
+            mask_var = self.mask.to_glsl(ctx)
+            falloff_str = _glsl_format(self.mask_falloff)
+            factor_expr = f"(1.0 - smoothstep(0.0, max({falloff_str}, 1e-4), {mask_var}.x))"
+            disp_expr = f"({disp_expr}) * {factor_expr}"
+            
+        result_expr = f"opDisplace({child_var}, {disp_expr})"
         return ctx.new_variable('vec4', result_expr)
 
     def to_callable(self):
@@ -38,24 +38,12 @@ class Displace(SDFNode):
 class DisplaceByNoise(Displace):
     """
     Internal node to displace a surface using a procedural noise function.
-
-    Note: This class is not typically instantiated directly. Use the
-    `.displace_by_noise()` method on an SDFNode object instead.
     """
     glsl_dependencies = {"shaping", "noise"}
 
-    def __init__(self, child: SDFNode, scale: float = 10.0, strength: float = 0.1):
-        """
-        Initializes the DisplaceByNoise node.
-
-        Args:
-            child (SDFNode): The object whose surface will be displaced.
-            scale (float): The frequency/scale of the noise. Higher values
-                           result in finer, more detailed noise.
-            strength (float): The amplitude of the displacement.
-        """
+    def __init__(self, child: SDFNode, scale: float = 10.0, strength: float = 0.1, mask: SDFNode = None, mask_falloff: float = 0.0):
         glsl_expr = f"snoise(p * {_glsl_format(scale)}) * {_glsl_format(strength)}"
-        super().__init__(child, glsl_expr)
+        super().__init__(child, glsl_expr, mask, mask_falloff)
         self.scale = scale
         self.strength = strength
 

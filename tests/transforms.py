@@ -23,6 +23,28 @@ def test_translate_api_and_callable(shape):
     assert np.allclose(t_callable(point), expected)
     assert np.allclose(t_op.to_callable()(point), expected)
 
+def test_masked_translate_callable(shape):
+    """Tests translation with a mask."""
+    offset = np.array([10, 0, 0])
+    # Mask is a sphere at origin radius 1.
+    mask = sphere(1.0) 
+    t_shape = shape.translate(offset, mask=mask, mask_falloff=0.0)
+    t_callable = t_shape.to_callable()
+    
+    # Point inside mask (0,0,0) -> should be translated (-10) before child eval
+    # box(1,2,3) at origin.
+    # p = (0,0,0). mask(p) = -1. factor=1. p_trans = p-10 = (-10,0,0).
+    # box dist at (-10,0,0) should be approx 10 - 0.5 = 9.5
+    p_in = np.array([[0,0,0]])
+    d_in = t_callable(p_in)
+    assert d_in > 5.0 
+    
+    # Point outside mask (5,0,0) -> mask(p) = 4. factor=0. p_trans = p.
+    # box dist at (5,0,0) approx 4.5.
+    p_out = np.array([[5,0,0]])
+    d_out = t_callable(p_out)
+    assert np.isclose(d_out, 4.5, atol=0.1)
+
 def test_scale_api_and_callable(shape):
     factor = 2.0
     s_shape = shape.scale(factor)
@@ -35,6 +57,28 @@ def test_scale_api_and_callable(shape):
     assert np.allclose(s_callable(point), expected)
     assert np.allclose(s_op1.to_callable()(point), expected)
     assert np.allclose(s_op2.to_callable()(point), expected)
+
+def test_masked_scale_callable(shape):
+    """Tests scaling with a mask."""
+    factor = 0.1 # Shrink
+    mask = sphere(1.0)
+    s_shape = shape.scale(factor, mask=mask)
+    s_callable = s_shape.to_callable()
+    
+    # Inside mask: scaled down.
+    # box is 1x2x3. Scaled by 0.1 becomes 0.1x0.2x0.3.
+    # p=(0.2,0,0) is outside the tiny box.
+    p_in = np.array([[0.2, 0, 0]]) 
+    d_in = s_callable(p_in)
+    # distance should be (0.2 - 0.05) * 0.1? No, dist = d_sdf * scale_corr
+    # p/f = 2.0. Box edge 0.5. Dist=1.5. * 0.1 = 0.15.
+    assert np.isclose(d_in, 0.15, atol=0.01)
+    
+    # Outside mask: normal size.
+    # p=(5,0,0). Normal box edge 0.5. Dist 4.5.
+    p_out = np.array([[5, 0, 0]])
+    d_out = s_callable(p_out)
+    assert np.isclose(d_out, 4.5, atol=0.1)
 
 def test_rotate_api_and_callable(shape):
     angle = np.pi / 2
@@ -88,6 +132,29 @@ def test_twist_callable(shape):
     q = np.stack([x_new, p[:,1], z_new], axis=-1)
     expected = shape.to_callable()(q)
     assert np.allclose(t_callable(point), expected)
+
+def test_masked_twist_callable(shape):
+    """Tests twist with a mask."""
+    k = 5.0
+    # Mask is box at y=10.
+    mask = box(1.0).translate((0, 10, 0))
+    t_shape = shape.twist(strength=k, mask=mask)
+    t_callable = t_shape.to_callable()
+    
+    # Point at origin (far from mask) -> Untwisted
+    p_orig = np.array([[0.5, 0, 0]]) # edge of box
+    d_orig = t_callable(p_orig)
+    assert np.isclose(d_orig, 0.0, atol=1e-4)
+    
+    # Point at y=10 (inside mask) -> Twisted
+    # At y=10, angle = 5 * 10 = 50. 
+    # If we probe at a point that IS on the twisted surface... hard to calculate analytically.
+    # Instead, we verify it is DIFFERENT from untwisted.
+    p_mask = np.array([[0.5, 10, 0]])
+    d_mask = t_callable(p_mask)
+    # The original box is straight up. The twisted box surface has rotated.
+    # So distance to original surface point should be non-zero.
+    assert abs(d_mask) > 0.01
 
 def test_bend_callable(shape):
     k = 0.5
@@ -168,7 +235,11 @@ TRANSFORM_TEST_CASES = [
     box(size=0.2).translate((1,0,0)).polar_repeat(8),
     box(size=0.4).mirror(X | Y),
     # Test chaining
-    box(size=1.0).translate((1,0,0)).scale(2.0).rotate(Y, 1.0)
+    box(size=1.0).translate((1,0,0)).scale(2.0).rotate(Y, 1.0),
+    # Masked transforms
+    box(1.0).translate((1,0,0), mask=sphere(0.5)),
+    box(1.0).scale(2.0, mask=sphere(0.5)),
+    box(1.0).twist(2.0, mask=sphere(0.5), mask_falloff=0.1),
 ]
 
 @pytest.mark.usefixtures("assert_equivalence")

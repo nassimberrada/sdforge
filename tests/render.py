@@ -1,5 +1,6 @@
 import pytest
 import os
+import numpy as np
 from unittest.mock import MagicMock, patch
 from sdforge import sphere
 from sdforge.render import NativeRenderer
@@ -48,7 +49,6 @@ def test_change_handler_sets_reload_flag():
     assert mock_renderer.reload_pending is False
 
 
-# THE FIX: Remove the patch decorator for simple_vertex_array
 @patch('sdforge.render.NativeRenderer._compile_shader')
 def test_reload_logic_updates_scene(mock_compile, tmp_path):
     """
@@ -93,3 +93,80 @@ def main():
     assert renderer.sdf_obj.radius == 2.5
     mock_compile.assert_called_once()
     renderer.ctx.simple_vertex_array.assert_called_once()
+
+@patch('sdforge.mesh.generate')
+def test_render_mode_mesh_calls_trimesh(mock_generate):
+    """Tests that mode='mesh' generates geometry and calls trimesh.show()."""
+    s = sphere()
+    
+    # Mock mesh generation to return dummy data
+    mock_generate.return_value = (np.array([[0,0,0]], dtype='f4'), np.array([[0,0,0]], dtype='i4'))
+    
+    # Mock trimesh module
+    mock_trimesh_module = MagicMock()
+    mock_mesh_instance = MagicMock()
+    mock_trimesh_module.Trimesh.return_value = mock_mesh_instance
+    
+    with patch.dict('sys.modules', {'trimesh': mock_trimesh_module}):
+        s.render(mode='mesh')
+    
+    mock_generate.assert_called_once()
+    mock_trimesh_module.Trimesh.assert_called_once()
+    mock_mesh_instance.show.assert_called_once()
+
+def test_render_mesh_missing_trimesh(capsys):
+    """Tests error message when trimesh is missing in mesh mode."""
+    s = sphere()
+    # Simulate trimesh missing
+    with patch.dict('sys.modules', {'trimesh': None}):
+        s.render(mode='mesh')
+    
+    captured = capsys.readouterr()
+    assert "ERROR: Mesh rendering mode requires 'trimesh'" in captured.err
+
+@patch('sdforge.render.NativeRenderer.run')
+def test_render_mode_window_launches_renderer(mock_run):
+    """Tests that mode='window' initializes and runs the NativeRenderer."""
+    s = sphere()
+    # Mock dependencies required for window mode
+    with patch.dict('sys.modules', {'moderngl': MagicMock(), 'glfw': MagicMock()}):
+        s.render(mode='window')
+    
+    mock_run.assert_called_once()
+
+def test_render_window_missing_deps(capsys):
+    """Tests error message when dependencies are missing for window mode."""
+    s = sphere()
+    # Simulate moderngl/glfw missing
+    with patch.dict('sys.modules', {'moderngl': None, 'glfw': None}):
+        s.render(mode='window')
+    
+    captured = capsys.readouterr()
+    assert "ERROR: Native window rendering requires 'moderngl' and 'glfw'" in captured.err
+
+@patch('sdforge.render._render_mesh')
+def test_render_mode_auto_detects_notebook(mock_render_mesh):
+    """Tests that mode='auto' picks mesh rendering when in a notebook."""
+    s = sphere()
+    with patch('sdforge.render._IS_NOTEBOOK', True):
+        s.render(mode='auto')
+    mock_render_mesh.assert_called_once()
+
+@patch('sdforge.render.NativeRenderer.run')
+@patch('sdforge.render._render_mesh')
+def test_render_mode_auto_detects_desktop(mock_render_mesh, mock_run):
+    """Tests that mode='auto' picks window rendering when NOT in a notebook."""
+    s = sphere()
+    with patch('sdforge.render._IS_NOTEBOOK', False):
+        with patch.dict('sys.modules', {'moderngl': MagicMock(), 'glfw': MagicMock()}):
+            s.render(mode='auto')
+    
+    mock_render_mesh.assert_not_called()
+    mock_run.assert_called_once()
+
+def test_render_unknown_mode(capsys):
+    """Tests that an unknown mode triggers an error message."""
+    s = sphere()
+    s.render(mode='invalid_mode')
+    captured = capsys.readouterr()
+    assert "ERROR: Unknown render mode 'invalid_mode'" in captured.err

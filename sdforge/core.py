@@ -128,10 +128,23 @@ class SDFNode(ABC):
         """
         return self.to_callable()
 
-    def render(self, camera=None, light=None, debug=None, **kwargs):
-        """Renders the SDF object in a live-updating viewer."""
+    def render(self, camera=None, light=None, debug=None, mode='auto', **kwargs):
+        """
+        Renders the SDF object.
+
+        Args:
+            camera (Camera, optional): The camera settings.
+            light (Light, optional): The light settings.
+            debug (Debug, optional): Debug visualization mode.
+            mode (str, optional): The rendering backend to use.
+                                  - 'auto': (Default) Automatically picks 'mesh' if in a notebook, else 'window'.
+                                  - 'window': Forces the native OpenGL window.
+                                  - 'mesh': Forces static mesh generation and visualization (requires Trimesh).
+                                            Useful for Colab, headless environments, or setup issues with GLFW.
+            **kwargs: Additional arguments, e.g., 'samples' for mesh generation resolution.
+        """
         from .render import render as render_func
-        render_func(self, camera=camera, light=light, debug=debug, **kwargs)
+        return render_func(self, camera=camera, light=light, debug=debug, mode=mode, **kwargs)
 
     def save(self, path, bounds=None, samples=2**22, verbose=True, algorithm='marching_cubes', adaptive=False, octree_depth=8, vertex_colors=False, decimate_ratio=None):
         """
@@ -183,7 +196,7 @@ class SDFNode(ABC):
         """
         self.render(save_frame=path, watch=False, camera=camera, light=light, **kwargs)
 
-    def estimate_bounds(self, resolution=64, search_bounds=((-2, -2, -2), (2, 2, 2)), padding=0.1, verbose=True):
+    def estimate_bounds(self, resolution=64, search_bounds=((-5, -5, -5), (5, 5, 5)), padding=0.1, verbose=True):
         """
         Estimates the bounding box of the SDF object by sampling a grid.
         """
@@ -207,6 +220,10 @@ class SDFNode(ABC):
 
         min_coords = np.min(inside_points, axis=0)
         max_coords = np.max(inside_points, axis=0)
+
+        step_size = np.array([(search_bounds[1][i] - search_bounds[0][i]) / (resolution - 1) for i in range(3)])
+        min_coords -= step_size
+        max_coords += step_size
 
         size = max_coords - min_coords
         size[size < 1e-6] = padding

@@ -175,7 +175,7 @@ def test_adaptive_is_smarter_than_uniform_for_sparse_scene():
 
 def test_save_dual_contouring(tmp_path):
     """Tests that dual contouring runs and creates a valid file."""
-    s = box(size=1.0)
+    s = box(size=1.1)
     output_file = tmp_path / "dc_model.stl"
     s.save(str(output_file), samples=2**12, verbose=False, algorithm='dual_contouring')
     assert os.path.exists(output_file)

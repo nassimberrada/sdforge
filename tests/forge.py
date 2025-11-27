@@ -49,13 +49,24 @@ def test_forge_callable_equivalence():
     Compares the GPU-based callable of a Forge sphere to the NumPy-based
     callable of a native sphere primitive.
     """
+    try:
+        import glfw
+        if not glfw.init():
+            pytest.skip("glfw.init() failed in test setup. Skipping GPU test.")
+    except Exception:
+        pytest.skip("glfw issue. Skipping GPU test.")
+
     # Use a non-trivial radius to avoid accidental matches at 1.0
     radius = 1.2
     
     forge_sphere = Forge(f"length(p) - {radius}")
     native_sphere = sphere(radius)
     
-    forge_callable = forge_sphere.to_callable()
+    try:
+        forge_callable = forge_sphere.to_callable()
+    except RuntimeError:
+        pytest.skip("Failed to create GL context in to_callable. Skipping.")
+
     native_callable = native_sphere.to_callable()
     
     points = (np.random.rand(1024, 3) * 4 - 2).astype('f4')

@@ -98,8 +98,6 @@ def _adaptive_meshing(sdf_callable, bounds, max_depth, verbose):
         if verbose:
             print(f"  - Octree depth {depth+1}/{max_depth}, evaluating {len(voxels)} voxels...")
 
-        # --- FIX STARTS HERE: Complete rewrite of the evaluation and subdivision logic ---
-        
         # 1. Collect ALL unique points needed for this level (corners and centers)
         mins, maxs = voxels[:, 0], voxels[:, 1]
         centers = (mins + maxs) / 2.0
@@ -171,7 +169,6 @@ def _adaptive_meshing(sdf_callable, bounds, max_depth, verbose):
             voxels = np.concatenate(all_children, axis=0)
         else:
             voxels = surface_voxels
-        # --- FIX ENDS HERE ---
 
     leaf_voxels = voxels
     if verbose:
@@ -329,15 +326,34 @@ def _dual_contouring(sdf_callable, bounds, resolution, verbose):
                             
     return np.array(verts), np.array(faces)
 
+def generate(sdf_obj, bounds=None, samples=2**22, algorithm='marching_cubes', adaptive=False, octree_depth=8, decimate_ratio=None, verbose=True):
+    """
+    Generates a mesh (vertices and faces) from an SDF object.
+    
+    Args:
+        sdf_obj (SDFNode): The object to mesh.
+        bounds (tuple, optional): The bounding box. Estimated if None.
+        samples (int, optional): Number of samples for uniform grid.
+        algorithm (str, optional): 'marching_cubes' or 'dual_contouring'.
+        adaptive (bool, optional): Use adaptive octree meshing.
+        octree_depth (int, optional): Depth for adaptive meshing.
+        decimate_ratio (float, optional): Ratio of triangles to remove (0.0 - 1.0).
+        verbose (bool, optional): Print status.
 
-def save(sdf_obj, path, bounds, samples, verbose, algorithm, adaptive, vertex_colors, decimate_ratio=None, octree_depth=8):
+    Returns:
+        tuple: (verts, faces) where verts is (N, 3) float32 and faces is (M, 3) int.
+    """
     if algorithm not in ['marching_cubes', 'dual_contouring']:
         print(f"WARNING: Algorithm '{algorithm}' is not supported. Falling back to 'marching_cubes'.", file=sys.stderr)
         algorithm = 'marching_cubes'
 
-    start_time = time.time()
+    if bounds is None:
+        if verbose:
+            print("INFO: No bounds provided, estimating automatically.", file=sys.stderr)
+        bounds = sdf_obj.estimate_bounds(verbose=verbose)
+
     if verbose:
-        print(f"INFO: Generating mesh for '{path}'...")
+        print(f"INFO: Generating mesh...")
         print(f"  - Bounds: {bounds}")
 
     try:
@@ -403,7 +419,7 @@ def save(sdf_obj, path, bounds, samples, verbose, algorithm, adaptive, vertex_co
 
     if len(verts) == 0 or len(faces) == 0:
         print("ERROR: Mesh generation failed. The surface may not intersect the specified bounds or the algorithm returned no geometry.", file=sys.stderr)
-        return
+        return np.array([]), np.array([])
 
     if decimate_ratio is not None:
         if not (0 < decimate_ratio < 1):
@@ -431,7 +447,20 @@ def save(sdf_obj, path, bounds, samples, verbose, algorithm, adaptive, vertex_co
                 print("         Please install it via: pip install trimesh", file=sys.stderr)
             except Exception as e:
                 print(f"ERROR: Mesh simplification failed: {e}", file=sys.stderr)
+
+    return verts, faces
+
+def save(sdf_obj, path, bounds, samples, verbose, algorithm, adaptive, vertex_colors, decimate_ratio=None, octree_depth=8):
+    start_time = time.time()
     
+    verts, faces = generate(sdf_obj, bounds, samples, algorithm, adaptive, octree_depth, decimate_ratio, verbose)
+    
+    if len(verts) == 0 or len(faces) == 0:
+        return
+
+    if verbose:
+        print(f"INFO: Saving to '{path}'...")
+
     path_lower = path.lower()
     if path_lower.endswith('.stl'):
         _write_binary_stl(path, verts[faces])

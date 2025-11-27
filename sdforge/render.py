@@ -17,6 +17,12 @@ try:
 except ImportError:
     WATCHDOG_AVAILABLE = False
 
+try:
+    get_ipython()
+    _IS_NOTEBOOK = True
+except NameError:
+    _IS_NOTEBOOK = False
+
 MAX_MATERIALS = 64
 _IS_RELOADING = False
 
@@ -358,17 +364,78 @@ class NativeRenderer:
 
         glfw.terminate()
 
-def render(sdf_obj: SDFNode, camera: Camera = None, light: Light = None, watch=True, debug: Debug = None, **kwargs):
-    """Public API to launch the renderer."""
+def _render_mesh(sdf_obj: SDFNode, bounds=None, samples=2**18, adaptive=False, octree_depth=8, verbose=True):
+    """
+    Renders the scene as a static mesh using trimesh.
+    This works in headless environments and notebooks.
+    """
+    from . import mesh as mesh_utils
+    try:
+        import trimesh
+    except ImportError:
+        print("ERROR: Mesh rendering mode requires 'trimesh'. Please install it via 'pip install trimesh'.", file=sys.stderr)
+        return
+    verts, faces = mesh_utils.generate(
+        sdf_obj, 
+        bounds=bounds, 
+        samples=samples, 
+        adaptive=adaptive, 
+        octree_depth=octree_depth,
+        verbose=verbose
+    )
+    if len(verts) == 0:
+        print("WARNING: No geometry generated.", file=sys.stderr)
+        return
+    mesh = trimesh.Trimesh(vertices=verts, faces=faces)
+    mesh.visual.face_colors = [200, 200, 220, 255]    
+    return mesh.show()
+
+def render(sdf_obj: SDFNode, camera: Camera = None, light: Light = None, watch=True, debug: Debug = None, mode='auto', **kwargs):
+    """
+    Public API to launch the renderer.
+    
+    Args:
+        sdf_obj (SDFNode): The scene to render.
+        camera (Camera, optional): The camera settings.
+        light (Light, optional): The light settings.
+        watch (bool, optional): Whether to watch the script file for changes (hot-reloading).
+        debug (Debug, optional): Debug visualization mode.
+        mode (str, optional): The rendering backend to use.
+                              - 'auto': (Default) Automatically picks 'mesh' if in a notebook, else 'window'.
+                              - 'window': Forces the native OpenGL window (requires ModernGL/GLFW).
+                              - 'mesh': Forces static mesh generation and visualization (requires Trimesh).
+                                        Useful for Colab, headless environments, or setup issues with GLFW.
+        **kwargs: Additional arguments for the renderer (e.g. `samples` for mesh mode).
+    """
 
     if _IS_RELOADING:
         return
 
-    try:
-        import moderngl, glfw
-    except ImportError:
-        print("ERROR: Live rendering requires 'moderngl' and 'glfw'.", file=sys.stderr)
-        return
-    # Pass `watch` parameter to the renderer
-    renderer = NativeRenderer(sdf_obj, camera=camera, light=light, watch=watch, debug=debug, **kwargs)
-    renderer.run()
+    if mode == 'auto':
+        mode = 'mesh' if _IS_NOTEBOOK else 'window'
+    
+    if mode == 'mesh':
+        return _render_mesh(sdf_obj, **kwargs)
+
+    elif mode == 'window':
+        try:
+            import moderngl, glfw
+        except ImportError:
+            print("ERROR: Native window rendering requires 'moderngl' and 'glfw'.", file=sys.stderr)
+            print("       Try using `mode='mesh'` to visualize the object without a window.", file=sys.stderr)
+            return
+        
+        if not os.environ.get("DISPLAY") and sys.platform == 'linux':
+             print("WARNING: No display detected. Window creation may fail.", file=sys.stderr)
+             print("         Consider using `mode='mesh'` for headless visualization.", file=sys.stderr)
+
+        renderer = NativeRenderer(sdf_obj, camera=camera, light=light, watch=watch, debug=debug, **kwargs)
+        try:
+            renderer.run()
+        except RuntimeError as e:
+            print(f"ERROR: Failed to launch native window: {e}", file=sys.stderr)
+            print("       This often happens due to missing drivers or a headless environment.", file=sys.stderr)
+            print("       Try using `mode='mesh'` to fallback to static visualization.", file=sys.stderr)
+    
+    else:
+        print(f"ERROR: Unknown render mode '{mode}'. Use 'auto', 'window', or 'mesh'.", file=sys.stderr)

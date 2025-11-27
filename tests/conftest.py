@@ -35,13 +35,24 @@ def mgl_context():
     if not HEADLESS_SUPPORTED:
         pytest.skip("This test requires moderngl and glfw for headless GLSL evaluation.")
     
-    if not glfw.init():
-        raise RuntimeError("glfw.init() failed")
+    try:
+        if not glfw.init():
+            pytest.skip("glfw.init() failed (headless environment?). Skipping GPU tests.")
+    except Exception:
+        pytest.skip("glfw.init() raised exception. Skipping GPU tests.")
     
     glfw.window_hint(glfw.VISIBLE, False)
-    win = glfw.create_window(1, 1, "pytest-headless", None, None)
-    glfw.make_context_current(win)
-    ctx = moderngl.create_context(require=430)
+    try:
+        win = glfw.create_window(1, 1, "pytest-headless", None, None)
+        if not win:
+            glfw.terminate()
+            pytest.skip("glfw.create_window failed. Skipping GPU tests.")
+            
+        glfw.make_context_current(win)
+        ctx = moderngl.create_context(require=430)
+    except Exception as e:
+        glfw.terminate()
+        pytest.skip(f"Failed to create ModernGL context: {e}")
     
     yield ctx
     glfw.terminate()

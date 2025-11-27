@@ -326,7 +326,7 @@ def _dual_contouring(sdf_callable, bounds, resolution, verbose):
                             
     return np.array(verts), np.array(faces)
 
-def generate(sdf_obj, bounds=None, samples=2**22, algorithm='marching_cubes', adaptive=False, octree_depth=8, decimate_ratio=None, verbose=True):
+def generate(sdf_obj, bounds=None, samples=2**22, algorithm='marching_cubes', adaptive=False, octree_depth=8, decimate_ratio=None, voxel_size=None, verbose=True):
     """
     Generates a mesh (vertices and faces) from an SDF object.
     
@@ -338,6 +338,7 @@ def generate(sdf_obj, bounds=None, samples=2**22, algorithm='marching_cubes', ad
         adaptive (bool, optional): Use adaptive octree meshing.
         octree_depth (int, optional): Depth for adaptive meshing.
         decimate_ratio (float, optional): Ratio of triangles to remove (0.0 - 1.0).
+        voxel_size (float, optional): Target grid spacing in world units. Overrides `samples` and `octree_depth` if set.
         verbose (bool, optional): Print status.
 
     Returns:
@@ -351,10 +352,36 @@ def generate(sdf_obj, bounds=None, samples=2**22, algorithm='marching_cubes', ad
         if verbose:
             print("INFO: No bounds provided, estimating automatically.", file=sys.stderr)
         bounds = sdf_obj.estimate_bounds(verbose=verbose)
+    
+    min_c, max_c = np.array(bounds[0]), np.array(bounds[1])
+    size_vec = max_c - min_c
+    
+    # Calculate derived parameters if voxel_size is provided
+    if voxel_size is not None:
+        if voxel_size <= 0:
+            raise ValueError("voxel_size must be positive.")
+        
+        if adaptive:
+            # Determine depth required to achieve voxel_size resolution
+            # Effective leaf size is approx max_dim / (2**depth)
+            max_dim = np.max(size_vec)
+            if max_dim < 1e-9: octree_depth = 1 # Edge case: point-sized bounds
+            else:
+                octree_depth = int(np.ceil(np.log2(max_dim / voxel_size)))
+            
+            # Clamp minimal depth
+            octree_depth = max(2, octree_depth)
+            
+            if verbose:
+                print(f"INFO: voxel_size={voxel_size} implies octree_depth={octree_depth} for max dimension {max_dim:.3f}.")
+        
+        # For non-adaptive algorithms, step size is set directly in the logic blocks below
 
     if verbose:
         print(f"INFO: Generating mesh...")
         print(f"  - Bounds: {bounds}")
+        if voxel_size:
+            print(f"  - Target Voxel Size: {voxel_size}")
 
     try:
         sdf_callable = sdf_obj.to_callable()
@@ -368,7 +395,7 @@ def generate(sdf_obj, bounds=None, samples=2**22, algorithm='marching_cubes', ad
         if algorithm == 'dual_contouring':
             raise ValueError("Dual Contouring algorithm does not currently support adaptive meshing. Please set `adaptive=False`.")
 
-        if samples != 2**22:
+        if voxel_size is None and samples != 2**22:
              print(f"WARNING: `samples` parameter is ignored when `adaptive=True`. Using `octree_depth={octree_depth}` instead.", file=sys.stderr)
 
         volume, origin, step_size = _adaptive_meshing(sdf_callable, bounds, octree_depth, verbose)
@@ -379,20 +406,34 @@ def generate(sdf_obj, bounds=None, samples=2**22, algorithm='marching_cubes', ad
             except (ValueError, RuntimeError):
                 verts = []
     elif algorithm == 'dual_contouring':
-        res = int(round(samples**(1/3)))
-        if res < 4:
-            print(f"WARNING: samples={samples} results in a very low grid resolution ({res}). Mesh quality may be poor. Increasing resolution.", file=sys.stderr)
-            res = 4
-        verts, faces = _dual_contouring(sdf_callable, bounds, (res, res, res), verbose)
+        if voxel_size is not None:
+            res_x = int(size_vec[0] / voxel_size)
+            res_y = int(size_vec[1] / voxel_size)
+            res_z = int(size_vec[2] / voxel_size)
+            # Ensure at least minimal grid
+            res_x, res_y, res_z = max(4, res_x), max(4, res_y), max(4, res_z)
+            resolution = (res_x, res_y, res_z)
+        else:
+            res = int(round(samples**(1/3)))
+            if res < 4:
+                print(f"WARNING: samples={samples} results in a very low grid resolution ({res}). Mesh quality may be poor. Increasing resolution.", file=sys.stderr)
+                res = 4
+            resolution = (res, res, res)
+            
+        verts, faces = _dual_contouring(sdf_callable, bounds, resolution, verbose)
     else: # Uniform marching cubes
-        if octree_depth != 8:
-             print("WARNING: `octree_depth` parameter is ignored when `adaptive=False`. Using `samples` instead.", file=sys.stderr)
-        
-        volume_size = (bounds[1][0] - bounds[0][0]) * (bounds[1][1] - bounds[0][1]) * (bounds[1][2] - bounds[0][2])
-        step = (volume_size / samples) ** (1 / 3)
+        if voxel_size is not None:
+            step = voxel_size
+        else:
+            if octree_depth != 8:
+                 print("WARNING: `octree_depth` parameter is ignored when `adaptive=False`. Using `samples` instead.", file=sys.stderr)
+            
+            volume_size = size_vec[0] * size_vec[1] * size_vec[2]
+            step = (volume_size / samples) ** (1 / 3)
 
         if verbose:
-            print(f"  - Target samples: {samples}")
+            if voxel_size is None:
+                print(f"  - Target samples: {samples}")
             print(f"  - Voxel step size: {step:.4f}")
 
         X = np.arange(bounds[0][0], bounds[1][0], step)
@@ -450,10 +491,10 @@ def generate(sdf_obj, bounds=None, samples=2**22, algorithm='marching_cubes', ad
 
     return verts, faces
 
-def save(sdf_obj, path, bounds, samples, verbose, algorithm, adaptive, vertex_colors, decimate_ratio=None, octree_depth=8):
+def save(sdf_obj, path, bounds, samples, verbose, algorithm, adaptive, vertex_colors, decimate_ratio=None, octree_depth=8, voxel_size=None):
     start_time = time.time()
     
-    verts, faces = generate(sdf_obj, bounds, samples, algorithm, adaptive, octree_depth, decimate_ratio, verbose)
+    verts, faces = generate(sdf_obj, bounds, samples, algorithm, adaptive, octree_depth, decimate_ratio, voxel_size, verbose)
     
     if len(verts) == 0 or len(faces) == 0:
         return

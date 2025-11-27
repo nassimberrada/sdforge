@@ -151,7 +151,7 @@ class SDFNode(ABC):
         from .render import render as render_func
         return render_func(self, camera=camera, light=light, debug=debug, mode=mode, **kwargs)
 
-    def save(self, path, bounds=None, samples=2**22, verbose=True, algorithm='marching_cubes', adaptive=False, octree_depth=8, vertex_colors=False, decimate_ratio=None):
+    def save(self, path, bounds=None, samples=2**22, verbose=True, algorithm='marching_cubes', adaptive=False, octree_depth=8, vertex_colors=False, decimate_ratio=None, voxel_size=None):
         """
         Generates a mesh and saves it to a file.
 
@@ -159,7 +159,7 @@ class SDFNode(ABC):
             path (str): The file path to save to (e.g., 'model.stl', 'model.glb').
             bounds (tuple, optional): The bounding box to mesh within. If None, it will be automatically estimated.
             samples (int, optional): The number of points to sample for uniform grid meshing.
-                                     Higher is more detailed but slower. Ignored if `adaptive=True`.
+                                     Higher is more detailed but slower. Ignored if `voxel_size` is set or `adaptive=True`.
             verbose (bool, optional): Whether to print progress information.
             algorithm (str, optional): Meshing algorithm to use. Supported options:
                                        'marching_cubes', 'dual_contouring'. Defaults to 'marching_cubes'.
@@ -168,11 +168,13 @@ class SDFNode(ABC):
                                        Note: Not currently compatible with 'dual_contouring'.
             octree_depth (int, optional): The maximum subdivision depth for adaptive meshing.
                                           Higher is more detailed. Effective resolution is 2**octree_depth.
-                                          Ignored if `adaptive=False`. Defaults to 8.
+                                          Ignored if `voxel_size` is set or `adaptive=False`. Defaults to 8.
             vertex_colors (bool, optional): Whether to include vertex colors in the export (for .glb/.gltf). Not currently implemented.
             decimate_ratio (float, optional): If specified, simplifies the mesh to reduce triangle count.
                                            A value of 0.9 aims to remove 90% of the triangles.
                                            Requires the 'trimesh' library. Defaults to None (no simplification).
+            voxel_size (float, optional): Target resolution in world units. If provided, this overrides `samples` and `octree_depth` 
+                                          to automatically determine grid size or tree depth. Useful for ensuring consistent physical resolution.
         """
         if bounds is None:
             if verbose:
@@ -180,7 +182,7 @@ class SDFNode(ABC):
             bounds = self.estimate_bounds(verbose=verbose)
 
         from . import mesh
-        mesh.save(self, path, bounds, samples, verbose, algorithm, adaptive, vertex_colors, decimate_ratio, octree_depth=octree_depth)
+        mesh.save(self, path, bounds, samples, verbose, algorithm, adaptive, vertex_colors, decimate_ratio, octree_depth=octree_depth, voxel_size=voxel_size)
 
     def save_frame(self, path, camera=None, light=None, **kwargs):
         """

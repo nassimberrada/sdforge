@@ -187,3 +187,31 @@ def test_save_adaptive_dual_contouring_fails(tmp_path):
     output_file = tmp_path / "test.stl"
     with pytest.raises(ValueError, match="does not currently support adaptive meshing"):
         s.save(str(output_file), adaptive=True, algorithm='dual_contouring', verbose=False)
+
+def test_save_with_voxel_size(tmp_path):
+    """
+    Tests that specifying voxel_size generates a mesh file.
+    """
+    s = sphere(radius=1.0)
+    output_file = tmp_path / "voxel_model.stl"
+    
+    # Use a coarse voxel size for speed
+    s.save(str(output_file), voxel_size=0.5, verbose=False)
+    
+    assert os.path.exists(output_file)
+    assert os.path.getsize(output_file) > 84
+
+def test_save_with_voxel_size_and_adaptive(tmp_path, capsys):
+    """
+    Tests that voxel_size works with adaptive meshing and logs the calculated depth.
+    """
+    s = box(size=4.0)
+    output_file = tmp_path / "voxel_adaptive.stl"
+    
+    # 4.0 size / 0.5 voxel = 8 steps -> 2^3 = 8 -> depth should be around 3 or 4
+    # Max dim might be slightly padded.
+    s.save(str(output_file), voxel_size=0.5, adaptive=True, verbose=True)
+    
+    captured = capsys.readouterr()
+    assert "implies octree_depth=" in captured.out
+    assert os.path.exists(output_file)

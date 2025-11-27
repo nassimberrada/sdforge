@@ -86,6 +86,25 @@ def adaptive_save_example():
     else:
         print("Error: Model saving failed.")
 
+def voxel_size_save_example():
+    """
+    Saves a mesh by specifying a physical resolution (voxel_size) instead of 
+    an abstract sample count. This is useful for engineering applications.
+    """
+    scene = sphere(1.0).round(0.1)
+    
+    output_path = "voxel_size_model.stl"
+    print(f"\nSaving model to '{output_path}' with 0.05 unit voxel size...")
+    
+    # By providing `voxel_size`, the saver automatically calculates
+    # the required grid dimensions (or octree depth) to meet this resolution.
+    scene.save(output_path, voxel_size=0.05, adaptive=True)
+    
+    if os.path.exists(output_path):
+        print(f"To view the model, run: meshlab {output_path}")
+    else:
+        print("Error: Model saving failed.")
+
 def dual_contouring_save_example():
     """
     Saves a mesh using the Dual Contouring algorithm.
@@ -118,6 +137,7 @@ def main():
         "manual": manual_bounds_save_example,
         "decimate": decimated_save_example,
         "adaptive": adaptive_save_example,
+        "voxel": voxel_size_save_example,
         "dual_contouring": dual_contouring_save_example,
     }
     

@@ -1,9 +1,10 @@
 import sys
 import numpy as np
-from sdforge import box, sphere, cylinder, line, Param, Group, X, Y, Z
+from sdforge import box, sphere, cylinder, line, Param, Group, X, Y, Z, cone
 from sdforge.api.constraints import (
     tangent_offset,
     midpoint,
+    distribute,
 )
 
 def dimensional_equality_example():
@@ -116,6 +117,42 @@ def offset_and_bounds_example():
     final_scene = enclosure.color(0.4, 0.4, 0.5) | base_part.color(1, 0, 0) | placed_pillar
     return final_scene
 
+def stacking_example():
+    """
+    Demonstrates the .stack() method to place objects relative to each other
+    without manual coordinate calculations.
+    """
+    # 1. Start with a large base
+    base = box(size=(3.0, 0.5, 3.0)).round(0.1)
+    
+    # 2. Stack a cylinder on top (+Y)
+    # The system calculates the top face of the box and bottom face of the cylinder
+    # and positions them to touch.
+    pedestal = cylinder(radius=1.0, height=1.0)
+    stage_1 = base.stack(pedestal, direction=(0, 1, 0))
+    
+    # 3. Stack a sphere on top of the resulting union, with a small gap
+    orb = sphere(radius=0.8).color(1, 0.2, 0.2)
+    final_scene = stage_1.stack(orb, direction=(0, 1, 0), spacing=0.2)
+    
+    return final_scene
+
+def distribute_example():
+    """
+    Demonstrates the distribute() function to layout multiple objects sequentially.
+    """
+    shapes = [
+        box(1.0).color(0.8, 0.2, 0.2),       # Red Box
+        sphere(0.6).color(0.2, 0.8, 0.2),    # Green Sphere
+        cylinder(0.4, 1.5).color(0.2, 0.2, 0.8), # Blue Cylinder
+        cone(1.0, 0.5).color(0.8, 0.8, 0.2)  # Yellow Cone
+    ]
+    
+    # Distribute them along the X axis with a 0.5 unit gap between each
+    scene = distribute(shapes, direction=(1, 0, 0), spacing=0.5)
+    
+    return scene
+
 def design_patterns_example():
     """
     Demonstrates achieving constraints like concentricity and symmetry
@@ -148,6 +185,8 @@ def main():
         "alignment": perpendicular_and_parallel_example,
         "angle_midpoint": angle_and_midpoint_example,
         "offset_bounds": offset_and_bounds_example,
+        "stack": stacking_example,
+        "distribute": distribute_example,
         "patterns": design_patterns_example,
     }
 

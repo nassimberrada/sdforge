@@ -390,6 +390,25 @@ class SDFNode(ABC):
         from .api.constraints import bounding_box
         return bounding_box(self, padding)
 
+    def stack(self, other: 'SDFNode', direction, spacing: float = 0.0) -> 'SDFNode':
+        """
+        Stacks the `other` object onto `self` along the given direction.
+        
+        This method automatically estimates the bounding boxes of both objects,
+        aligns their centers on the plane perpendicular to the direction, and
+        places `other` such that it touches `self` (plus spacing).
+
+        Args:
+            other (SDFNode): The object to be stacked onto this one.
+            direction (tuple): The vector direction of the stack (e.g., (0,1,0) to stack on top).
+            spacing (float, optional): The gap between the objects. Defaults to 0.0.
+
+        Returns:
+            SDFNode: A union of self and the transformed other.
+        """
+        from .api.constraints import stack
+        return stack(self, other, direction, spacing)
+
     # --- Material ---
     def color(self, r, g=None, b=None, mask: 'SDFNode' = None) -> 'SDFNode':
         """

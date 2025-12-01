@@ -1,23 +1,19 @@
 import pytest
 import numpy as np
-from sdforge.render import SceneCompiler
+from sdforge.api.scene import SceneCompiler
 import os
 import shutil
 import subprocess
 import tempfile
-import re
 
-# --- Dependency Check for GLSL Validator ---
 GLSL_VALIDATOR = shutil.which("glslangValidator")
 SKIP_GLSL = os.environ.get("SKIP_GLSL", "") == "1"
 
-# Mark for skipping tests if the validator is not available
 requires_glsl_validator = pytest.mark.skipif(
     not GLSL_VALIDATOR or SKIP_GLSL,
     reason="Requires glslangValidator on the PATH. Set SKIP_GLSL=1 to disable."
 )
 
-# --- Dependency Check for Headless Rendering ---
 try:
     import moderngl
     import glfw
@@ -25,7 +21,6 @@ try:
 except ImportError:
     HEADLESS_SUPPORTED = False
 
-# --- Shared Test Data ---
 np.random.seed(42)
 TEST_POINTS = (np.random.rand(4096, 3) * 4 - 2).astype('f4')
 
@@ -119,7 +114,6 @@ def validate_glsl():
         Wraps scene_code in a minimal fragment shader and runs the validator.
         Raises an AssertionError on failure.
         """
-        # Collect uniforms from the sdf_obj to declare them in the test shader
         uniforms = {}
         if sdf_obj:
             sdf_obj._collect_uniforms(uniforms)

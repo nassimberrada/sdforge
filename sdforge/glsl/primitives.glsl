@@ -1,5 +1,3 @@
-// --- 3D Primitives ---
-
 float sdSphere(in vec3 p, in float r) {
     return length(p) - r;
 }
@@ -14,7 +12,7 @@ float sdRoundedBox(in vec3 p, in vec3 b, in float r) {
     return length(max(q, 0.0)) - r;
 }
 
-float sdTorus(in vec3 p, in vec2 t) { // t.x=major radius, t.y=minor radius
+float sdTorus(in vec3 p, in vec2 t) {
     vec2 q = vec2(length(p.xz) - t.x, p.y);
     return length(q) - t.y;
 }
@@ -25,8 +23,7 @@ float sdCapsule(in vec3 p, in vec3 a, in vec3 b, in float r) {
     return length(pa - ba * h) - r;
 }
 
-float sdCone( in vec3 p, in vec2 c ) // c.x=height, c.y=radius
-{
+float sdCone( in vec3 p, in vec2 c ) {
     vec2 q = vec2( length(p.xz), p.y );
     vec2 w = vec2( c.y, c.x );    
     vec2 a = q - w*clamp( dot(q,w)/dot(w,w), 0.0, 1.0 );
@@ -37,11 +34,11 @@ float sdCone( in vec3 p, in vec2 c ) // c.x=height, c.y=radius
     return sqrt(d)*sign(s);
 }
 
-float sdPlane(in vec3 p, in vec4 n) { // n.xyz is normal, n.w is offset
+float sdPlane(in vec3 p, in vec4 n) {
     return dot(p, n.xyz) + n.w;
 }
 
-float sdHexPrism(in vec3 p, in vec2 h) { // h.x=radius, h.y=half-height
+float sdHexPrism(in vec3 p, in vec2 h) {
     const vec3 k = vec3(-0.8660254, 0.5, 0.57735026);
     p = abs(p);
     p.xy -= 2.0 * min(dot(k.xy, p.xy), 0.0) * k.xy;
@@ -56,13 +53,13 @@ float sdOctahedron(in vec3 p, in float s) {
     return (p.x + p.y + p.z - s) * 0.57735027;
 }
 
-float sdEllipsoid(in vec3 p, in vec3 r) { // r is radii on each axis
+float sdEllipsoid(in vec3 p, in vec3 r) {
     float k0 = length(p / r);
     float k1 = length(p / (r * r));
     return k0 * (k0 - 1.0) / k1;
 }
 
-float sdCylinder(vec3 p, vec2 h) { // h.x=radius, h.y=half-height
+float sdCylinder(vec3 p, vec2 h) {
     vec2 d = abs(vec2(length(p.xz), p.y)) - h;
     return min(max(d.x, d.y), 0.0) + length(max(d, 0.0));
 }
@@ -94,9 +91,7 @@ float sdCappedCone( vec3 p, float h, float r1, float r2 )
 
 float sdPyramid( vec3 p, float h )
 {
-    // Center the pyramid vertically
-    p.y += h * 0.5;
-    
+    p.y += h * 0.5;    
     float m2 = h*h + 0.25;
     p.xz = abs(p.xz);
     p.xz = (p.z>p.x) ? p.zx : p.xz;
@@ -110,7 +105,6 @@ float sdPyramid( vec3 p, float h )
     return sqrt( (d2+q.z*q.z)/m2 ) * sign(max(q.z,-p.y));
 }
 
-// Helper for Bezier Cube Root solver
 int solveCubic(float a, float b, float c, out float r[3])
 {
     float p = b - a*a / 3.0;
@@ -143,7 +137,6 @@ float sdBezier(vec3 pos, vec3 A, vec3 B, vec3 C, float r)
     float kz = kk * dot(d,a);
     float res = 0.0;
     float roots[3];
-    // kx, ky are 1/3rd coeffs. SolveCubic expects full coeffs.
     int n = solveCubic(3.0*kx, 3.0*ky, kz, roots);
     float t = clamp(roots[0], 0.0, 1.0);
     vec3 q = d + (c + b*t)*t;
@@ -158,8 +151,6 @@ float sdBezier(vec3 pos, vec3 A, vec3 B, vec3 C, float r)
     }
     return sqrt(res) - r;
 }
-
-// --- 2D Primitives ---
 
 float sdCircle(in vec2 p, in float r) {
     return length(p) - r;

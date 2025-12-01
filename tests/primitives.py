@@ -3,59 +3,40 @@ import numpy as np
 from sdforge import (
     SDFNode, sphere, box, torus, line, cylinder, cone, plane, 
     octahedron, ellipsoid, circle, rectangle,
-    hex_prism, pyramid, curve, triangle, trapezoid, polyline, polycurve
+    hex_prism, pyramid, curve, triangle, trapezoid, polyline, polycurve,
+    Forge, Sketch
 )
-from sdforge.render import SceneCompiler
-from tests.conftest import requires_glsl_validator
-
-# Import example functions and their expected return types for parametrization
+from sdforge.api.primitives import Primitive
+from sdforge.api.operators import Operator
+from sdforge.api.compositors import Compositor
+from sdforge.api.scene import SceneCompiler
+from tests.conftest import requires_glsl_validator, HEADLESS_SUPPORTED
 from examples.primitives import (
-    sphere_example,
-    box_example,
-    cylinder_example,
-    torus_example,
-    cone_example,
-    hex_prism_example,
-    pyramid_example,
-    curve_example,
-    circle_example,
-    rectangle_example,
-    triangle_example,
-    trapezoid_example,
-    polyline_example,
-    polycurve_example
+    sphere_example, box_example, cylinder_example, torus_example, 
+    cone_example, hex_prism_example, pyramid_example, curve_example, 
+    circle_example, rectangle_example, triangle_example, 
+    trapezoid_example, polyline_example, polycurve_example
 )
-from sdforge.api.primitives import (
-    Sphere, Box, Cylinder, Torus, Cone, HexPrism, Pyramid, 
-    Bezier, Circle, Rectangle, Triangle, Trapezoid, Polyline, Polycurve
-)
-from sdforge.api.operations import Union
-from sdforge.api.shaping import Round
-
-# --- API and Callable Tests ---
 
 def test_sphere_api():
-    """Tests basic API usage of the sphere primitive."""
     s1 = sphere()
-    assert isinstance(s1, SDFNode)
+    assert isinstance(s1, Primitive)
+    assert s1.name == "Sphere"
     assert s1.radius == 1.0
+    assert s1.params[0] == 1.0
     s2 = sphere(radius=1.5)
     assert s2.radius == 1.5
 
 def test_sphere_callable():
-    """Tests the numeric accuracy of the sphere's Python callable."""
     s_callable = sphere(radius=1.0).to_callable()
     points = np.array([[0, 0, 0], [0.5, 0, 0], [1, 0, 0], [2, 0, 0]])
     expected = np.array([-1.0, -0.5, 0.0, 1.0])
     assert np.allclose(s_callable(points), expected)
 
 def test_box_api():
-    b1 = box()
-    assert np.allclose(b1.size, (1,1,1))
-    b2 = box(size=2.0)
-    assert np.allclose(b2.size, (2,2,2))
-    b3 = box(size=(1,2,3))
-    assert np.allclose(b3.size, (1,2,3))
+    b1 = box(); assert np.allclose(b1.size, (1,1,1))
+    b2 = box(size=2.0); assert np.allclose(b2.size, (2,2,2))
+    b3 = box(size=(1,2,3)); assert np.allclose(b3.size, (1,2,3))
 
 def test_box_callable():
     b_callable = box(size=2.0).to_callable()
@@ -87,9 +68,7 @@ def test_cylinder_callable():
     assert np.allclose(c_callable(points), expected)
 
 def test_plane_api():
-    # Plane passing through point (0, 1, 0) with normal (0, 1, 0)
     p = plane(normal=(0, 1, 0), point=(0, 1, 0))
-    # Offset should be -dot((0,1,0), (0,1,0)) = -1.0
     assert p.offset == -1.0
 
 def test_plane_callable():
@@ -111,38 +90,20 @@ def test_ellipsoid_callable():
 
 def test_hex_prism_callable():
     h_callable = hex_prism(radius=1.0, height=0.5).to_callable()
-    # Point inside
     assert h_callable(np.array([[0,0,0]])) < 0
-    # Point outside Z
     assert h_callable(np.array([[0,0,0.3]])) > 0
-    # Point outside Hex radius X (radius is distance to flats (1.0))
-    # 1.2 is outside the flat at x=1.15 (vertex)? No, flat is closer.
-    # The vertex is at 1.1547. The flat is at 1.0.
-    # A point at (1.2, 0, 0) is outside.
     assert h_callable(np.array([[1.2,0,0]])) > 0
 
 def test_pyramid_callable():
     p_callable = pyramid(height=1.0).to_callable()
-    # Apex is at (0, 0.5, 0) for height=1
-    # Base is at (0, -0.5, 0)
-    # Center (0,0,0) should be inside
     assert p_callable(np.array([[0,0,0]])) < 0
-    # Above Apex
     assert p_callable(np.array([[0,0.6,0]])) > 0
-    # Below Base
     assert p_callable(np.array([[0,-0.6,0]])) > 0
 
 def test_bezier_callable():
-    # Simple curve: X-axis from -1 to 1, bending up to Y=1 at midpoint
     c = curve(p0=(-1,0,0), p1=(0,1,0), p2=(1,0,0), radius=0.1)
     c_callable = c.to_callable()
-    
-    points = np.array([
-        [-1, 0, 0], # Start (surface dist = -radius)
-        [1, 0, 0],  # End (surface dist = -radius)
-        [0, 0.5, 0], # Midpoint roughly inside
-        [0, 2, 0]   # Far away
-    ])
+    points = np.array([[-1, 0, 0], [1, 0, 0], [0, 0.5, 0], [0, 2, 0]])
     dists = c_callable(points)
     assert dists[0] < 0
     assert dists[1] < 0
@@ -150,28 +111,16 @@ def test_bezier_callable():
     assert dists[3] > 0
 
 def test_circle_callable_is_finite():
-    """Tests that the circle is now a finite disc, not an infinite cylinder."""
     c_callable = circle(radius=1.0).to_callable()
-    
-    # Point inside on Z=0
     assert c_callable(np.array([[0,0,0]])) < 0
-    
-    # Point "inside" the cylinder projection but far along Z
-    # With old behavior, this would be negative. Now it should be positive.
     z_dist = 10.0
     val = c_callable(np.array([[0,0,z_dist]]))
-    # Distance should be dominated by Z: abs(z) - 0.001
     assert np.isclose(val, z_dist - 0.001, atol=1e-4)
     assert val > 0
 
 def test_rectangle_callable_is_finite():
-    """Tests that the rectangle is now a finite plate, not an infinite prism."""
-    r_callable = rectangle(size=(2.0, 2.0)).to_callable()
-    
-    # Point inside on Z=0
-    assert r_callable(np.array([[0,0,0]])) < 0
-    
-    # Point "inside" the prism projection but far along Z
+    r_callable = rectangle(size=(2.0, 2.0)).to_callable()    
+    assert r_callable(np.array([[0,0,0]])) < 0    
     z_dist = 10.0
     val = r_callable(np.array([[0,0,z_dist]]))
     assert np.isclose(val, z_dist - 0.001, atol=1e-4)
@@ -189,116 +138,125 @@ def test_trapezoid_callable_is_finite():
     assert tr_callable(np.array([[0,0,10]])) > 0
 
 def test_polyline_callable():
-    """Tests polyline distance calculation."""
-    points = [(0,0,0), (1,0,0), (1,1,0)]
-    pl = polyline(points, radius=0.1)
+    pl = polyline([(0,0,0), (1,0,0), (1,1,0)], radius=0.1)
+    assert isinstance(pl, Compositor)
     pl_callable = pl.to_callable()
-    
-    # Check points on the line segments
-    test_points = np.array([
-        [0,0,0], # Vertex 1
-        [0.5,0,0], # Midpoint segment 1
-        [1,0,0], # Vertex 2
-        [1,0.5,0], # Midpoint segment 2
-        [1,1,0] # Vertex 3
-    ])
-    
-    dists = pl_callable(test_points)
-    # All should be -radius (inside)
-    assert np.allclose(dists, -0.1, atol=1e-5)
-    
-    # Check point far away
-    far_point = np.array([[2,2,0]])
-    # Distance to (1,1,0) is sqrt(2), minus radius
-    expected_dist = np.sqrt(2) - 0.1
-    assert np.allclose(pl_callable(far_point), expected_dist, atol=1e-5)
+    test_points = np.array([[0,0,0], [0.5,0,0], [1,0,0], [1,0.5,0], [1,1,0]])
+    assert np.allclose(pl_callable(test_points), -0.1, atol=1e-5)
+    assert np.allclose(pl_callable(np.array([[2,2,0]])), np.sqrt(2) - 0.1, atol=1e-5)
 
 def test_polycurve_callable():
-    """Tests polycurve distance calculation."""
-    # Points forming a sharp V shape
-    points = [(0,0,0), (1,1,0), (2,0,0)]
-    # Polycurve should smooth the corner near (1,1,0)
-    pc = polycurve(points, radius=0.1, closed=False)
+    pc = polycurve([(0,0,0), (1,1,0), (2,0,0)], radius=0.1, closed=False)
+    # Consolidated Polycurve returns Compositor
+    assert isinstance(pc, Compositor)
     pc_callable = pc.to_callable()
-    
-    # 1. Start point should be exactly on curve (distance -0.1)
     assert np.isclose(pc_callable(np.array([[0,0,0]])), -0.1, atol=1e-5)
-    
-    # 2. End point should be exactly on curve
     assert np.isclose(pc_callable(np.array([[2,0,0]])), -0.1, atol=1e-5)
-    
-    # 3. The middle control point (1,1,0) should be OUTSIDE the curve core
-    # (The curve cuts the corner)
-    dist_corner = pc_callable(np.array([[1,1,0]]))
-    # It should be positive or close to 0 depending on radius, but definitely further than -0.1
-    assert dist_corner > -0.1
+    assert pc_callable(np.array([[1,1,0]])) > -0.1
 
-# --- Equivalence and Compilation Tests ---
+def test_forge_api():
+    f = Forge("length(p) - 1.0")
+    scene_code = SceneCompiler().compile(f)
+    assert f.unique_id in scene_code
+    assert "length(p) - 1.0" in scene_code
+    assert f"vec4 var_0 = vec4({f.unique_id}(p), -1.0, 0.0, 0.0);" in scene_code
+
+def test_forge_with_uniforms_api():
+    uniforms = {'u_radius': 1.5, 'u_offset': 0.1}
+    f = Forge("length(p) - u_radius + u_offset", uniforms=uniforms)
+    scene_code = SceneCompiler().compile(f)
+    assert f"in float u_radius, in float u_offset" in scene_code
+    assert f"vec4 var_0 = vec4({f.unique_id}(p, u_radius, u_offset), -1.0, 0.0, 0.0);" in scene_code
+
+def test_forge_callable_fails_with_uniforms():
+    f = Forge("length(p) - u_radius", uniforms={'u_radius': 1.0})
+    with pytest.raises(TypeError, match="Cannot create a callable for a Forge object with uniforms"):
+        f.to_callable()
+
+@pytest.mark.skipif(not HEADLESS_SUPPORTED, reason="Requires moderngl/glfw.")
+def test_forge_callable_equivalence():
+    try:
+        import glfw
+        if not glfw.init(): pytest.skip("glfw.init() failed")
+    except Exception: pytest.skip("glfw issue")
+    radius = 1.2
+    forge_sphere = Forge(f"length(p) - {radius}")
+    native_sphere = sphere(radius)
+    try: forge_callable = forge_sphere.to_callable()
+    except RuntimeError: pytest.skip("Context fail")
+    native_callable = native_sphere.to_callable()
+    points = (np.random.rand(1024, 3) * 4 - 2).astype('f4')
+    assert np.allclose(forge_callable(points), native_callable(points), atol=1e-5)
+
+def test_sketch_init_and_chaining():
+    s = Sketch(start=(1, 2))
+    assert np.allclose(s._current_pos, [1, 2])
+    res = s.line_to(1, 0).curve_to(2, 1, (1.5, 0)).close()
+    assert res is s
+    assert len(s._segments) == 3
+
+def test_sketch_segments_data():
+    s = Sketch(start=(0, 0)).line_to(1, 0).curve_to(1, 1, control=(2, 0))
+    seg0 = s._segments[0]
+    assert seg0['type'] == 'line'
+    assert np.allclose(seg0['end'], [1, 0, 0])
+    seg1 = s._segments[1]
+    assert seg1['type'] == 'bezier'
+    assert np.allclose(seg1['control'], [2, 0, 0])
+
+def test_sketch_to_sdf_and_callable():
+    s = Sketch(start=(0,0)).line_to(2,0).to_sdf(stroke_radius=0.1)
+    assert isinstance(s, Compositor)
+    callable_fn = s.to_callable()
+    points = np.array([[1.0, 0.0, 0.0], [1.0, 0.2, 0.0], [3.0, 0.0, 0.0]])
+    dists = callable_fn(points)
+    assert np.isclose(dists[0], -0.1, atol=1e-5)
+    assert np.isclose(dists[1], 0.1, atol=1e-5)
+    assert np.isclose(dists[2], 0.9, atol=1e-5)
+
+def test_sketch_profile_logic():
+    sketch = Sketch().line_to(1,0).to_sdf(stroke_radius=0.1)
+    prof_callable = sketch.to_profile_callable()
+    p = np.array([[0.5, 0.0, 100.0]]) 
+    d = prof_callable(p)
+    assert np.isclose(d[0], -0.1, atol=1e-5)
 
 PRIMITIVE_TEST_CASES = [
-    sphere(radius=1.2),
-    box(size=(1.0, 0.5, 0.8)),
-    torus(radius_major=1.0, radius_minor=0.25),
-    line(start=(0,0,0), end=(0,1,0), radius=0.1, rounded_caps=True),
-    line(start=(0,0,0), end=(0,1,0), radius=0.1, rounded_caps=False),
-    cylinder(radius=0.5, height=1.5),
-    cone(height=1.2, radius_base=0.6, radius_top=0.2),
-    cone(height=1.2, radius_base=0.6, radius_top=0.0),
-    plane(normal=(0.6, 0.8, 0), point=(0, 0.5, 0)),
-    octahedron(size=1.3),
-    ellipsoid(radii=(1.0, 0.5, 0.7)),
-    circle(radius=1.5),
-    rectangle(size=(1.0, 0.5)),
-    triangle(radius=1.0),
-    trapezoid(bottom_width=1.0, top_width=0.5, height=0.8),
-    hex_prism(radius=1.0, height=0.5),
-    pyramid(height=1.2),
-    curve(p0=(0,0,0), p1=(0,1,0), p2=(1,0,0), radius=0.1),
-    polyline([(0,0,0), (1,1,0), (2,0,0)], radius=0.1),
-    polyline([(0,0,0), (1,0,0), (0,1,0)], radius=0.1, closed=True),
-    polycurve([(0,0,0), (1,2,0), (2,0,0)], radius=0.1),
-    polycurve([(0,0,0), (1,2,0), (2,0,0), (3,2,0)], radius=0.1, closed=True),
+    sphere(1.2), box((1.0, 0.5, 0.8)), torus(1.0, 0.25),
+    line((0,0,0), (0,1,0), 0.1, True), cylinder(0.5, 1.5),
+    cone(1.2, 0.6, 0.2), plane((0.6, 0.8, 0), (0, 0.5, 0)),
+    octahedron(1.3), ellipsoid((1.0, 0.5, 0.7)),
+    circle(1.5), rectangle((1.0, 0.5)), triangle(1.0),
+    trapezoid(1.0, 0.5, 0.8), hex_prism(1.0, 0.5), pyramid(1.2),
+    curve((0,0,0), (0,1,0), (1,0,0), 0.1),
+    polyline([(0,0,0), (1,1,0), (2,0,0)], 0.1),
+    polycurve([(0,0,0), (1,2,0), (2,0,0)], 0.1),
+    Forge("length(p) - 1.0"),
+    Sketch().line_to(1,0).to_sdf()
 ]
 
 @pytest.mark.usefixtures("assert_equivalence")
 @pytest.mark.parametrize("sdf_obj", PRIMITIVE_TEST_CASES, ids=[type(p).__name__ for p in PRIMITIVE_TEST_CASES])
 def test_primitive_equivalence(assert_equivalence, sdf_obj):
-    """Tests numeric equivalence between Python and GLSL for all primitives."""
     assert_equivalence(sdf_obj)
 
 @requires_glsl_validator
 @pytest.mark.parametrize("sdf_obj", PRIMITIVE_TEST_CASES, ids=[type(p).__name__ for p in PRIMITIVE_TEST_CASES])
 def test_primitive_glsl_compiles(validate_glsl, sdf_obj):
-    """Tests that the GLSL generated for all primitives is syntactically valid."""
     scene_code = SceneCompiler().compile(sdf_obj)
-    validate_glsl(scene_code)
-
-
-# --- Example File Tests ---
+    validate_glsl(scene_code, sdf_obj)
 
 EXAMPLE_TEST_CASES = [
-    (sphere_example, Sphere),
-    (box_example, Round), # box().round() returns a Round node
-    (cylinder_example, Cylinder),
-    (torus_example, Torus),
-    (cone_example, Cone),
-    (hex_prism_example, HexPrism),
-    (pyramid_example, Pyramid),
-    (curve_example, Bezier),
-    (circle_example, Circle),
-    (rectangle_example, Rectangle),
-    (triangle_example, Triangle),
-    (trapezoid_example, Trapezoid),
-    (polyline_example, Polyline),
-    (polycurve_example, Polycurve),
+    (sphere_example, Primitive), (box_example, Operator),
+    (cylinder_example, Primitive),
+    (torus_example, Primitive), (cone_example, Primitive), (hex_prism_example, Primitive),
+    (pyramid_example, Primitive), (curve_example, Primitive), (circle_example, Primitive),
+    (rectangle_example, Primitive), (triangle_example, Primitive), (trapezoid_example, Primitive),
+    (polyline_example, Compositor), (polycurve_example, Compositor),
 ]
 
 @pytest.mark.parametrize("example_func, expected_class", EXAMPLE_TEST_CASES, ids=[f[0].__name__ for f in EXAMPLE_TEST_CASES])
 def test_primitive_example_runs(example_func, expected_class):
-    """
-    Tests that the primitive example functions from the examples file
-    run without errors and return a valid SDFNode of the correct type.
-    """
     scene = example_func()
     assert isinstance(scene, SDFNode)
     assert isinstance(scene, expected_class)

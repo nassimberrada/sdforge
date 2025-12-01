@@ -68,17 +68,17 @@ def warp_comparison_example():
 def repeat_example():
     """Shows infinite repetition of a shape."""
     s = sphere(radius=0.4).translate(X * 0.8)
-    return s.repeat((2.0, 2.0, 0.0))
+    return s.repeat(spacing=(2.0, 2.0, 0.0))
 
 def limited_repeat_example():
     """Shows finite repetition of a shape."""
     s = sphere(radius=0.4)
-    return s.limited_repeat(spacing=(1.2, 0, 0), limits=(2, 0, 0))
+    return s.repeat(spacing=(1.2, 0, 0), count=(2, 0, 0))
 
 def polar_repeat_example():
     """Repeats a shape in a circle around the Y-axis."""
     b = box(size=(0.8, 0.4, 0.2)).round(0.05).translate(X * 1.2)
-    return b.polar_repeat(8)
+    return b.repeat(count=8)
 
 def mirror_example():
     """Creates symmetry by mirroring a shape across axes."""

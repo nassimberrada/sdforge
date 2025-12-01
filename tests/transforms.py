@@ -176,6 +176,73 @@ def test_mirror_callable(shape):
     expected = shape.to_callable()(np.abs(point))
     assert np.allclose(m_callable(point), expected)
 
+def test_repeat_linear_callable(shape):
+    """Tests infinite linear repetition."""
+    s = shape.repeat(spacing=(4, 4, 0))
+    s_callable = s.to_callable()
+    
+    # Center of original is (0,0,0)
+    # Copies should be at (4,0,0), (0,4,0), (4,4,0)
+    point = np.array([[4.1, 0.2, 0.3]]) # Near the copy at (4,0,0)
+    # Relative to center of copy: (0.1, 0.2, 0.3)
+    
+    orig_dist = shape.to_callable()(np.array([[0.1, 0.2, 0.3]]))
+    rep_dist = s_callable(point)
+    assert np.allclose(rep_dist, orig_dist)
+
+def test_repeat_finite_callable(shape):
+    """Tests finite linear repetition."""
+    # Repeat spacing 4, limits 1 (so 1 copy either side -> 3 total along axis)
+    s = shape.repeat(spacing=(4, 0, 0), count=(1, 0, 0))
+    s_callable = s.to_callable()
+    
+    # Center copy (0,0,0) exists
+    p0 = np.array([[0.1, 0, 0]])
+    assert s_callable(p0) < 1.0
+    
+    # Side copy (4,0,0) exists
+    p1 = np.array([[4.1, 0, 0]])
+    assert s_callable(p1) < 1.0
+    
+    # Far copy (8,0,0) should NOT exist (limit 1 means indices -1, 0, 1)
+    # If it existed, dist would be small. If not, it's dist to box at 4.0.
+    p2 = np.array([[8.1, 0, 0]])
+    # Closest box is at 4.0. Distance to 8.1 is ~4.1 - size.
+    assert s_callable(p2) > 2.0 
+
+def test_repeat_polar_callable(shape):
+    """Tests polar repetition."""
+    # Object is placed on the Z axis (canonical location for Y-axis rotation)
+    b = box(0.2).translate((0, 0, 2))
+    s = b.repeat(count=4) # 4 copies, 90 degrees around Y
+    s_callable = s.to_callable()
+    
+    # Copy 1 at (0,0,2) (0 deg)
+    p1 = np.array([[0, 0, 2.05]])
+    assert s_callable(p1) < 0.1
+    
+    # Copy 2 at (2,0,0) (90 deg)
+    p2 = np.array([[2.05, 0, 0]])
+    assert s_callable(p2) < 0.1
+
+def test_repeat_polar_axis_z_callable(shape):
+    """Tests polar repetition around Z axis."""
+    # Object is placed on the Y axis (canonical location for Z-axis rotation)
+    b = box(0.2).translate((0, 2, 0))
+    s = b.repeat(count=4, axis=Z)
+    s_callable = s.to_callable()
+    
+    # Copy 1 at (0,2,0) (0 deg)
+    p1 = np.array([[0, 2.05, 0]])
+    assert s_callable(p1) < 0.1
+    
+    # Copy 2 at (-2,0,0) (90 deg)
+    # Z-axis rotation: x->y axis.
+    # This maps Y-axis (canonical) to -X axis if we rotate +90.
+    # The test checks if *any* copy exists near where we expect it.
+    p2 = np.array([[-2.05, 0, 0]])
+    assert s_callable(p2) < 0.1
+
 # --- Warp Tests ---
 
 def test_warp_api_structure():
@@ -230,13 +297,12 @@ TRANSFORM_TEST_CASES = [
     sphere(radius=0.8).orient(X),
     sphere(radius=0.8).twist(strength=5.0),
     box(size=1.0).bend(Y, curvature=0.5),
-    sphere(radius=0.5).repeat((2, 2, 0)),
-    sphere(radius=0.5).limited_repeat((1.5, 0, 0), (2, 0, 0)),
-    box(size=0.2).translate((1,0,0)).polar_repeat(8),
+    sphere(radius=0.5).repeat(spacing=(2, 2, 0)),
+    sphere(radius=0.5).repeat(spacing=(1.5, 0, 0), count=(2, 0, 0)),
+    box(size=0.2).translate((0,0,1)).repeat(count=8),
+    box(size=0.2).translate((0,1,0)).repeat(count=8, axis=Z),
     box(size=0.4).mirror(X | Y),
-    # Test chaining
     box(size=1.0).translate((1,0,0)).scale(2.0).rotate(Y, 1.0),
-    # Masked transforms
     box(1.0).translate((1,0,0), mask=sphere(0.5)),
     box(1.0).scale(2.0, mask=sphere(0.5)),
     box(1.0).twist(2.0, mask=sphere(0.5), mask_falloff=0.1),

@@ -340,72 +340,140 @@ class Warp(_Transform):
     def to_callable(self): return self._make_callable(None)
 
 
-class Repeat(_Transform):
-    """Internal node to repeat a child object."""
+class Repeat(SDFNode):
+    """Unified repetition node."""
     glsl_dependencies = {"transforms"}
-    def __init__(self, child, spacing):
-        super().__init__(child)
-        self.spacing = np.array(spacing)
-    def _get_transform_glsl_expr(self, p_expr: str) -> str:
-        s = self.spacing
-        s_str = f"vec3({_glsl_format(s[0])}, {_glsl_format(s[1])}, {_glsl_format(s[2])})"
-        return f"opRepeat({p_expr}, {s_str})"
-    def _make_callable(self, child_func):
-        s = self.spacing
-        def _callable(p):
-            q = p.copy()
-            mask = s != 0
-            q[:, mask] = np.mod(p[:, mask] + 0.5 * s[mask], s[mask]) - 0.5 * s[mask]
-            return child_func(q)
-        return _callable
-    def to_callable(self): return self._make_callable(self.child.to_callable())
 
-class LimitedRepeat(_Transform):
-    """Internal node to repeat a child object."""
-    glsl_dependencies = {"transforms"}
-    def __init__(self, child, spacing, limits):
-        super().__init__(child)
-        self.spacing = np.array(spacing)
-        self.limits = np.array(limits)
-    def _get_transform_glsl_expr(self, p_expr: str) -> str:
-        s, l = self.spacing, self.limits
-        s_str = f"vec3({_glsl_format(s[0])}, {_glsl_format(s[1])}, {_glsl_format(s[2])})"
-        l_str = f"vec3({_glsl_format(l[0])}, {_glsl_format(l[1])}, {_glsl_format(l[2])})"
-        return f"opLimitedRepeat({p_expr}, {s_str}, {l_str})"
-    def _make_callable(self, child_func):
-        s, l = self.spacing, self.limits
-        def _callable(p):
-            q = p.copy()
-            mask = s != 0
-            s_masked = s[mask]
-            p_masked = p[:, mask]
-            l_masked = l[mask]
-            rounded = np.round(p_masked / (s_masked + 1e-9))
-            q[:, mask] = p_masked - s_masked * np.clip(rounded, -l_masked, l_masked)
-            return child_func(q)
-        return _callable
-    def to_callable(self): return self._make_callable(self.child.to_callable())
+    def __init__(self, child, spacing=None, count=None, axis=None):
+        super().__init__()
+        self.child = child
+        self.spacing = np.array(spacing) if spacing is not None else None
+        self.count = np.array(count) if count is not None else None
+        self.axis = np.array(axis) if axis is not None else np.array([0, 1, 0])
 
-class PolarRepeat(_Transform):
-    """Internal node to repeat a child object."""
-    glsl_dependencies = {"transforms"}
-    def __init__(self, child, repetitions):
-        super().__init__(child)
-        self.repetitions = repetitions
-    def _get_transform_glsl_expr(self, p_expr: str) -> str:
-        return f"opPolarRepeat({p_expr}, {_glsl_format(self.repetitions)})"
-    def _make_callable(self, child_func):
-        if isinstance(self.repetitions, (str, Param)): raise TypeError("Cannot save mesh...")
-        n = self.repetitions
-        def _callable(p):
-            a = np.arctan2(p[:,0], p[:,2])
-            r = np.linalg.norm(p[:,[0,2]], axis=-1)
-            angle = 2 * np.pi / n
-            newA = np.mod(a, angle) - 0.5 * angle
-            q = np.stack([r * np.sin(newA), p[:,1], r * np.cos(newA)], axis=-1)
-            return child_func(q)
-        return _callable
-    def to_callable(self): return self._make_callable(self.child.to_callable())
+        # Validation
+        if self.spacing is None and self.count is None:
+            raise ValueError("Repeat requires at least 'spacing' (linear) or 'count' (polar).")
+
+    def to_glsl(self, ctx: GLSLContext) -> str:
+        ctx.dependencies.update(self.glsl_dependencies)
+        
+        # 1. Linear Finite (Limited)
+        if self.spacing is not None and self.count is not None:
+            s_str = f"vec3({_glsl_format(self.spacing[0])}, {_glsl_format(self.spacing[1])}, {_glsl_format(self.spacing[2])})"
+            # Handle if user passed scalar count for linear
+            if self.count.size == 1:
+                cx, cy, cz = self.count, self.count, self.count
+            else:
+                cx, cy, cz = self.count[0], self.count[1], self.count[2]
+            l_str = f"vec3({_glsl_format(cx)}, {_glsl_format(cy)}, {_glsl_format(cz)})"
+            
+            p_expr = f"opLimitedRepeat({ctx.p}, {s_str}, {l_str})"
+
+        # 2. Linear Infinite
+        elif self.spacing is not None:
+            s_str = f"vec3({_glsl_format(self.spacing[0])}, {_glsl_format(self.spacing[1])}, {_glsl_format(self.spacing[2])})"
+            p_expr = f"opRepeat({ctx.p}, {s_str})"
+
+        # 3. Polar (Radial)
+        else:
+            # Polar expects a scalar count
+            reps = _glsl_format(self.count if self.count.size == 1 else self.count[0])
+            
+            # Handle Axis Swizzling so we can use the standard Y-axis opPolarRepeat
+            if np.allclose(self.axis, [1, 0, 0]): # X Axis
+                # Swizzle p.yzx (input) -> opPolarRepeat (modifies xz) -> swizzle back
+                # Effectively: We treat YZ plane as the XZ plane
+                p_in = f"vec3({ctx.p}.y, {ctx.p}.x, {ctx.p}.z)"
+                trans = f"opPolarRepeat({p_in}, {reps})"
+                p_expr = f"vec3({trans}.y, {trans}.x, {trans}.z)"
+            elif np.allclose(self.axis, [0, 0, 1]): # Z Axis
+                p_in = f"vec3({ctx.p}.x, {ctx.p}.z, {ctx.p}.y)"
+                trans = f"opPolarRepeat({p_in}, {reps})"
+                p_expr = f"vec3({trans}.x, {trans}.z, {trans}.y)"
+            else: # Default Y Axis
+                p_expr = f"opPolarRepeat({ctx.p}, {reps})"
+
+        transformed_p = ctx.new_variable('vec3', p_expr)
+        
+        # Recurse
+        sub_ctx = ctx.with_p(transformed_p)
+        child_var = self.child.to_glsl(sub_ctx)
+        ctx.merge_from(sub_ctx)
+        return child_var
+
+    def to_callable(self):
+        # 1. Linear Finite
+        if self.spacing is not None and self.count is not None:
+            s, l = self.spacing, self.count
+            def _callable(p):
+                q = p.copy()
+                mask = s != 0
+                s_masked = s[mask]
+                p_masked = p[:, mask]
+                l_masked = l[mask]
+                rounded = np.round(p_masked / (s_masked + 1e-9))
+                q[:, mask] = p_masked - s_masked * np.clip(rounded, -l_masked, l_masked)
+                return self.child.to_callable()(q)
+            return _callable
+
+        # 2. Linear Infinite
+        elif self.spacing is not None:
+            s = self.spacing
+            def _callable(p):
+                q = p.copy()
+                mask = s != 0
+                q[:, mask] = np.mod(p[:, mask] + 0.5 * s[mask], s[mask]) - 0.5 * s[mask]
+                return self.child.to_callable()(q)
+            return _callable
+
+        # 3. Polar
+        else:
+            if isinstance(self.count, (str, Param)): raise TypeError("Cannot save mesh...")
+            n = self.count if self.count.size == 1 else self.count[0]
+            axis = self.axis
+
+            def _callable(p):
+                # Standard Y axis logic: Y preserved, XZ rotated
+                if np.allclose(axis, [0, 1, 0]):
+                    x, y, z = p[:, 0], p[:, 1], p[:, 2]
+                    a = np.arctan2(x, z)
+                    r = np.linalg.norm(p[:, [0, 2]], axis=-1)
+                    angle = 2 * np.pi / n
+                    newA = np.mod(a + 0.5 * angle, angle) - 0.5 * angle
+                    q = np.stack([r * np.sin(newA), y, r * np.cos(newA)], axis=-1)
+                    return self.child.to_callable()(q)
+                
+                # X axis logic: X preserved, YZ rotated
+                elif np.allclose(axis, [1, 0, 0]):
+                    x, y, z = p[:, 0], p[:, 1], p[:, 2]
+                    # Map (y, z) like (x, z)
+                    a = np.arctan2(y, z)
+                    r = np.linalg.norm(p[:, [1, 2]], axis=-1)
+                    angle = 2 * np.pi / n
+                    newA = np.mod(a + 0.5 * angle, angle) - 0.5 * angle
+                    q = np.stack([x, r * np.sin(newA), r * np.cos(newA)], axis=-1)
+                    return self.child.to_callable()(q)
+
+                # Z axis logic: Z preserved, XY rotated
+                elif np.allclose(axis, [0, 0, 1]):
+                    x, y, z = p[:, 0], p[:, 1], p[:, 2]
+                    # Map (x, y) like (x, z)
+                    a = np.arctan2(x, y)
+                    r = np.linalg.norm(p[:, [0, 1]], axis=-1)
+                    angle = 2 * np.pi / n
+                    newA = np.mod(a + 0.5 * angle, angle) - 0.5 * angle
+                    q = np.stack([r * np.sin(newA), r * np.cos(newA), z], axis=-1)
+                    return self.child.to_callable()(q)
+                
+                else:
+                    raise NotImplementedError("Arbitrary axis polar repeat is not implemented in NumPy fallback.")
+
+            return _callable
+
+    def to_profile_callable(self):
+        return self.to_callable()
+
 
 class Mirror(_Transform):
     """Internal node to mirror a child object."""

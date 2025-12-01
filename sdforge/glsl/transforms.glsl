@@ -89,7 +89,7 @@ vec3 opPolarRepeat(vec3 p, float repetitions) {
     float angle = 2.0 * 3.14159265 / repetitions;
     float a = atan(p.x, p.z);
     float r = length(p.xz);
-    float newA = mod(a, angle) - 0.5 * angle;
+    float newA = mod(a + 0.5 * angle, angle) - 0.5 * angle;
     return vec3(r * sin(newA), p.y, r * cos(newA));
 }
 

@@ -525,36 +525,26 @@ class SDFNode(ABC):
         from .transforms import Warp
         return Warp(self, frequency, strength, mask=mask, mask_falloff=mask_falloff)
 
-    def repeat(self, spacing) -> 'SDFNode':
+    def repeat(self, spacing=None, count=None, axis=None) -> 'SDFNode':
         """
-        Repeats the object infinitely across a grid.
+        Repeats the object in space.
+        
+        Modes:
+          1. Infinite Linear: Provide `spacing`.
+          2. Finite Linear:   Provide `spacing` AND `count`.
+          3. Polar (Radial):  Provide `count` ONLY (optional `axis`).
 
         Args:
-            spacing (tuple or np.ndarray): The (x, y, z) spacing of the grid.
+            spacing (tuple/float, optional): The distance between copies (x, y, z). 
+                                             If provided, enables Linear mode.
+            count (int/tuple, optional): 
+                - In Linear mode: The limits (nx, ny, nz) of repetition.
+                - In Polar mode: The number of radial copies in a circle.
+            axis (vec3, optional): The axis to rotate around. Only used in Polar mode.
+                                   Defaults to Y axis (0, 1, 0).
         """
         from .transforms import Repeat
-        return Repeat(self, spacing)
-
-    def limited_repeat(self, spacing, limits) -> 'SDFNode':
-        """
-        Repeats the object a finite number of times.
-
-        Args:
-            spacing (tuple): The (x, y, z) spacing of the grid.
-            limits (tuple): The (nx, ny, nz) repetition limits.
-        """
-        from .transforms import LimitedRepeat
-        return LimitedRepeat(self, spacing, limits)
-
-    def polar_repeat(self, repetitions: int) -> 'SDFNode':
-        """
-        Repeats the object in a circle around the Y-axis.
-
-        Args:
-            repetitions (int): The number of times to repeat the object.
-        """
-        from .transforms import PolarRepeat
-        return PolarRepeat(self, repetitions)
+        return Repeat(self, spacing=spacing, count=count, axis=axis)
 
     def mirror(self, axes) -> 'SDFNode':
         """

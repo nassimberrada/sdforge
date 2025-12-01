@@ -66,8 +66,8 @@ class Group(SDFNode):
 # These will be dynamically added to the Group class to propagate the operation.
 _PROPAGATED_METHODS = [
     'translate', 'scale', 'rotate', 'orient', 'twist', 'bend',
-    'repeat', 'limited_repeat', 'polar_repeat', 'mirror',
-    'round', 'shell', 'bevel', 'extrude', 'revolve',
+    'repeat', 'mirror',
+    'round', 'shell', 'extrude', 'revolve',
     'displace', 'displace_by_noise',
 ]
 

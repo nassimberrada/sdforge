@@ -1,5 +1,5 @@
 import numpy as np
-from ..core import X, Y, Z
+from .core import X, Y, Z
 
 """
 This module provides helper functions for achieving CAD-style geometric

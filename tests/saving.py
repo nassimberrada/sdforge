@@ -22,7 +22,7 @@ def test_save_obj_static_object(tmp_path):
         assert 'v ' in content
         assert 'f ' in content
 
-@patch('sdforge.mesh._write_glb')
+@patch('sdforge.api.mesh._write_glb')
 def test_save_glb_calls_writer(mock_write_glb, tmp_path):
     s = sphere(radius=1.0)
     output_file = tmp_path / "test_model.glb"
@@ -39,12 +39,12 @@ def test_save_with_unsupported_algorithm_warns(tmp_path, capsys):
 def test_save_with_vertex_colors_warns(tmp_path, capsys):
     s = sphere(radius=1.0)
     output_file = tmp_path / "test.glb"
-    with patch('sdforge.mesh._write_glb'):
+    with patch('sdforge.api.mesh._write_glb'):
         s.save(str(output_file), samples=2**10, verbose=False, vertex_colors=True)
     captured = capsys.readouterr()
     assert "WARNING: vertex_colors=True is not yet implemented for GLB export." in captured.err
 
-@patch('sdforge.core.SDFNode.render')
+@patch('sdforge.api.core.SDFNode.render')
 def test_save_frame_api(mock_render):
     s = sphere()
     s.save_frame('test.png', camera=None, light=None)
@@ -155,14 +155,14 @@ def test_adaptive_is_smarter_than_uniform_for_sparse_scene():
 
     # Run uniform meshing
     # We patch the file writer to avoid actual disk I/O
-    with patch('sdforge.mesh._write_binary_stl'):
+    with patch('sdforge.api.mesh._write_binary_stl'):
         s.save("uniform.stl", bounds=bounds, adaptive=False, samples=10**3, verbose=False)
     uniform_calls = mock_callable.call_args[0][0].shape[0]
 
     mock_callable.reset_mock()
 
     # Run adaptive meshing
-    with patch('sdforge.mesh._write_binary_stl'):
+    with patch('sdforge.api.mesh._write_binary_stl'):
         s.save("adaptive.stl", bounds=bounds, adaptive=True, octree_depth=5, verbose=False)
     adaptive_calls = mock_callable.call_args[0][0].shape[0]
 

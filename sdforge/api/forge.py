@@ -1,7 +1,7 @@
 import uuid
 import atexit
 import numpy as np
-from ..core import SDFNode, GLSLContext
+from .core import SDFNode, GLSLContext
 
 # --- Optional GPU Dependency Check for Forge ---
 _MODERNGL_AVAILABLE = False
@@ -99,7 +99,7 @@ class Forge(SDFNode):
         call_expr = f"{self.unique_id}(p[gid])"
         
         # We need to manually include dependencies for the callable's compute shader
-        from ..loader import get_glsl_definitions
+        from .loader import get_glsl_definitions
         library_code = get_glsl_definitions(frozenset(self.glsl_dependencies))
         
         compute_shader_src = f"""

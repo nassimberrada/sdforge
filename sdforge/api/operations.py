@@ -1,7 +1,7 @@
 import numpy as np
 from functools import reduce
-from ..core import SDFNode, GLSLContext
-from ..utils import _glsl_format
+from .core import SDFNode, GLSLContext
+from .utils import _glsl_format
 from .params import Param
 from .transforms import _smoothstep
 

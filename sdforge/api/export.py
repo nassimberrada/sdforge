@@ -3,7 +3,7 @@ from pathlib import Path
 def _get_glsl_from_lib(rel_path: str) -> str:
     """Reads the content of a GLSL file from the library."""
     try:
-        glsl_path = Path(__file__).parent / 'glsl' / rel_path
+        glsl_path = Path(__file__).parent.parent / 'glsl' / rel_path
         with open(glsl_path, 'r') as f:
             return f.read()
     except FileNotFoundError:

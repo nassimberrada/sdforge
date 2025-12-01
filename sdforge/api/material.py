@@ -1,4 +1,4 @@
-from ..core import SDFNode, GLSLContext
+from .core import SDFNode, GLSLContext
 
 class Material(SDFNode):
     """

@@ -3,7 +3,7 @@ import os
 import numpy as np
 from unittest.mock import MagicMock, patch
 from sdforge import sphere
-from sdforge.render import NativeRenderer
+from sdforge.api.render import NativeRenderer
 from sdforge.api.primitives import Sphere 
 
 # We need the actual event handler class for one of the tests
@@ -49,7 +49,7 @@ def test_change_handler_sets_reload_flag():
     assert mock_renderer.reload_pending is False
 
 
-@patch('sdforge.render.NativeRenderer._compile_shader')
+@patch('sdforge.api.render.NativeRenderer._compile_shader')
 def test_reload_logic_updates_scene(mock_compile, tmp_path):
     """
     Tests the _reload_script method to ensure it correctly loads a new
@@ -94,7 +94,7 @@ def main():
     mock_compile.assert_called_once()
     renderer.ctx.simple_vertex_array.assert_called_once()
 
-@patch('sdforge.mesh.generate')
+@patch('sdforge.api.mesh.generate')
 def test_render_mode_mesh_calls_trimesh(mock_generate):
     """Tests that mode='mesh' generates geometry and calls trimesh.show()."""
     s = sphere()
@@ -124,7 +124,7 @@ def test_render_mesh_missing_trimesh(capsys):
     captured = capsys.readouterr()
     assert "ERROR: Mesh rendering mode requires 'trimesh'" in captured.err
 
-@patch('sdforge.render.NativeRenderer.run')
+@patch('sdforge.api.render.NativeRenderer.run')
 def test_render_mode_window_launches_renderer(mock_run):
     """Tests that mode='window' initializes and runs the NativeRenderer."""
     s = sphere()
@@ -144,20 +144,20 @@ def test_render_window_missing_deps(capsys):
     captured = capsys.readouterr()
     assert "ERROR: Native window rendering requires 'moderngl' and 'glfw'" in captured.err
 
-@patch('sdforge.render._render_mesh')
+@patch('sdforge.api.render._render_mesh')
 def test_render_mode_auto_detects_notebook(mock_render_mesh):
     """Tests that mode='auto' picks mesh rendering when in a notebook."""
     s = sphere()
-    with patch('sdforge.render._IS_NOTEBOOK', True):
+    with patch('sdforge.api.render._IS_NOTEBOOK', True):
         s.render(mode='auto')
     mock_render_mesh.assert_called_once()
 
-@patch('sdforge.render.NativeRenderer.run')
-@patch('sdforge.render._render_mesh')
+@patch('sdforge.api.render.NativeRenderer.run')
+@patch('sdforge.api.render._render_mesh')
 def test_render_mode_auto_detects_desktop(mock_render_mesh, mock_run):
     """Tests that mode='auto' picks window rendering when NOT in a notebook."""
     s = sphere()
-    with patch('sdforge.render._IS_NOTEBOOK', False):
+    with patch('sdforge.api.render._IS_NOTEBOOK', False):
         with patch.dict('sys.modules', {'moderngl': MagicMock(), 'glfw': MagicMock()}):
             s.render(mode='auto')
     

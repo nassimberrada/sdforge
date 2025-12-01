@@ -5,7 +5,7 @@ from sdforge import (
     octahedron, ellipsoid, circle, rectangle,
     hex_prism, pyramid, curve, triangle, trapezoid, polyline, polycurve
 )
-from sdforge.render import SceneCompiler
+from sdforge.api.render import SceneCompiler
 from tests.conftest import requires_glsl_validator
 
 # Import example functions and their expected return types for parametrization

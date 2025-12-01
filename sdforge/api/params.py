@@ -1,5 +1,5 @@
 import uuid
-from ..utils import _combine_expr, Expr
+from .utils import _combine_expr, Expr
 
 class Param:
     """

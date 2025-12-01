@@ -1,40 +1,14 @@
-# --- Core Components ---
-from .core import SDFNode, X, Y, Z
-from .debug import Debug
+from .api.core import SDFNode, X, Y, Z
+from .api.debug import Debug
 from .api.camera import Camera
 from .api.light import Light
 from .api.material import Material
-
-# --- Primitives ---
 from .api.primitives import (
-    sphere,
-    box,
-    cylinder,
-    torus,
-    line,
-    cone,
-    plane,
-    octahedron,
-    hex_prism,
-    pyramid,
-    curve,
-    ellipsoid,
-    rectangle,
-    circle,
-    triangle,
-    trapezoid,
-    polyline,
-    polycurve,
+    sphere, box, cylinder, torus, line, cone, plane, octahedron,
+    hex_prism, pyramid, curve, ellipsoid, rectangle, circle,
+    triangle, trapezoid, polyline, polycurve,
 )
-
-# --- Custom GLSL ---
 from .api.forge import Forge
-
-# --- Interactive UI ---
 from .api.params import Param
-
-# --- Operations and Grouping ---
 from .api.group import Group
-
-# --- Sketch API ---
 from .api.sketch import Sketch

@@ -1,7 +1,7 @@
 import numpy as np
 from .primitives import line, curve
 from .operations import Union
-from ..core import SDFNode
+from .core import SDFNode
 
 class Sketch:
     """

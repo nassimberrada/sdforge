@@ -1,7 +1,7 @@
 import pytest
 from sdforge.api.material import Material
 from sdforge import sphere, box
-from sdforge.core import GLSLContext, SDFNode
+from sdforge.api.core import GLSLContext, SDFNode
 
 def test_material_api():
     """Tests that the .color() method creates a Material wrapper."""

@@ -1,6 +1,6 @@
 import numpy as np
-from ..core import SDFNode, GLSLContext
-from ..utils import _glsl_format
+from .core import SDFNode, GLSLContext
+from .utils import _glsl_format
 from .params import Param
 
 # --- Helpers ---

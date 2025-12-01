@@ -27,10 +27,10 @@ IMPLICIT_DEPENDENCIES = {
 
 def load_all_glsl():
     """Finds and loads all .glsl files into a dictionary."""
-    if GLSL_SOURCES:  # Only load once
+    if GLSL_SOURCES:
         return
 
-    glsl_dir = Path(__file__).parent / 'glsl'
+    glsl_dir = Path(__file__).parent.parent / 'glsl'
     if not glsl_dir.exists(): return
 
     for glsl_file in glsl_dir.glob('*.glsl'):

@@ -6,8 +6,8 @@ import importlib.util
 import numpy as np
 from .core import SDFNode, GLSLContext
 from .loader import get_glsl_definitions
-from .api.camera import Camera
-from .api.light import Light
+from .camera import Camera
+from .light import Light
 from .debug import Debug
 
 try:

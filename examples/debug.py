@@ -58,7 +58,7 @@ def main():
 
     scene, debug = None, None
     for item in result:
-        from sdforge.core import SDFNode
+        from sdforge.api.core import SDFNode
         if isinstance(item, SDFNode): scene = item
         if isinstance(item, Debug): debug = item
 

@@ -30,7 +30,6 @@ class GLSLContext:
         """Creates a sub-context for a child node with a transformed point."""
         new_ctx = GLSLContext(self.compiler)
         new_ctx.p = new_p_name
-        # Inherit dependencies and counter state from parent
         new_ctx.dependencies = self.dependencies.copy()
         new_ctx.definitions = self.definitions.copy()
         new_ctx._var_counter = self._var_counter
@@ -58,9 +57,8 @@ class SDFNode(ABC):
 
     def _collect_params(self, params: dict):
         """Recursively collects Param objects from the scene graph."""
-        from .api.params import Param
+        from .params import Param
         from .utils import Expr
-        # Inspect all public attributes of the current object.
         for attr_name in dir(self):
             if attr_name.startswith('_') or attr_name in ['child', 'children', 'mask']:
                 continue
@@ -279,7 +277,7 @@ class SDFNode(ABC):
             mask (SDFNode, optional): A mask to limit the blending strength.
             mask_falloff (float, optional): Smoothness of the mask transition.
         """
-        from .api.operations import Union
+        from .operations import Union
         return Union(children=[self] + list(others), blend=blend, blend_type=blend_type, mask=mask, mask_falloff=mask_falloff)
 
     def intersection(self, *others, blend: float = 0.0, blend_type: str = 'smooth', mask: 'SDFNode' = None, mask_falloff: float = 0.0) -> 'SDFNode':
@@ -294,7 +292,7 @@ class SDFNode(ABC):
             mask (SDFNode, optional): A mask to limit the blending strength.
             mask_falloff (float, optional): Smoothness of the mask transition.
         """
-        from .api.operations import Intersection
+        from .operations import Intersection
         return Intersection(children=[self] + list(others), blend=blend, blend_type=blend_type, mask=mask, mask_falloff=mask_falloff)
 
     def difference(self, other, blend: float = 0.0, blend_type: str = 'smooth', mask: 'SDFNode' = None, mask_falloff: float = 0.0) -> 'SDFNode':
@@ -309,7 +307,7 @@ class SDFNode(ABC):
             mask (SDFNode, optional): A mask to limit the blending strength.
             mask_falloff (float, optional): Smoothness of the mask transition.
         """
-        from .api.operations import Difference
+        from .operations import Difference
         return Difference(self, other, blend=blend, blend_type=blend_type, mask=mask, mask_falloff=mask_falloff)
 
     def morph(self, other, factor: float = 0.5, mask: 'SDFNode' = None, mask_falloff: float = 0.0) -> 'SDFNode':
@@ -323,7 +321,7 @@ class SDFNode(ABC):
             mask (SDFNode, optional): A mask to limit where the morphing occurs.
             mask_falloff (float, optional): Smoothness of the mask transition.
         """
-        from .api.operations import Morph
+        from .operations import Morph
         return Morph(self, other, factor=factor, mask=mask, mask_falloff=mask_falloff)
 
     def __or__(self, other):
@@ -351,7 +349,7 @@ class SDFNode(ABC):
             offset (float, optional): An additional distance to move the object along the normal.
                                       Defaults to 0.0.
         """
-        from .api.constraints import align_to_face
+        from .constraints import align_to_face
         return align_to_face(self, reference_point, face_normal, offset)
 
     def place_at_angle(self, pivot_point, axis, angle_rad, distance) -> 'SDFNode':
@@ -364,7 +362,7 @@ class SDFNode(ABC):
             angle_rad (float): The angle in radians to rotate the object around the pivot.
             distance (float): The radial distance from the pivot point to place the object.
         """
-        from .api.constraints import place_at_angle
+        from .constraints import place_at_angle
         return place_at_angle(self, pivot_point, axis, angle_rad, distance)
 
     def offset_along(self, reference_point, direction, distance) -> 'SDFNode':
@@ -376,7 +374,7 @@ class SDFNode(ABC):
             direction (tuple or np.ndarray): The direction vector (will be normalized).
             distance (float): The distance to move along the direction vector.
         """
-        from .api.constraints import offset_along
+        from .constraints import offset_along
         return offset_along(self, reference_point, direction, distance)
 
     def bounding_box(self, padding: float = 0.0) -> 'SDFNode':
@@ -387,7 +385,7 @@ class SDFNode(ABC):
             padding (float, optional): Extra space to add to all sides of the bounding box.
                                        Defaults to 0.0.
         """
-        from .api.constraints import bounding_box
+        from .constraints import bounding_box
         return bounding_box(self, padding)
 
     def stack(self, other: 'SDFNode', direction, spacing: float = 0.0) -> 'SDFNode':
@@ -406,7 +404,7 @@ class SDFNode(ABC):
         Returns:
             SDFNode: A union of self and the transformed other.
         """
-        from .api.constraints import stack
+        from .constraints import stack
         return stack(self, other, direction, spacing)
 
     # --- Material ---
@@ -421,7 +419,7 @@ class SDFNode(ABC):
             mask (SDFNode, optional): A mask defining where to apply this color.
                                       The color applies where the mask is < 0 (inside).
         """
-        from .api.material import Material
+        from .material import Material
         if isinstance(r, (list, tuple, np.ndarray)):
             return Material(self, tuple(r), mask=mask)
         return Material(self, (r, g, b), mask=mask)
@@ -436,7 +434,7 @@ class SDFNode(ABC):
             mask (SDFNode, optional): An SDF defining the region where the transform applies.
             mask_falloff (float, optional): The smoothing distance for the mask edge.
         """
-        from .api.transforms import Translate
+        from .transforms import Translate
         return Translate(self, offset, mask=mask, mask_falloff=mask_falloff)
 
     def scale(self, factor, mask=None, mask_falloff=0.0) -> 'SDFNode':
@@ -448,7 +446,7 @@ class SDFNode(ABC):
             mask (SDFNode, optional): An SDF defining the region where the transform applies.
             mask_falloff (float, optional): The smoothing distance for the mask edge.
         """
-        from .api.transforms import Scale
+        from .transforms import Scale
         return Scale(self, factor, mask=mask, mask_falloff=mask_falloff)
 
     def rotate(self, axis, angle: float, mask=None, mask_falloff=0.0) -> 'SDFNode':
@@ -461,7 +459,7 @@ class SDFNode(ABC):
             mask (SDFNode, optional): An SDF defining the region where the transform applies.
             mask_falloff (float, optional): The smoothing distance for the mask edge.
         """
-        from .api.transforms import Rotate
+        from .transforms import Rotate
         return Rotate(self, axis, angle, mask=mask, mask_falloff=mask_falloff)
 
     def __add__(self, offset):
@@ -483,7 +481,7 @@ class SDFNode(ABC):
         Args:
             axis (str or np.ndarray): The target axis, e.g., 'x', 'y', 'z'.
         """
-        from .api.transforms import Orient
+        from .transforms import Orient
         axis_map = {'x': X, 'y': Y, 'z': Z}
         if isinstance(axis, str) and axis.lower() in axis_map:
             axis = axis_map[axis.lower()]
@@ -498,7 +496,7 @@ class SDFNode(ABC):
             mask (SDFNode, optional): An SDF defining the region where the transform applies.
             mask_falloff (float, optional): The smoothing distance for the mask edge.
         """
-        from .api.transforms import Twist
+        from .transforms import Twist
         return Twist(self, strength, mask=mask, mask_falloff=mask_falloff)
 
     def bend(self, axis, curvature: float, mask=None, mask_falloff=0.0) -> 'SDFNode':
@@ -511,7 +509,7 @@ class SDFNode(ABC):
             mask (SDFNode, optional): An SDF defining the region where the transform applies.
             mask_falloff (float, optional): The smoothing distance for the mask edge.
         """
-        from .api.transforms import Bend
+        from .transforms import Bend
         return Bend(self, axis, curvature, mask=mask, mask_falloff=mask_falloff)
 
     def warp(self, frequency: float, strength: float, mask=None, mask_falloff=0.0) -> 'SDFNode':
@@ -524,7 +522,7 @@ class SDFNode(ABC):
             mask (SDFNode, optional): An SDF defining the region where the transform applies.
             mask_falloff (float, optional): The smoothing distance for the mask edge.
         """
-        from .api.transforms import Warp
+        from .transforms import Warp
         return Warp(self, frequency, strength, mask=mask, mask_falloff=mask_falloff)
 
     def repeat(self, spacing) -> 'SDFNode':
@@ -534,7 +532,7 @@ class SDFNode(ABC):
         Args:
             spacing (tuple or np.ndarray): The (x, y, z) spacing of the grid.
         """
-        from .api.transforms import Repeat
+        from .transforms import Repeat
         return Repeat(self, spacing)
 
     def limited_repeat(self, spacing, limits) -> 'SDFNode':
@@ -545,7 +543,7 @@ class SDFNode(ABC):
             spacing (tuple): The (x, y, z) spacing of the grid.
             limits (tuple): The (nx, ny, nz) repetition limits.
         """
-        from .api.transforms import LimitedRepeat
+        from .transforms import LimitedRepeat
         return LimitedRepeat(self, spacing, limits)
 
     def polar_repeat(self, repetitions: int) -> 'SDFNode':
@@ -555,7 +553,7 @@ class SDFNode(ABC):
         Args:
             repetitions (int): The number of times to repeat the object.
         """
-        from .api.transforms import PolarRepeat
+        from .transforms import PolarRepeat
         return PolarRepeat(self, repetitions)
 
     def mirror(self, axes) -> 'SDFNode':
@@ -565,7 +563,7 @@ class SDFNode(ABC):
         Args:
             axes (np.ndarray): The axes to mirror across.
         """
-        from .api.transforms import Mirror
+        from .transforms import Mirror
         return Mirror(self, axes)
 
     # --- Shaping Operations ---
@@ -578,7 +576,7 @@ class SDFNode(ABC):
             mask (SDFNode, optional): A mask to vary the rounding radius.
             mask_falloff (float, optional): Smoothness of the mask transition.
         """
-        from .api.shaping import Round
+        from .shaping import Round
         return Round(self, radius, mask=mask, mask_falloff=mask_falloff)
 
     def shell(self, thickness: float, mask: 'SDFNode' = None, mask_falloff: float = 0.0) -> 'SDFNode':
@@ -590,7 +588,7 @@ class SDFNode(ABC):
             mask (SDFNode, optional): A mask to vary the shell thickness.
             mask_falloff (float, optional): Smoothness of the mask transition.
         """
-        from .api.shaping import Shell
+        from .shaping import Shell
         return Shell(self, thickness, mask=mask, mask_falloff=mask_falloff)
 
     def extrude(self, height: float) -> 'SDFNode':
@@ -600,14 +598,14 @@ class SDFNode(ABC):
         Args:
             height (float): The total height of the extrusion.
         """
-        from .api.shaping import Extrude
+        from .shaping import Extrude
         return Extrude(self, height)
 
     def revolve(self) -> 'SDFNode':
         """
         Revolves a 2D SDF shape around the Y-axis to create a 3D object.
         """
-        from .api.shaping import Revolve
+        from .shaping import Revolve
         r = Revolve()
         r.child = self
         return r
@@ -622,7 +620,7 @@ class SDFNode(ABC):
             mask (SDFNode, optional): An SDF defining the region where the transform applies.
             mask_falloff (float, optional): The smoothing distance for the mask edge.
         """
-        from .api.noise import Displace
+        from .noise import Displace
         return Displace(self, displacement_glsl, mask=mask, mask_falloff=mask_falloff)
 
     def displace_by_noise(self, scale: float = 10.0, strength: float = 0.1, mask=None, mask_falloff=0.0) -> 'SDFNode':
@@ -635,5 +633,5 @@ class SDFNode(ABC):
             mask (SDFNode, optional): An SDF defining the region where the transform applies.
             mask_falloff (float, optional): The smoothing distance for the mask edge.
         """
-        from .api.noise import DisplaceByNoise
+        from .noise import DisplaceByNoise
         return DisplaceByNoise(self, scale, strength, mask=mask, mask_falloff=mask_falloff)

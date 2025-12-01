@@ -1,6 +1,6 @@
 import numpy as np
-from ..core import SDFNode, GLSLContext, X, Y, Z
-from ..utils import _glsl_format
+from .core import SDFNode, GLSLContext, X, Y, Z
+from .utils import _glsl_format
 from .params import Param
 
 def _smoothstep(edge0, edge1, x):

@@ -1,7 +1,7 @@
 import pytest
 import numpy as np
 from sdforge import Forge, sphere
-from sdforge.render import SceneCompiler
+from sdforge.api.render import SceneCompiler
 from tests.conftest import requires_glsl_validator, HEADLESS_SUPPORTED
 
 # --- API and Compilation Tests ---

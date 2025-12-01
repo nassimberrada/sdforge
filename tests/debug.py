@@ -1,6 +1,5 @@
-import pytest
 from sdforge import sphere, Debug
-from sdforge.render import NativeRenderer
+from sdforge.api.render import NativeRenderer
 from unittest.mock import MagicMock
 
 def test_debug_instantiation():

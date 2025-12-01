@@ -213,7 +213,7 @@ def test_distribute_logic():
     bounds = ((-0.5,-0.5,-0.5), (0.5,0.5,0.5))
     
     # Mock bounds for all
-    with patch('sdforge.core.SDFNode.estimate_bounds', return_value=bounds):
+    with patch('sdforge.api.core.SDFNode.estimate_bounds', return_value=bounds):
         # Gap 1.0
         g = distribute(objs, direction=(1, 0, 0), spacing=1.0)
         

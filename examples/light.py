@@ -46,7 +46,7 @@ def main():
     
     # Unpack the result tuple which may contain scene, light, and/or camera
     scene, light, cam = None, None, None
-    from sdforge.core import SDFNode
+    from sdforge.api.core import SDFNode
     for item in result:
         if isinstance(item, SDFNode): scene = item
         if isinstance(item, Light): light = item

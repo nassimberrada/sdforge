@@ -1,6 +1,6 @@
 import pytest
 import numpy as np
-from sdforge.render import SceneCompiler
+from sdforge.api.render import SceneCompiler
 import os
 import shutil
 import subprocess

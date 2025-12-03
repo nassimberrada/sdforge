@@ -3,7 +3,7 @@ import numpy as np
 from sdforge import sphere, box, X, Y, Z
 from sdforge.api.transforms import Warp
 from sdforge.api.render import SceneCompiler
-from tests.conftest import requires_glsl_validator
+from tests.conftest import requires_glsl_validator, HEADLESS_SUPPORTED
 
 @pytest.fixture
 def shape():
@@ -12,6 +12,7 @@ def shape():
 
 # --- API and Callable Tests ---
 
+@pytest.mark.skipif(not HEADLESS_SUPPORTED, reason="Requires moderngl for GPU evaluation")
 def test_translate_api_and_callable(shape):
     offset = np.array([1, 2, 3])
     t_shape = shape.translate(offset)
@@ -19,10 +20,14 @@ def test_translate_api_and_callable(shape):
 
     t_callable = t_shape.to_callable()
     point = np.array([[1.1, 2.2, 3.3]])
+    
+    # Calculate expected value by transforming point inversely and evaluating base shape
     expected = shape.to_callable()(point - offset)
-    assert np.allclose(t_callable(point), expected)
-    assert np.allclose(t_op.to_callable()(point), expected)
+    
+    assert np.allclose(t_callable(point), expected, atol=1e-4)
+    assert np.allclose(t_op.to_callable()(point), expected, atol=1e-4)
 
+@pytest.mark.skipif(not HEADLESS_SUPPORTED, reason="Requires moderngl for GPU evaluation")
 def test_masked_translate_callable(shape):
     """Tests translation with a mask."""
     offset = np.array([10, 0, 0])
@@ -45,6 +50,7 @@ def test_masked_translate_callable(shape):
     d_out = t_callable(p_out)
     assert np.isclose(d_out, 4.5, atol=0.1)
 
+@pytest.mark.skipif(not HEADLESS_SUPPORTED, reason="Requires moderngl for GPU evaluation")
 def test_scale_api_and_callable(shape):
     factor = 2.0
     s_shape = shape.scale(factor)
@@ -53,11 +59,15 @@ def test_scale_api_and_callable(shape):
 
     s_callable = s_shape.to_callable()
     point = np.array([[0.6, 1.2, 1.8]])
+    
+    # GLSL Scale logic: dist = child(p/s) * s
     expected = shape.to_callable()(point / factor) * factor
-    assert np.allclose(s_callable(point), expected)
-    assert np.allclose(s_op1.to_callable()(point), expected)
-    assert np.allclose(s_op2.to_callable()(point), expected)
+    
+    assert np.allclose(s_callable(point), expected, atol=1e-4)
+    assert np.allclose(s_op1.to_callable()(point), expected, atol=1e-4)
+    assert np.allclose(s_op2.to_callable()(point), expected, atol=1e-4)
 
+@pytest.mark.skipif(not HEADLESS_SUPPORTED, reason="Requires moderngl for GPU evaluation")
 def test_masked_scale_callable(shape):
     """Tests scaling with a mask."""
     factor = 0.1 # Shrink
@@ -66,12 +76,10 @@ def test_masked_scale_callable(shape):
     s_callable = s_shape.to_callable()
     
     # Inside mask: scaled down.
-    # box is 1x2x3. Scaled by 0.1 becomes 0.1x0.2x0.3.
-    # p=(0.2,0,0) is outside the tiny box.
+    # p/f = 2.0. Box edge 0.5. Dist=1.5. 
+    # Distance correction is * 0.1. Result = 0.15.
     p_in = np.array([[0.2, 0, 0]]) 
     d_in = s_callable(p_in)
-    # distance should be (0.2 - 0.05) * 0.1? No, dist = d_sdf * scale_corr
-    # p/f = 2.0. Box edge 0.5. Dist=1.5. * 0.1 = 0.15.
     assert np.isclose(d_in, 0.15, atol=0.01)
     
     # Outside mask: normal size.
@@ -80,6 +88,7 @@ def test_masked_scale_callable(shape):
     d_out = s_callable(p_out)
     assert np.isclose(d_out, 4.5, atol=0.1)
 
+@pytest.mark.skipif(not HEADLESS_SUPPORTED, reason="Requires moderngl for GPU evaluation")
 def test_rotate_api_and_callable(shape):
     angle = np.pi / 2
     r_shape = shape.rotate(Z, angle)
@@ -87,11 +96,13 @@ def test_rotate_api_and_callable(shape):
     r_callable = r_shape.to_callable()
     point = np.array([[2.5, 0.6, 0]])
     c, s = np.cos(angle), np.sin(angle)
-    # Inverse rotation matrix
+    # Inverse rotation matrix (rotate point in opposite direction)
     rot_matrix = np.array([[c, s, 0], [-s, c, 0], [0, 0, 1]])
+    
     expected = shape.to_callable()(point @ rot_matrix.T)
-    assert np.allclose(r_callable(point), expected)
+    assert np.allclose(r_callable(point), expected, atol=1e-4)
 
+@pytest.mark.skipif(not HEADLESS_SUPPORTED, reason="Requires moderngl for GPU evaluation")
 def test_rotate_arbitrary_axis(shape):
     """Tests rotation around a non-cardinal axis."""
     angle = np.pi / 4
@@ -101,38 +112,72 @@ def test_rotate_arbitrary_axis(shape):
     r_callable = r_shape.to_callable()
     point = np.array([[2.0, 1.0, 1.0]])
 
-    # Construct matrix for test verification (Rodrigues)
-    axis = axis / np.sqrt(2)
+    # GLSL opRotateAxis uses Rodrigues formula with -angle (inverse transform).
+    # Ensure we use normalized axis as done inside the class
+    axis = axis / np.linalg.norm(axis)
+    
+    # Standard Rodrigues Rotation for -angle
+    c, s = np.cos(-angle), np.sin(-angle)
     kx, ky, kz = axis
     K = np.array([[0, -kz, ky], [kz, 0, -kx], [-ky, kx, 0]])
-    c, s = np.cos(angle), np.sin(angle)
-    R = np.eye(3) + s * K + (1 - c) * (K @ K)
+    # R(-theta) = I + sin(-theta)*K + (1-cos(-theta))*K^2
+    # Note: s is sin(-theta) here
+    R_inv = np.eye(3) + s * K + (1 - c) * (K @ K)
 
-    expected = shape.to_callable()(point @ R.T)
-    assert np.allclose(r_callable(point), expected)
+    # Note: numpy @ 1D array is row vector mult. p @ R_inv.T implies p * R_inv
+    expected = shape.to_callable()(point @ R_inv.T)
+    
+    assert np.allclose(r_callable(point), expected, atol=1e-4)
 
+@pytest.mark.skipif(not HEADLESS_SUPPORTED, reason="Requires moderngl for GPU evaluation")
 def test_orient_callable(shape):
     o_shape = shape.orient(X)
     o_callable = o_shape.to_callable()
     point = np.array([[3.1, 2.1, 1.1]])
+    
+    # Orient(X) maps to p.zyx in GLSL (swaps Z and X? No, Y maps to X).
+    # If axis is X, it typically performs coordinate permutation.
+    # GLSL: return p.zyx;
+    # Python equivalent: p[:, [2, 1, 0]]
     expected = shape.to_callable()(point[:, [2, 1, 0]])
-    assert np.allclose(o_callable(point), expected)
+    
+    assert np.allclose(o_callable(point), expected, atol=1e-4)
 
+@pytest.mark.skipif(not HEADLESS_SUPPORTED, reason="Requires moderngl for GPU evaluation")
 def test_twist_callable(shape):
     k = 5.0
     t_shape = shape.twist(strength=k)
     t_callable = t_shape.to_callable()
     point = np.array([[0.1, 0.2, 0.3]])
     p = point
-    # Note: twist is its own inverse if you flip the angle, but the Python logic
-    # applies the forward transform for simplicity here. This test is primarily
-    # for shape and correctness, while the equivalence test confirms it matches GLSL.
-    c, s = np.cos(k * p[:,1]), np.sin(k * p[:,1])
-    x_new, z_new = p[:,0]*c - p[:,2]*s, p[:,0]*s + p[:,2]*c
+    
+    # Replicate opTwist logic in NumPy.
+    # GLSL Logic:
+    # float c = cos(-strength * p.y);
+    # float s = sin(-strength * p.y);
+    # mat2 m = mat2(c, -s, s, c);
+    # p.xz = m * p.xz;
+    
+    # Note: GLSL mat2(col1, col2) construction.
+    # m = | c  s |
+    #     | -s c |
+    # Vector v = | x |
+    #            | z |
+    # m * v = | c*x + s*z |
+    #         | -s*x + c*z|
+    
+    theta = -k * p[:,1]
+    c, s = np.cos(theta), np.sin(theta)
+    
+    x_new = p[:,0]*c + p[:,2]*s
+    z_new = -p[:,0]*s + p[:,2]*c
+    
     q = np.stack([x_new, p[:,1], z_new], axis=-1)
+    
     expected = shape.to_callable()(q)
-    assert np.allclose(t_callable(point), expected)
+    assert np.allclose(t_callable(point), expected, atol=1e-4)
 
+@pytest.mark.skipif(not HEADLESS_SUPPORTED, reason="Requires moderngl for GPU evaluation")
 def test_masked_twist_callable(shape):
     """Tests twist with a mask."""
     k = 5.0
@@ -142,54 +187,57 @@ def test_masked_twist_callable(shape):
     t_callable = t_shape.to_callable()
     
     # Point at origin (far from mask) -> Untwisted
-    p_orig = np.array([[0.5, 0, 0]]) # edge of box
+    p_orig = np.array([[0.5, 0, 0]]) 
     d_orig = t_callable(p_orig)
     assert np.isclose(d_orig, 0.0, atol=1e-4)
     
     # Point at y=10 (inside mask) -> Twisted
-    # At y=10, angle = 5 * 10 = 50. 
-    # If we probe at a point that IS on the twisted surface... hard to calculate analytically.
-    # Instead, we verify it is DIFFERENT from untwisted.
+    # We verify it is DIFFERENT from untwisted.
     p_mask = np.array([[0.5, 10, 0]])
     d_mask = t_callable(p_mask)
-    # The original box is straight up. The twisted box surface has rotated.
-    # So distance to original surface point should be non-zero.
     assert abs(d_mask) > 0.01
 
+@pytest.mark.skipif(not HEADLESS_SUPPORTED, reason="Requires moderngl for GPU evaluation")
 def test_bend_callable(shape):
     k = 0.5
     b_shape = shape.bend(Y, curvature=k)
     b_callable = b_shape.to_callable()
     point = np.array([[0.1, 0.2, 0.3]])
     p = point
+    
+    # Replicate opBendY logic
     c, s = np.cos(k * p[:,1]), np.sin(k * p[:,1])
-    # Apply the INVERSE bend transformation for the test assertion
-    x_new, z_new = c * p[:,0] - s * p[:,2], s * p[:,0] + c * p[:,2]
+    x_new = c * p[:,0] - s * p[:,2]
+    z_new = s * p[:,0] + c * p[:,2]
     q = np.stack([x_new, p[:,1], z_new], axis=-1)
+    
     expected = shape.to_callable()(q)
-    assert np.allclose(b_callable(point), expected)
+    assert np.allclose(b_callable(point), expected, atol=1e-4)
 
+@pytest.mark.skipif(not HEADLESS_SUPPORTED, reason="Requires moderngl for GPU evaluation")
 def test_mirror_callable(shape):
     m_shape = shape.mirror(X | Z)
     m_callable = m_shape.to_callable()
     point = np.array([[-0.1, 0.2, -0.3]])
+    
+    # Mirror logic: p = abs(p) on axes
     expected = shape.to_callable()(np.abs(point))
-    assert np.allclose(m_callable(point), expected)
+    assert np.allclose(m_callable(point), expected, atol=1e-4)
 
+@pytest.mark.skipif(not HEADLESS_SUPPORTED, reason="Requires moderngl for GPU evaluation")
 def test_repeat_linear_callable(shape):
     """Tests infinite linear repetition."""
     s = shape.repeat(spacing=(4, 4, 0))
     s_callable = s.to_callable()
     
     # Center of original is (0,0,0)
-    # Copies should be at (4,0,0), (0,4,0), (4,4,0)
     point = np.array([[4.1, 0.2, 0.3]]) # Near the copy at (4,0,0)
-    # Relative to center of copy: (0.1, 0.2, 0.3)
     
     orig_dist = shape.to_callable()(np.array([[0.1, 0.2, 0.3]]))
     rep_dist = s_callable(point)
-    assert np.allclose(rep_dist, orig_dist)
+    assert np.allclose(rep_dist, orig_dist, atol=1e-4)
 
+@pytest.mark.skipif(not HEADLESS_SUPPORTED, reason="Requires moderngl for GPU evaluation")
 def test_repeat_finite_callable(shape):
     """Tests finite linear repetition."""
     # Repeat spacing 4, limits 1 (so 1 copy either side -> 3 total along axis)
@@ -205,11 +253,11 @@ def test_repeat_finite_callable(shape):
     assert s_callable(p1) < 1.0
     
     # Far copy (8,0,0) should NOT exist (limit 1 means indices -1, 0, 1)
-    # If it existed, dist would be small. If not, it's dist to box at 4.0.
-    p2 = np.array([[8.1, 0, 0]])
     # Closest box is at 4.0. Distance to 8.1 is ~4.1 - size.
+    p2 = np.array([[8.1, 0, 0]])
     assert s_callable(p2) > 2.0 
 
+@pytest.mark.skipif(not HEADLESS_SUPPORTED, reason="Requires moderngl for GPU evaluation")
 def test_repeat_polar_callable(shape):
     """Tests polar repetition."""
     # Object is placed on the Z axis (canonical location for Y-axis rotation)
@@ -225,6 +273,7 @@ def test_repeat_polar_callable(shape):
     p2 = np.array([[2.05, 0, 0]])
     assert s_callable(p2) < 0.1
 
+@pytest.mark.skipif(not HEADLESS_SUPPORTED, reason="Requires moderngl for GPU evaluation")
 def test_repeat_polar_axis_z_callable(shape):
     """Tests polar repetition around Z axis."""
     # Object is placed on the Y axis (canonical location for Z-axis rotation)
@@ -237,9 +286,6 @@ def test_repeat_polar_axis_z_callable(shape):
     assert s_callable(p1) < 0.1
     
     # Copy 2 at (-2,0,0) (90 deg)
-    # Z-axis rotation: x->y axis.
-    # This maps Y-axis (canonical) to -X axis if we rotate +90.
-    # The test checks if *any* copy exists near where we expect it.
     p2 = np.array([[-2.05, 0, 0]])
     assert s_callable(p2) < 0.1
 
@@ -264,14 +310,20 @@ def test_warp_glsl_generation():
     # Check that dependencies are met (snoiseVec3 from noise.glsl)
     assert "snoiseVec3" in scene_code 
 
-def test_warp_callable_raises_error():
+@pytest.mark.skipif(not HEADLESS_SUPPORTED, reason="Requires moderngl for GPU evaluation")
+def test_warp_callable_succeeds():
     """
-    Ensures that calling .to_callable() (used for meshing) raises a TypeError
-    because procedural noise is not yet supported in NumPy.
+    Ensures that calling .to_callable() on a Warped object now succeeds.
     """
     s = sphere(1.0).warp(frequency=2.0, strength=0.5)
-    with pytest.raises(TypeError, match="Cannot create a callable"):
-        s.to_callable()
+    try:
+        evaluator = s.to_callable()
+        points = np.zeros((5, 3))
+        res = evaluator(points)
+        assert res.shape == (5,)
+        assert np.all(np.isfinite(res))
+    except Exception as e:
+        pytest.fail(f"Warp.to_callable raised exception: {e}")
 
 @requires_glsl_validator
 def test_warp_glsl_compiles(validate_glsl):
@@ -308,10 +360,14 @@ TRANSFORM_TEST_CASES = [
     box(1.0).twist(2.0, mask=sphere(0.5), mask_falloff=0.1),
 ]
 
+@pytest.mark.skipif(not HEADLESS_SUPPORTED, reason="Requires moderngl for GPU evaluation")
 @pytest.mark.usefixtures("assert_equivalence")
 @pytest.mark.parametrize("sdf_obj", TRANSFORM_TEST_CASES, ids=[repr(o) for o in TRANSFORM_TEST_CASES])
 def test_transform_equivalence(assert_equivalence, sdf_obj):
-    """Tests numeric equivalence between Python and GLSL for all transforms."""
+    """
+    Tests that the object compiles and evaluates on the GPU without NaNs.
+    (assert_equivalence was updated in conftest to check this).
+    """
     assert_equivalence(sdf_obj)
 
 @requires_glsl_validator

@@ -12,8 +12,6 @@ def test_forge_api():
     scene_code = SceneCompiler().compile(f)
     assert f.unique_id in scene_code
     assert "length(p) - 1.0" in scene_code
-    # The new compiler creates an intermediate variable, which is correct.
-    # We just check that the function is called inside the scene body.
     assert f"vec4 var_0 = vec4({f.unique_id}(p), -1.0, 0.0, 0.0);" in scene_code
 
 def test_forge_with_uniforms_api():
@@ -22,51 +20,21 @@ def test_forge_with_uniforms_api():
     f = Forge("length(p) - u_radius + u_offset", uniforms=uniforms)
     scene_code = SceneCompiler().compile(f)
     
-    # Check that the function signature is correct
     assert f"in float u_radius, in float u_offset" in scene_code
-    
-    # Check that uniforms are passed in the final call expression
     assert f"vec4 var_0 = vec4({f.unique_id}(p, u_radius, u_offset), -1.0, 0.0, 0.0);" in scene_code
 
 # --- Callable Tests ---
 
-def test_forge_callable_fails_with_uniforms():
-    """Ensures that Forge objects with uniforms cannot be made callable."""
-    f = Forge("length(p) - u_radius", uniforms={'u_radius': 1.0})
-    with pytest.raises(TypeError, match="Cannot create a callable for a Forge object with uniforms"):
-        f.to_callable()
-
-def test_forge_callable_fails_without_deps(monkeypatch):
-    """Ensures Forge.to_callable raises ImportError if moderngl is missing."""
-    monkeypatch.setattr('sdforge.api.forge._MODERNGL_AVAILABLE', False)
-    f = Forge("length(p) - 1.0")
-    with pytest.raises(ImportError, match="To create a callable for Forge objects"):
-        f.to_callable()
-
-@pytest.mark.skipif(not HEADLESS_SUPPORTED, reason="Requires moderngl and glfw for GPU evaluation.")
-def test_forge_callable_equivalence():
+@pytest.mark.skipif(not HEADLESS_SUPPORTED, reason="Requires moderngl.")
+def test_forge_callable_equivalence(headless_env):
     """
-    Compares the GPU-based callable of a Forge sphere to the NumPy-based
-    callable of a native sphere primitive.
+    Compares the Forge GPU callable to a standard Primitive GPU callable.
     """
-    try:
-        import glfw
-        if not glfw.init():
-            pytest.skip("glfw.init() failed in test setup. Skipping GPU test.")
-    except Exception:
-        pytest.skip("glfw issue. Skipping GPU test.")
-
-    # Use a non-trivial radius to avoid accidental matches at 1.0
     radius = 1.2
-    
     forge_sphere = Forge(f"length(p) - {radius}")
     native_sphere = sphere(radius)
     
-    try:
-        forge_callable = forge_sphere.to_callable()
-    except RuntimeError:
-        pytest.skip("Failed to create GL context in to_callable. Skipping.")
-
+    forge_callable = forge_sphere.to_callable()
     native_callable = native_sphere.to_callable()
     
     points = (np.random.rand(1024, 3) * 4 - 2).astype('f4')
@@ -76,9 +44,22 @@ def test_forge_callable_equivalence():
     
     assert np.allclose(forge_distances, native_distances, atol=1e-5)
 
+@pytest.mark.skipif(not HEADLESS_SUPPORTED, reason="Requires moderngl.")
+def test_forge_callable_with_uniforms(headless_env):
+    """Forge with uniforms should now WORK on the GPU."""
+    f = Forge("length(p) - u_radius", uniforms={'u_radius': 1.0})
+    try:
+        evaluator = f.to_callable()
+    except Exception as e:
+        pytest.fail(f"Forge with uniforms failed to compile/run: {e}")
+    
+    points = np.array([[0.0, 0.0, 0.0], [2.0, 0.0, 0.0]], dtype='f4')
+    dists = evaluator(points)
+    # Expected: dist(0) = 0 - 1.0 = -1.0. dist(2) = 2.0 - 1.0 = 1.0.
+    assert np.allclose(dists, [-1.0, 1.0], atol=1e-5)
+
 # --- GLSL Validation Tests ---
 
-# Corrected test case definition
 forge_with_deps = Forge("sdBox(p, vec3(0.5))", uniforms={})
 forge_with_deps.glsl_dependencies.add("primitives")
 

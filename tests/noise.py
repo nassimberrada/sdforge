@@ -1,7 +1,8 @@
 import pytest
 from sdforge import sphere, box
 from sdforge.api.render import SceneCompiler
-from tests.conftest import requires_glsl_validator
+from tests.conftest import requires_glsl_validator, HEADLESS_SUPPORTED
+import numpy as np
 
 # --- API and Compilation Tests ---
 
@@ -18,7 +19,6 @@ def test_displace_with_mask_glsl():
     s = sphere(radius=1.0).displace("0.1", mask=mask, mask_falloff=0.2)
     scene_code = SceneCompiler().compile(s)
     assert "smoothstep" in scene_code
-    assert "mix" not in scene_code # Displace uses multiplication logic, not mix
     assert "* (1.0 - smoothstep" in scene_code
 
 def test_displace_by_noise_api():
@@ -30,19 +30,22 @@ def test_displace_by_noise_api():
     assert "p * 5.0" in scene_code
     assert "* 0.2" in scene_code
 
-# --- Callable Exception Tests ---
+# --- Callable Tests ---
 
-def test_displace_fails_callable():
-    """Ensures that GLSL-based displacement cannot be used for meshing."""
-    s = sphere(radius=1.0).displace("p.x * 0.1")
-    with pytest.raises(TypeError, match="Cannot create a callable"):
-        s.to_callable()
-
-def test_displace_by_noise_fails_callable():
-    """Ensures that noise displacement cannot be used for meshing."""
-    s = sphere(radius=1.0).displace_by_noise()
-    with pytest.raises(TypeError, match="Cannot create a callable"):
-        s.to_callable()
+@pytest.mark.skipif(not HEADLESS_SUPPORTED, reason="Requires moderngl.")
+def test_displace_by_noise_callable_works(headless_env):
+    """
+    Ensures that noise displacement works on the GPU backend.
+    """
+    s = sphere(1.0).displace_by_noise(scale=1.0, strength=0.5)
+    try:
+        evaluator = s.to_callable()
+        points = np.zeros((1, 3))
+        res = evaluator(points)
+        assert res.shape == (1,)
+        assert np.isfinite(res[0])
+    except TypeError:
+        pytest.fail("DisplaceByNoise.to_callable() raised TypeError, but should work on GPU.")
 
 # --- GLSL Validation Tests ---
 

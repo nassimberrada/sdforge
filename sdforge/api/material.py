@@ -17,16 +17,14 @@ class Material(SDFNode):
         """
         super().__init__()
         self.child = child
-        self.rgb = tuple(color) # Renamed from 'color' to 'rgb' to avoid shadowing SDFNode.color()
+        self.rgb = tuple(color)
         self.mask = mask
-        self.material_id = -1 # Will be set by the renderer during collection
+        self.material_id = -1
 
     def __hash__(self):
-        # Hash based on color, not object identity.
         return hash(self.rgb)
 
     def __eq__(self, other):
-        # Equality is based on color, not object identity.
         return isinstance(other, Material) and self.rgb == other.rgb
 
     def _base_to_glsl(self, ctx: GLSLContext, profile_mode: bool) -> str:
@@ -36,23 +34,13 @@ class Material(SDFNode):
             child_var = self.child.to_glsl(ctx)
 
         new_id = float(self.material_id)
-        
         if self.mask:
-            # We need to evaluate the mask to decide between the child's existing ID and this new ID.
-            # Ideally, the mask should be evaluated in the same space as the child.
             mask_var = self.mask.to_glsl(ctx)
-            
-            # Logic: If mask.x < 0 (inside mask), use new_id. Else, keep child_var.y (original ID).
-            # step(edge, x) returns 0.0 if x < edge, 1.0 if x >= edge.
-            # step(mask.x, 0.0) returns 1.0 if mask < 0 (Inside), 0.0 if mask > 0 (Outside).
             selector = f"step({mask_var}.x, 0.0)"
-            
             id_expr = f"mix({child_var}.y, {new_id}, {selector})"
         else:
-            # Apply to everything
             id_expr = f"{new_id}"
-
-        # Result is vec4(distance, material_id, 0, 0)
+        
         result_expr = f"vec4({child_var}.x, {id_expr}, {child_var}.zw)"
         return ctx.new_variable('vec4', result_expr)
 
@@ -62,18 +50,7 @@ class Material(SDFNode):
     def to_profile_glsl(self, ctx) -> str:
         return self._base_to_glsl(ctx, profile_mode=True)
 
-    def to_callable(self):
-        # Materials are a render-time concept; for mesh generation, we use the child's shape.
-        return self.child.to_callable()
-    
-    def to_profile_callable(self):
-        return self.child.to_profile_callable()
-
     def _collect_materials(self, materials: list):
-        """
-        Adds this material to the list if not already present and assigns an ID,
-        then continues traversal.
-        """
         if self not in materials:
             self.material_id = len(materials)
             materials.append(self)

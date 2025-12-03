@@ -1,6 +1,6 @@
 import numpy as np
-from abc import ABC, abstractmethod
 import sys
+from abc import ABC, abstractmethod
 
 # Cardinal axis constants
 X, Y, Z = np.array([1,0,0]), np.array([0,1,0]), np.array([0,0,1])
@@ -9,25 +9,22 @@ class GLSLContext:
     """Manages the state of the GLSL compilation process for a scene."""
     def __init__(self, compiler):
         self.compiler = compiler
-        self.p = "p"  # The name of the current point variable being evaluated
+        self.p = "p"
         self.statements = []
         self.dependencies = set()
         self._var_counter = 0
-        self.definitions = set() # For node-specific GLSL function definitions
+        self.definitions = set()
 
     def add_statement(self, line: str):
-        """Adds a line of code to the current function body."""
         self.statements.append(line)
 
     def new_variable(self, type: str, expression: str) -> str:
-        """Declares a new GLSL variable and returns its name."""
         name = f"var_{self._var_counter}"
         self._var_counter += 1
         self.add_statement(f"{type} {name} = {expression};")
         return name
 
     def with_p(self, new_p_name: str) -> 'GLSLContext':
-        """Creates a sub-context for a child node with a transformed point."""
         new_ctx = GLSLContext(self.compiler)
         new_ctx.p = new_p_name
         new_ctx.dependencies = self.dependencies.copy()
@@ -36,7 +33,6 @@ class GLSLContext:
         return new_ctx
 
     def merge_from(self, sub_context: 'GLSLContext'):
-        """Merges statements and state from a sub-context into this one."""
         self.statements.extend(sub_context.statements)
         self.dependencies.update(sub_context.dependencies)
         self.definitions.update(sub_context.definitions)
@@ -46,57 +42,39 @@ class GLSLContext:
 class SDFNode(ABC):
     """Abstract base class for all SDF objects in the scene graph."""
 
-    glsl_dependencies = set() # Default empty set
+    glsl_dependencies = set() 
 
     def __init__(self):
         super().__init__()
-        # Special case for Revolve, which has no child in __init__
-        if not hasattr(self, 'child'):
-            self.child = None
+        if not hasattr(self, 'child'): self.child = None
         self.mask = None
 
     def _collect_params(self, params: dict):
-        """Recursively collects Param objects from the scene graph."""
         from .params import Param
         from .utils import Expr
         for attr_name in dir(self):
-            if attr_name.startswith('_') or attr_name in ['child', 'children', 'mask']:
-                continue
+            if attr_name.startswith('_') or attr_name in ['child', 'children', 'mask']: continue
             try:
                 attr_val = getattr(self, attr_name)
-                if isinstance(attr_val, Param):
-                    params[attr_val.uniform_name] = attr_val
+                if isinstance(attr_val, Param): params[attr_val.uniform_name] = attr_val
                 elif isinstance(attr_val, Expr): 
-                    for p in attr_val.params:
-                        params[p.uniform_name] = p
+                    for p in attr_val.params: params[p.uniform_name] = p
                 elif isinstance(attr_val, (list, tuple, np.ndarray)):
                     for item in attr_val:
-                        if isinstance(item, Param):
-                            params[item.uniform_name] = item
+                        if isinstance(item, Param): params[item.uniform_name] = item
                         elif isinstance(item, Expr):
-                             for p in item.params:
-                                 params[p.uniform_name] = p
-            except Exception:
-                continue
-
-        # Recurse into children
-        if hasattr(self, 'child') and self.child:
-            self.child._collect_params(params)
+                             for p in item.params: params[p.uniform_name] = p
+            except Exception: continue
+        if hasattr(self, 'child') and self.child: self.child._collect_params(params)
         if hasattr(self, 'children'):
-            for child in self.children:
-                child._collect_params(params)
-        if hasattr(self, 'mask') and self.mask:
-            self.mask._collect_params(params)
+            for child in self.children: child._collect_params(params)
+        if hasattr(self, 'mask') and self.mask: self.mask._collect_params(params)
 
     def _collect_materials(self, materials: list):
-        """Recursively collects Material objects from the scene graph."""
-        if hasattr(self, 'child') and self.child:
-            self.child._collect_materials(materials)
+        if hasattr(self, 'child') and self.child: self.child._collect_materials(materials)
         if hasattr(self, 'children'):
-            for child in self.children:
-                child._collect_materials(materials)
-        if hasattr(self, 'mask') and self.mask:
-            self.mask._collect_materials(materials)
+            for child in self.children: child._collect_materials(materials)
+        if hasattr(self, 'mask') and self.mask: self.mask._collect_materials(materials)
 
     @abstractmethod
     def to_glsl(self, ctx: GLSLContext) -> str:
@@ -106,30 +84,55 @@ class SDFNode(ABC):
         """
         raise NotImplementedError
 
-    @abstractmethod
-    def to_callable(self):
+    def to_profile_glsl(self, ctx: GLSLContext) -> str:
+        """
+        Returns the GLSL for the 2D profile of this object (ignoring Z).
+        Default implementation behaves exactly like to_glsl.
+        """
+        return self.to_glsl(ctx)
+
+    def to_callable(self, backend='auto'):
         """
         Returns a Python function that takes a NumPy array of points (N, 3)
         and returns an array of distances (N,).
         """
-        raise NotImplementedError
+        return self._resolve_callable(backend=backend, profile_mode=False)
 
-    def to_profile_glsl(self, ctx: GLSLContext) -> str:
+    def to_profile_callable(self, backend='auto'):
         """
-        Returns the GLSL for the 2D profile of this object (ignoring Z).
-        Used for Extrusion and Revolution.
+        Returns a Python function for the 2D profile of this object.
+        """
+        return self._resolve_callable(backend=backend, profile_mode=True)
 
-        By default, this behaves exactly like to_glsl (treating the object 
-        as an infinite column or existing 3D shape). 2D primitives (Circle, Rectangle)
-        override this to return their infinite form while to_glsl returns their capped form.
-        """
-        return self.to_glsl(ctx)
+    def _resolve_callable(self, backend, profile_mode):
+        if backend == 'auto':
+            try:
+                from . import gpu
+                if gpu.HeadlessContext.get():
+                    backend = 'gpu'
+                else:
+                    backend = 'cpu'
+            except ImportError:
+                backend = 'cpu'
 
-    def to_profile_callable(self):
-        """
-        Returns a callable for the 2D profile of this object.
-        """
-        return self.to_callable()
+        if backend == 'gpu':
+            from . import gpu
+            return gpu.get_callable(self, profile_mode=profile_mode)
+        
+        elif backend == 'cpu':
+            from . import cpu
+            if profile_mode:
+                raise NotImplementedError("CPU backend does not yet support to_profile_callable (2D logic). Use backend='gpu'.")
+            return cpu.get_callable(self)
+        
+        else:
+            raise ValueError(f"Unknown backend '{backend}'. Use 'auto', 'gpu', or 'cpu'.")
+
+    def _collect_uniforms(self, uniforms: dict):
+        if hasattr(self, 'child') and self.child: self.child._collect_uniforms(uniforms)
+        if hasattr(self, 'children'):
+            for child in self.children: child._collect_uniforms(uniforms)
+        if hasattr(self, 'mask') and self.mask: self.mask._collect_uniforms(uniforms)
 
     def render(self, camera=None, light=None, debug=None, mode='auto', **kwargs):
         """
@@ -149,7 +152,7 @@ class SDFNode(ABC):
         from .render import render as render_func
         return render_func(self, camera=camera, light=light, debug=debug, mode=mode, **kwargs)
 
-    def save(self, path, bounds=None, samples=2**22, verbose=True, algorithm='marching_cubes', adaptive=False, octree_depth=8, vertex_colors=False, decimate_ratio=None, voxel_size=None):
+    def save(self, path, bounds=None, samples=2**22, verbose=True, algorithm='marching_cubes', adaptive=False, octree_depth=8, vertex_colors=False, decimate_ratio=None, voxel_size=None, backend='auto'):
         """
         Generates a mesh and saves it to a file.
 
@@ -173,14 +176,14 @@ class SDFNode(ABC):
                                            Requires the 'trimesh' library. Defaults to None (no simplification).
             voxel_size (float, optional): Target resolution in world units. If provided, this overrides `samples` and `octree_depth` 
                                           to automatically determine grid size or tree depth. Useful for ensuring consistent physical resolution.
+            backend(str, optional): Backend for saving the mesh. Either GPU or CPU.
         """
         if bounds is None:
-            if verbose:
-                print("INFO: No bounds provided to .save(), estimating automatically.", file=sys.stderr)
-            bounds = self.estimate_bounds(verbose=verbose)
+            if verbose: print("INFO: No bounds provided to .save(), estimating automatically.", file=sys.stderr)
+            bounds = self.estimate_bounds(verbose=verbose, backend=backend)
 
         from . import mesh
-        mesh.save(self, path, bounds, samples, verbose, algorithm, adaptive, vertex_colors, decimate_ratio, octree_depth=octree_depth, voxel_size=voxel_size)
+        mesh.save(self, path, bounds, samples, verbose, algorithm, adaptive, vertex_colors, decimate_ratio, octree_depth=octree_depth, voxel_size=voxel_size, backend=backend)
 
     def save_frame(self, path, camera=None, light=None, **kwargs):
         """
@@ -201,15 +204,14 @@ class SDFNode(ABC):
         """
         self.render(save_frame=path, watch=False, camera=camera, light=light, **kwargs)
 
-    def estimate_bounds(self, resolution=64, search_bounds=((-5, -5, -5), (5, 5, 5)), padding=0.1, verbose=True):
+    def estimate_bounds(self, resolution=64, search_bounds=((-5, -5, -5), (5, 5, 5)), padding=0.1, verbose=True, backend='auto'):
         """
         Estimates the bounding box of the SDF object by sampling a grid.
         """
         from .mesh import _cartesian_product
-        if verbose:
-            print(f"INFO: Estimating bounds with {resolution**3} samples...", file=sys.stderr)
+        if verbose: print(f"INFO: Estimating bounds with {resolution**3} samples ({backend})...", file=sys.stderr)
 
-        sdf_callable = self.to_callable()
+        sdf_callable = self.to_callable(backend=backend)
 
         axes = [np.linspace(search_bounds[0][i], search_bounds[1][i], resolution) for i in range(3)]
         points_grid = _cartesian_product(*axes).astype('f4')
@@ -219,26 +221,20 @@ class SDFNode(ABC):
         inside_points = points_grid[inside_mask]
 
         if inside_points.shape[0] < 2:
-            if verbose:
-                print(f"WARNING: No object surface found within the search bounds {search_bounds}. Returning search_bounds.", file=sys.stderr)
+            if verbose: print(f"WARNING: No object surface found within the search bounds {search_bounds}. Returning search_bounds.", file=sys.stderr)
             return search_bounds
 
         min_coords = np.min(inside_points, axis=0)
         max_coords = np.max(inside_points, axis=0)
-
         step_size = np.array([(search_bounds[1][i] - search_bounds[0][i]) / (resolution - 1) for i in range(3)])
         min_coords -= step_size
         max_coords += step_size
-
         size = max_coords - min_coords
         size[size < 1e-6] = padding
         min_coords -= size * padding
         max_coords += size * padding
-
         bounds = (tuple(min_coords), tuple(max_coords))
-        if verbose:
-            print(f"SUCCESS: Estimated bounds: {bounds}", file=sys.stderr)
-
+        if verbose: print(f"SUCCESS: Estimated bounds: {bounds}", file=sys.stderr)
         return bounds
 
     def export_shader(self, path: str):
@@ -250,19 +246,14 @@ class SDFNode(ABC):
         """
         from .export import assemble_standalone_shader
         shader_code = assemble_standalone_shader(self)
-        with open(path, 'w') as f:
-            f.write(shader_code)
+        with open(path, 'w') as f: f.write(shader_code)
         print(f"SUCCESS: Shader exported to '{path}'.")
 
     def _collect_uniforms(self, uniforms: dict):
-        """Recursively collects uniforms from the scene graph."""
-        if hasattr(self, 'child') and self.child:
-            self.child._collect_uniforms(uniforms)
+        if hasattr(self, 'child') and self.child: self.child._collect_uniforms(uniforms)
         if hasattr(self, 'children'):
-            for child in self.children:
-                child._collect_uniforms(uniforms)
-        if hasattr(self, 'mask') and self.mask:
-            self.mask._collect_uniforms(uniforms)
+            for child in self.children: child._collect_uniforms(uniforms)
+        if hasattr(self, 'mask') and self.mask: self.mask._collect_uniforms(uniforms)
 
     # --- Boolean Operations ---
     def union(self, *others, blend: float = 0.0, blend_type: str = 'smooth', mask: 'SDFNode' = None, mask_falloff: float = 0.0) -> 'SDFNode':

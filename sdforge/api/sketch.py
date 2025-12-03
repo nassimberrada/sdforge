@@ -6,13 +6,6 @@ from .core import SDFNode
 class Sketch:
     """
     A builder class for creating 2D profiles using a path-based interface.
-
-    The Sketch API allows you to define shapes by moving a 'pen' sequentially
-    (move_to, line_to, curve_to). The result is a collection of connected
-    segments (capsules and bezier tubes) that can be extruded or revolved.
-
-    Note: The resulting SDF represents the *outline* (stroke) of the shape,
-    defined by the `stroke_radius`. It does not currently create a filled polygon.
     """
 
     def __init__(self, start=(0.0, 0.0)):
@@ -23,12 +16,10 @@ class Sketch:
             start (tuple): The starting (x, y) coordinates of the pen.
         """
         self._segments = []
-        # Ensure we work with float arrays
         self._current_pos = np.array(start, dtype=float)
         self._start_pos = self._current_pos.copy()
 
     def _to_vec3(self, p2d):
-        """Helper to convert 2D (x,y) to 3D (x,y,0) for internal primitives."""
         if len(p2d) == 2:
             return np.array([p2d[0], p2d[1], 0.0])
         return np.array(p2d)
@@ -43,7 +34,6 @@ class Sketch:
             y (float): Y coordinate.
         """
         self._current_pos = np.array([x, y], dtype=float)
-        # If this is the very first operation, update start_pos too
         if not self._segments:
             self._start_pos = self._current_pos
         return self
@@ -57,9 +47,6 @@ class Sketch:
             y (float): Target Y coordinate.
         """
         end_pos = np.array([x, y], dtype=float)
-
-        # Create a closure/data struct to defer SDF creation until to_sdf()
-        # We store 3D coordinates (z=0) because base primitives are 3D
         seg_data = {
             'type': 'line',
             'start': self._to_vec3(self._current_pos),
@@ -80,7 +67,6 @@ class Sketch:
         """
         end_pos = np.array([x, y], dtype=float)
         ctrl_pos = np.array(control, dtype=float)
-
         seg_data = {
             'type': 'bezier',
             'start': self._to_vec3(self._current_pos),
@@ -114,15 +100,12 @@ class Sketch:
         nodes = []
         for seg in self._segments:
             if seg['type'] == 'line':
-                # Use the primitive line() which handles to_profile_glsl correctly
                 nodes.append(line(seg['start'], seg['end'], radius=stroke_radius))
             elif seg['type'] == 'bezier':
                 nodes.append(curve(seg['start'], seg['control'], seg['end'], radius=stroke_radius))
 
         if not nodes:
-            # Return an empty/invisible object if no segments
             from ..api.primitives import sphere
             return sphere(0).translate((1e5, 0, 0))
 
-        # Return a Union of all segments
         return Union(nodes)

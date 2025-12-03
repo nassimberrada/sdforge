@@ -55,12 +55,15 @@ def test_save_frame_api(mock_render):
         light=None,
     )
 
-def test_save_displaced_object_fails(tmp_path):
+def test_save_displaced_object_succeeds(tmp_path):
+    """Displacement now works on GPU, so saving should succeed."""
     s = sphere(radius=1.0)
     displaced_sphere = s.displace("sin(p.x * 20.0) * 0.1")
     output_file = tmp_path / "displaced.stl"
-    with pytest.raises(TypeError, match="Cannot create a callable for an object with raw GLSL displacement"):
-        displaced_sphere.save(str(output_file), verbose=False)
+    
+    # Just check it runs without error and produces a file
+    displaced_sphere.save(str(output_file), samples=2**12, verbose=False)
+    assert os.path.exists(output_file)
 
 def test_save_unsupported_format(tmp_path, capsys):
     s = sphere(radius=1.0)
@@ -78,55 +81,37 @@ def test_save_marching_cubes_failure(tmp_path, capsys):
 
 @pytest.mark.skipif("trimesh" not in sys.modules, reason="trimesh library not installed")
 def test_save_with_decimation_simplifies_mesh(tmp_path):
-    """Tests that decimation actually reduces the file size."""
     s = sphere(radius=1.0)
-
     original_file = tmp_path / "original.stl"
     decimated_file = tmp_path / "decimated.stl"
-
     s.save(str(original_file), samples=2**16, verbose=False)
     s.save(str(decimated_file), samples=2**16, verbose=False, decimate_ratio=0.9)
-
     assert os.path.exists(original_file)
     assert os.path.exists(decimated_file)
-
     original_size = os.path.getsize(original_file)
     decimated_size = os.path.getsize(decimated_file)
-
     assert decimated_size > 84
     assert decimated_size < original_size
 
 @patch.dict('sys.modules', {'trimesh': None})
 def test_save_with_decimation_warns_if_trimesh_missing(tmp_path, capsys):
-    """Tests that a warning is printed if decimation is requested but trimesh is missing."""
     s = sphere(radius=1.0)
     output_file = tmp_path / "test.stl"
-
     s.save(str(output_file), samples=2**10, verbose=False, decimate_ratio=0.5)
-
     captured = capsys.readouterr()
     assert "WARNING: Mesh simplification requires the 'trimesh' library." in captured.err
-    assert "pip install trimesh" in captured.err
 
 def test_save_with_invalid_decimation_ratio_warns(tmp_path, capsys):
-    """Tests that an invalid ratio prints a warning and does not simplify."""
     s = sphere(radius=1.0)
     original_file = tmp_path / "original.stl"
     decimated_file = tmp_path / "decimated.stl"
-
     s.save(str(original_file), samples=2**12, verbose=False)
     s.save(str(decimated_file), samples=2**12, verbose=False, decimate_ratio=1.5) # Invalid ratio
-
     captured = capsys.readouterr()
     assert "WARNING: `decimate_ratio` must be between 0 and 1." in captured.err
-
-    # The file sizes should be identical since simplification was skipped
     assert os.path.getsize(original_file) == os.path.getsize(decimated_file)
 
-# --- Adaptive Meshing Tests ---
-
 def test_save_adaptive_object(tmp_path):
-    """Tests that adaptive meshing runs and creates a valid file."""
     s = sphere(radius=1.0)
     output_file = tmp_path / "adaptive_model.stl"
     s.save(str(output_file), adaptive=True, octree_depth=6, verbose=False)
@@ -134,7 +119,6 @@ def test_save_adaptive_object(tmp_path):
     assert os.path.getsize(output_file) > 84
 
 def test_save_adaptive_with_samples_warns(tmp_path, capsys):
-    """Tests that using both adaptive and samples flags gives a warning."""
     s = sphere(radius=1.0)
     output_file = tmp_path / "adaptive_warn.stl"
     s.save(str(output_file), adaptive=True, samples=2**10, verbose=False)
@@ -182,36 +166,22 @@ def test_save_dual_contouring(tmp_path):
     assert os.path.getsize(output_file) > 84
 
 def test_save_adaptive_dual_contouring_fails(tmp_path):
-    """Tests that trying to use adaptive meshing with dual contouring raises an error."""
     s = sphere(radius=1.0)
     output_file = tmp_path / "test.stl"
     with pytest.raises(ValueError, match="does not currently support adaptive meshing"):
         s.save(str(output_file), adaptive=True, algorithm='dual_contouring', verbose=False)
 
 def test_save_with_voxel_size(tmp_path):
-    """
-    Tests that specifying voxel_size generates a mesh file.
-    """
     s = sphere(radius=1.0)
     output_file = tmp_path / "voxel_model.stl"
-    
-    # Use a coarse voxel size for speed
     s.save(str(output_file), voxel_size=0.5, verbose=False)
-    
     assert os.path.exists(output_file)
     assert os.path.getsize(output_file) > 84
 
 def test_save_with_voxel_size_and_adaptive(tmp_path, capsys):
-    """
-    Tests that voxel_size works with adaptive meshing and logs the calculated depth.
-    """
     s = box(size=4.0)
     output_file = tmp_path / "voxel_adaptive.stl"
-    
-    # 4.0 size / 0.5 voxel = 8 steps -> 2^3 = 8 -> depth should be around 3 or 4
-    # Max dim might be slightly padded.
     s.save(str(output_file), voxel_size=0.5, adaptive=True, verbose=True)
-    
     captured = capsys.readouterr()
     assert "implies octree_depth=" in captured.out
     assert os.path.exists(output_file)

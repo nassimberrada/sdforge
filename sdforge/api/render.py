@@ -364,16 +364,15 @@ class NativeRenderer:
 
         glfw.terminate()
 
-def _render_mesh(sdf_obj: SDFNode, bounds=None, samples=2**18, adaptive=False, octree_depth=8, verbose=True):
+def _render_mesh(sdf_obj: SDFNode, bounds=None, samples=2**18, adaptive=False, octree_depth=8, verbose=True, backend='auto', **kwargs):
     """
     Renders the scene as a static mesh using trimesh.
-    This works in headless environments and notebooks.
     """
     from . import mesh as mesh_utils
     try:
         import trimesh
     except ImportError:
-        print("ERROR: Mesh rendering mode requires 'trimesh'. Please install it via 'pip install trimesh'.", file=sys.stderr)
+        print("ERROR: Mesh rendering mode requires 'trimesh'.", file=sys.stderr)
         return
     verts, faces = mesh_utils.generate(
         sdf_obj, 
@@ -381,7 +380,8 @@ def _render_mesh(sdf_obj: SDFNode, bounds=None, samples=2**18, adaptive=False, o
         samples=samples, 
         adaptive=adaptive, 
         octree_depth=octree_depth,
-        verbose=verbose
+        verbose=verbose,
+        backend=backend
     )
     if len(verts) == 0:
         print("WARNING: No geometry generated.", file=sys.stderr)
@@ -390,7 +390,7 @@ def _render_mesh(sdf_obj: SDFNode, bounds=None, samples=2**18, adaptive=False, o
     mesh.visual.face_colors = [200, 200, 220, 255]    
     return mesh.show()
 
-def render(sdf_obj: SDFNode, camera: Camera = None, light: Light = None, watch=True, debug: Debug = None, mode='auto', **kwargs):
+def render(sdf_obj: SDFNode, camera=None, light=None, watch=True, debug=None, mode='auto', **kwargs):
     """
     Public API to launch the renderer.
     

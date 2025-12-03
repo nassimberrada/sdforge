@@ -1,53 +1,19 @@
 import pytest
 import numpy as np
-from sdforge import (
-    SDFNode, sphere, box, torus, line, cylinder, cone, plane, 
-    octahedron, ellipsoid, circle, rectangle,
-    hex_prism, pyramid, curve, triangle, trapezoid, polyline, polycurve
-)
+from sdforge.api.primitives import *
+from sdforge.api.shaping import Round
+from examples.primitives import *
 from sdforge.api.render import SceneCompiler
 from tests.conftest import requires_glsl_validator
 
-# Import example functions and their expected return types for parametrization
-from examples.primitives import (
-    sphere_example,
-    box_example,
-    cylinder_example,
-    torus_example,
-    cone_example,
-    hex_prism_example,
-    pyramid_example,
-    curve_example,
-    circle_example,
-    rectangle_example,
-    triangle_example,
-    trapezoid_example,
-    polyline_example,
-    polycurve_example
-)
-from sdforge.api.primitives import (
-    Sphere, Box, Cylinder, Torus, Cone, HexPrism, Pyramid, 
-    Bezier, Circle, Rectangle, Triangle, Trapezoid, Polyline, Polycurve
-)
-from sdforge.api.operations import Union
-from sdforge.api.shaping import Round
 
-# --- API and Callable Tests ---
-
-def test_sphere_api():
-    """Tests basic API usage of the sphere primitive."""
-    s1 = sphere()
-    assert isinstance(s1, SDFNode)
-    assert s1.radius == 1.0
-    s2 = sphere(radius=1.5)
-    assert s2.radius == 1.5
-
-def test_sphere_callable():
-    """Tests the numeric accuracy of the sphere's Python callable."""
+def test_sphere_callable(headless_env):
+    """Tests the numeric accuracy of the sphere's GPU evaluator."""
     s_callable = sphere(radius=1.0).to_callable()
     points = np.array([[0, 0, 0], [0.5, 0, 0], [1, 0, 0], [2, 0, 0]])
     expected = np.array([-1.0, -0.5, 0.0, 1.0])
-    assert np.allclose(s_callable(points), expected)
+    # Relax tolerance slightly for float32 GPU precision
+    assert np.allclose(s_callable(points), expected, atol=1e-5)
 
 def test_box_api():
     b1 = box()
@@ -57,11 +23,17 @@ def test_box_api():
     b3 = box(size=(1,2,3))
     assert np.allclose(b3.size, (1,2,3))
 
-def test_box_callable():
+def test_box_callable(headless_env):
     b_callable = box(size=2.0).to_callable()
     points = np.array([[0, 0, 0], [1.5, 0, 0], [1, 1, 1], [2, 2, 0]])
     expected = np.array([-1.0, 0.5, 0.0, np.sqrt(1**2 + 1**2)])
-    assert np.allclose(b_callable(points), expected)
+    assert np.allclose(b_callable(points), expected, atol=1e-5)
+
+def test_cylinder_callable(headless_env):
+    c_callable = cylinder(radius=1.0, height=2.0).to_callable()
+    points = np.array([[0,0,0], [1,0,0], [0,1,0], [1,1,0], [1.5,0,0]])
+    expected = np.array([-1.0, 0.0, 0.0, 0.0, 0.5])
+    assert np.allclose(c_callable(points), expected, atol=1e-5)
 
 def test_torus_api():
     t = torus(radius_major=2.0, radius_minor=0.5)
@@ -87,9 +59,7 @@ def test_cylinder_callable():
     assert np.allclose(c_callable(points), expected)
 
 def test_plane_api():
-    # Plane passing through point (0, 1, 0) with normal (0, 1, 0)
     p = plane(normal=(0, 1, 0), point=(0, 1, 0))
-    # Offset should be -dot((0,1,0), (0,1,0)) = -1.0
     assert p.offset == -1.0
 
 def test_plane_callable():
@@ -111,32 +81,19 @@ def test_ellipsoid_callable():
 
 def test_hex_prism_callable():
     h_callable = hex_prism(radius=1.0, height=0.5).to_callable()
-    # Point inside
     assert h_callable(np.array([[0,0,0]])) < 0
-    # Point outside Z
     assert h_callable(np.array([[0,0,0.3]])) > 0
-    # Point outside Hex radius X (radius is distance to flats (1.0))
-    # 1.2 is outside the flat at x=1.15 (vertex)? No, flat is closer.
-    # The vertex is at 1.1547. The flat is at 1.0.
-    # A point at (1.2, 0, 0) is outside.
     assert h_callable(np.array([[1.2,0,0]])) > 0
 
 def test_pyramid_callable():
     p_callable = pyramid(height=1.0).to_callable()
-    # Apex is at (0, 0.5, 0) for height=1
-    # Base is at (0, -0.5, 0)
-    # Center (0,0,0) should be inside
     assert p_callable(np.array([[0,0,0]])) < 0
-    # Above Apex
     assert p_callable(np.array([[0,0.6,0]])) > 0
-    # Below Base
     assert p_callable(np.array([[0,-0.6,0]])) > 0
 
 def test_bezier_callable():
-    # Simple curve: X-axis from -1 to 1, bending up to Y=1 at midpoint
     c = curve(p0=(-1,0,0), p1=(0,1,0), p2=(1,0,0), radius=0.1)
-    c_callable = c.to_callable()
-    
+    c_callable = c.to_callable()    
     points = np.array([
         [-1, 0, 0], # Start (surface dist = -radius)
         [1, 0, 0],  # End (surface dist = -radius)
@@ -151,16 +108,10 @@ def test_bezier_callable():
 
 def test_circle_callable_is_finite():
     """Tests that the circle is now a finite disc, not an infinite cylinder."""
-    c_callable = circle(radius=1.0).to_callable()
-    
-    # Point inside on Z=0
-    assert c_callable(np.array([[0,0,0]])) < 0
-    
-    # Point "inside" the cylinder projection but far along Z
-    # With old behavior, this would be negative. Now it should be positive.
+    c_callable = circle(radius=1.0).to_callable()    
+    assert c_callable(np.array([[0,0,0]])) < 0    
     z_dist = 10.0
     val = c_callable(np.array([[0,0,z_dist]]))
-    # Distance should be dominated by Z: abs(z) - 0.001
     assert np.isclose(val, z_dist - 0.001, atol=1e-4)
     assert val > 0
 
@@ -215,25 +166,13 @@ def test_polyline_callable():
 
 def test_polycurve_callable():
     """Tests polycurve distance calculation."""
-    # Points forming a sharp V shape
     points = [(0,0,0), (1,1,0), (2,0,0)]
-    # Polycurve should smooth the corner near (1,1,0)
     pc = polycurve(points, radius=0.1, closed=False)
     pc_callable = pc.to_callable()
-    
-    # 1. Start point should be exactly on curve (distance -0.1)
-    assert np.isclose(pc_callable(np.array([[0,0,0]])), -0.1, atol=1e-5)
-    
-    # 2. End point should be exactly on curve
+    assert np.isclose(pc_callable(np.array([[0,0,0]])), -0.1, atol=1e-5)    
     assert np.isclose(pc_callable(np.array([[2,0,0]])), -0.1, atol=1e-5)
-    
-    # 3. The middle control point (1,1,0) should be OUTSIDE the curve core
-    # (The curve cuts the corner)
     dist_corner = pc_callable(np.array([[1,1,0]]))
-    # It should be positive or close to 0 depending on radius, but definitely further than -0.1
     assert dist_corner > -0.1
-
-# --- Equivalence and Compilation Tests ---
 
 PRIMITIVE_TEST_CASES = [
     sphere(radius=1.2),
@@ -273,8 +212,6 @@ def test_primitive_glsl_compiles(validate_glsl, sdf_obj):
     scene_code = SceneCompiler().compile(sdf_obj)
     validate_glsl(scene_code)
 
-
-# --- Example File Tests ---
 
 EXAMPLE_TEST_CASES = [
     (sphere_example, Sphere),

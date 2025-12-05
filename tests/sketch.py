@@ -3,6 +3,7 @@ from sdforge import Sketch, SDFNode
 from sdforge.api.operations import Union
 from sdforge.api.render import SceneCompiler
 from tests.conftest import requires_glsl_validator
+from sdforge.api.primitives import Line, Bezier # Import for type checking
 
 def test_sketch_init():
     s = Sketch(start=(1, 2))
@@ -35,8 +36,8 @@ def test_sketch_segments_data():
     assert np.allclose(seg1['end'], [1, 1, 0])
     assert np.allclose(seg1['control'], [2, 0, 0])
 
-def test_sketch_close():
-    """Tests that close() adds a line back to start."""
+def test_sketch_close_straight_line():
+    """Tests that close() adds a straight line back to start by default."""
     s = Sketch(start=(1, 1))
     s.line_to(2, 2)
     s.close()
@@ -47,11 +48,34 @@ def test_sketch_close():
     assert np.allclose(last_seg['start'], [2, 2, 0])
     assert np.allclose(last_seg['end'], [1, 1, 0])
 
+def test_sketch_close_curved_bezier():
+    """Tests that close() adds a Bezier curve when curve_control is provided."""
+    s = Sketch(start=(0, 0))
+    s.line_to(1, 0)
+    control_point = (0.5, 0.5)
+    s.close(curve_control=control_point)
+
+    assert len(s._segments) == 2
+    last_seg = s._segments[-1]
+    assert last_seg['type'] == 'bezier'
+    assert np.allclose(last_seg['start'], [1, 0, 0])
+    assert np.allclose(last_seg['control'], [*control_point, 0.0]) # Z-coord added by _to_vec3
+    assert np.allclose(last_seg['end'], [0, 0, 0])
+    
 def test_sketch_to_sdf():
     s = Sketch().line_to(1,0).to_sdf(stroke_radius=0.1)
     assert isinstance(s, SDFNode)
     assert isinstance(s, Union)
     assert len(s.children) == 1
+    assert isinstance(s.children[0], Line) # Should be a Line primitive
+
+def test_sketch_to_sdf_curved_closure():
+    s = Sketch(start=(0,0)).line_to(1,0).close(curve_control=(0.5, 0.5)).to_sdf(stroke_radius=0.1)
+    assert isinstance(s, SDFNode)
+    assert isinstance(s, Union)
+    assert len(s.children) == 2
+    assert isinstance(s.children[0], Line)
+    assert isinstance(s.children[1], Bezier) # The closure should be a Bezier primitive
 
 def test_sketch_callable():
     s = Sketch(start=(0,0)).line_to(2,0).to_sdf(stroke_radius=0.1)
@@ -68,9 +92,15 @@ def test_sketch_callable():
 
 @requires_glsl_validator
 def test_sketch_glsl_compiles(validate_glsl):
-    s = Sketch(start=(0,0)).line_to(1,0).curve_to(1,1, (0.5, 0.5)).close().to_sdf()
-    scene_code = SceneCompiler().compile(s)
-    validate_glsl(scene_code)
+    # Test with straight line closure
+    s_line = Sketch(start=(0,0)).line_to(1,0).curve_to(1,1, (0.5, 0.5)).close().to_sdf()
+    scene_code_line = SceneCompiler().compile(s_line)
+    validate_glsl(scene_code_line)
+    
+    # Test with curved closure
+    s_curve = Sketch(start=(0,0)).line_to(1,0).close(curve_control=(0.5, 0.5)).to_sdf()
+    scene_code_curve = SceneCompiler().compile(s_curve)
+    validate_glsl(scene_code_curve)
 
 def test_sketch_profile_logic():
     sketch = Sketch().line_to(1,0).to_sdf(stroke_radius=0.1)

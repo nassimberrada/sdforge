@@ -12,7 +12,7 @@ def simple_profile_example():
          .line_to(0.2, 0.2)       # Inner bottom
          .line_to(0.2, 1.0)       # Inner vertical
          .curve_to(0, 1.2, control=(0.0, 1.0)) # Rounded top corner
-         .close()                 # Back to (0,0)
+         .close()                 # Back to (0,0) with a straight line
          .to_sdf(stroke_radius=0.05)
     )
     return s
@@ -50,6 +50,19 @@ def revolved_sketch_example():
 
     return vase_profile.revolve()
 
+def curved_close_example():
+    """
+    Demonstrates using a curved closure for a sketch.
+    Creates a rounded triangle-like shape.
+    """
+    s = (Sketch(start=(0, 0))
+         .line_to(2.0, 0)           # Bottom edge
+         .line_to(1.0, 1.5)         # Angled edge to top
+         .close(curve_control=(0.0, 0.75)) # Curve back to (0,0)
+         .to_sdf(stroke_radius=0.05)
+    )
+    return s
+
 def main():
     """
     Renders a sketch example based on a command-line argument.
@@ -60,6 +73,7 @@ def main():
         "profile": simple_profile_example,
         "extrude": extruded_sketch_example,
         "revolve": revolved_sketch_example,
+        "curved_close": curved_close_example, # Added new example
     }
 
     if len(sys.argv) < 2:

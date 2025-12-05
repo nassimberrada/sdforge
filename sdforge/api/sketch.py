@@ -77,14 +77,24 @@ class Sketch:
         self._current_pos = end_pos
         return self
 
-    def close(self):
+    def close(self, curve_control=None):
         """
-        Draws a line from the current position back to the starting position
-        of the current sub-path.
+        Closes the current sub-path. If `curve_control` is provided,
+        it draws a Quadratic Bezier curve from the current position
+        back to the starting position of the sub-path; otherwise,
+        it draws a straight line.
+
+        Args:
+            curve_control (tuple, optional): The (cx, cy) control point for
+                                             a curved closure. If None, a
+                                             straight line is drawn.
         """
         # Avoid creating a zero-length segment
         if not np.allclose(self._current_pos, self._start_pos):
-            self.line_to(self._start_pos[0], self._start_pos[1])
+            if curve_control:
+                self.curve_to(self._start_pos[0], self._start_pos[1], curve_control)
+            else:
+                self.line_to(self._start_pos[0], self._start_pos[1])
         return self
 
     def to_sdf(self, stroke_radius=0.05) -> SDFNode:

@@ -2,7 +2,7 @@ import numpy as np
 from functools import reduce
 
 def _validate_no_params(obj, attrs):
-    from .params import Param
+    from ...examples.params import Param
     for attr in attrs:
         val = getattr(obj, attr, None)
         if isinstance(val, (str, Param)):

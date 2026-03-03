@@ -47,10 +47,10 @@ def main():
     While this script is running, try changing the values below and
     saving the file. The render window will update automatically.
     """
-    box_size = 1.5
+    box_size = 1.6
     sphere_radius = 1.2
     
-    scene = box(box_size, radius=0.1) | sphere(sphere_radius)
+    scene = box(box_size) | sphere(sphere_radius)
     return scene
 
 if __name__ == "__main__":
@@ -82,8 +82,8 @@ Create complex objects by starting with primitives and combining them with Pytho
 from sdforge import sphere, box
 
 # A box with a sphere carved out of it.
-b = box(size=1.5)
-s = sphere(r=1.0)
+b = box(1.5)
+s = sphere(1.0)
 scene = b - s
 
 scene.render()
@@ -101,7 +101,7 @@ b = box(size=(0.5, 2.5, 0.5))
 
 # Twist it around the Y-axis
 # The 'k' parameter controls the amount of twist.
-scene = b.twist(k=3.0).rotate(Y, np.pi / 4)
+scene = b.twist(3.0).rotate(Y, np.pi / 4)
 
 scene.render()
 ```
@@ -113,8 +113,8 @@ You can assign a unique color to any object or group of objects using the `.colo
 from sdforge import sphere, box
 
 # A blue sphere is subtracted from a red box.
-red_box = box(1.5, radius=0.1).color(1.0, 0.2, 0.2)
-blue_sphere = sphere(1.2).color(0.3, 0.5, 1.0)
+red_box = box(1.5).color(1.0, 0.2, 0.2)
+blue_sphere = sphere(1.0).color(0.3, 0.5, 1.0)
     
 scene = red_box - blue_sphere
 
@@ -128,7 +128,7 @@ You can override the default interactive camera and lighting to set a static vie
 from sdforge import box, sphere, Camera, Light
 
 def main():
-    scene = box(1.5, radius=0.1) | sphere(1.2)
+    scene = box(1.5) | sphere(1.2)
     
     # A camera positioned at (4, 3, 4), looking at the origin.
     cam = Camera(position=(4, 3, 4), target=(0, 0, 0), zoom=1.5)
@@ -154,10 +154,9 @@ from sdforge import box, Param
 # Create Param objects to control different aspects of the scene.
 # Param(name, default_value, min_value, max_value)
 p_size = Param("Box Size", 0.8, 0.2, 2.0)
-p_radius = Param("Corner Radius", 0.1, 0.0, 0.5)
 
 # Use the Param objects just like regular numbers.
-scene = box(size=p_size, radius=p_radius)
+scene = box(size=p_size)
 
 scene.render()
 ```
@@ -190,7 +189,7 @@ Generate a complete, self-contained GLSL fragment shader for your scene. This fi
 ```python
 from sdforge import box, sphere
 
-scene = box(1.5, radius=0.1) - sphere(1.2)
+scene = box(1.5) - sphere(1.2)
 
 # This single call generates the entire shader file.
 scene.export_shader("exported_shader.glsl")

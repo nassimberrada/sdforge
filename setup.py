@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='sdforge',
-    version='0.2.0',
+    version='0.2.1',
     author='nassimberrada',
     description='A Python library for SDF modeling with real-time GLSL rendering and mesh export.',
     long_description=open('README.md').read(),

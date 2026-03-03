@@ -63,6 +63,9 @@ class NativeRenderer:
         self.params = {}
         self.script_path = os.path.abspath(sys.argv[0])
         self.reload_pending = False
+        self.orbit_mouse_pos = [self.width / 2.0, self.height / 2.0]
+        self.last_mouse_pos = None
+        self.orbit_zoom = self.camera.zoom if self.camera else 1.0
 
     def _reload_script(self):
         """Dynamically reloads the user's script and updates the scene."""
@@ -212,9 +215,9 @@ class NativeRenderer:
                 cam = self.camera
                 pos = f"vec3({float(cam.position[0])}, {float(cam.position[1])}, {float(cam.position[2])})"
                 tgt = f"vec3({float(cam.target[0])}, {float(cam.target[1])}, {float(cam.target[2])})"
-                camera_logic_glsl = f"cameraStatic(st, {pos}, {tgt}, {float(cam.zoom)}, ro, rd);"
+                camera_logic_glsl = f"cameraStatic(st, {pos}, {tgt}, u_mouse.z, ro, rd);"
             else:
-                camera_logic_glsl = "cameraOrbit(st, u_mouse.xy, u_resolution, 1.0, ro, rd);"
+                camera_logic_glsl = "cameraOrbit(st, u_mouse.xy, u_resolution, u_mouse.z, ro, rd);"
 
             # Lighting
             light = self.light or Light()
@@ -331,6 +334,14 @@ class NativeRenderer:
 
         self._start_watcher()
 
+        def scroll_callback(window, xoffset, yoffset):
+            self.orbit_zoom *= (1.1 ** yoffset)
+            self.orbit_zoom = max(0.1, min(self.orbit_zoom, 50.0))
+
+        glfw.set_scroll_callback(self.window, scroll_callback)
+
+        self.last_mouse_pos = glfw.get_cursor_pos(self.window)
+
         while not glfw.window_should_close(self.window):
             if self.reload_pending:
                 self._reload_script()
@@ -342,11 +353,18 @@ class NativeRenderer:
             try: self.program['u_resolution'].value = (width, height)
             except KeyError: pass
 
+            mx, my = glfw.get_cursor_pos(self.window)
+
             if not self.camera:
-                try:
-                    mx, my = glfw.get_cursor_pos(self.window)
-                    self.program['u_mouse'].value = (mx, my, 0, 0)
-                except KeyError: pass
+                if glfw.get_mouse_button(self.window, glfw.MOUSE_BUTTON_LEFT) == glfw.PRESS:
+                    self.orbit_mouse_pos[0] += mx - self.last_mouse_pos[0]
+                    self.orbit_mouse_pos[1] += my - self.last_mouse_pos[1]
+                
+            try:
+                self.program['u_mouse'].value = (self.orbit_mouse_pos[0], self.orbit_mouse_pos[1], self.orbit_zoom, 0)
+            except KeyError: pass
+
+            self.last_mouse_pos = (mx, my)
 
             for name, value in self.uniforms.items():
                 try: self.program[name].value = float(value)

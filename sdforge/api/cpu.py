@@ -659,15 +659,48 @@ def _extrude(node, child_fn):
     return func
 
 def _revolve(node, child_fn):
-    def func(p):
-        # Revolve around Y axis. Profile defined in XY plane with X > 0.
-        # q = vec2(length(p.xz), p.y)
-        # We pass vec3(q.x, q.y, 0) to child profile function
-        q_x = np.linalg.norm(p[:, [0, 2]], axis=1)
-        q_y = p[:, 1]
-        p_profile = np.stack([q_x, q_y, np.zeros(len(p))], axis=1)
-        return child_fn(p_profile)
-    return func
+    axis = np.array(getattr(node, 'axis', [0, 1, 0]), dtype=np.float32)
+    axis_len = np.linalg.norm(axis)
+    if axis_len < 1e-6:
+        axis = np.array([0.0, 1.0, 0.0], dtype=np.float32)
+    else:
+        axis = axis / axis_len
+        
+    u_len = np.linalg.norm(axis[:2])
+    
+    # Coplanar mapping
+    if u_len > 1e-5:
+        v2d = axis[:2] / u_len
+        u2d = np.array([-v2d[1], v2d[0]], dtype=np.float32)
+        
+        def func(p):
+            h = np.dot(p, axis)
+            p_proj = h[:, None] * axis[None, :]
+            p_perp = p - p_proj
+            r = np.linalg.norm(p_perp, axis=1)
+            
+            q1_xy = h[:, None] * v2d[None, :] + r[:, None] * u2d[None, :]
+            q2_xy = h[:, None] * v2d[None, :] - r[:, None] * u2d[None, :]
+            
+            q1 = np.column_stack((q1_xy, np.zeros(len(p))))
+            q2 = np.column_stack((q2_xy, np.zeros(len(p))))
+            
+            return np.minimum(child_fn(q1), child_fn(q2))
+        return func
+        
+    # Z-Axis fallback
+    else:
+        def func(p):
+            h = np.dot(p, axis)
+            p_proj = h[:, None] * axis[None, :]
+            p_perp = p - p_proj
+            r = np.linalg.norm(p_perp, axis=1)
+            
+            q1 = np.stack([r, h, np.zeros(len(p))], axis=1)
+            q2 = np.stack([-r, h, np.zeros(len(p))], axis=1)
+            
+            return np.minimum(child_fn(q1), child_fn(q2))
+        return func
 
 def _displace_by_noise(node, child_fn):
     scale, strength = node.scale, node.strength

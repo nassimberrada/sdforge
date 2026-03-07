@@ -582,14 +582,12 @@ class SDFNode(ABC):
         from .shaping import Extrude
         return Extrude(self, height)
 
-    def revolve(self) -> 'SDFNode':
+    def revolve(self, axis=(0, 1, 0)) -> 'SDFNode':
         """
-        Revolves a 2D SDF shape around the Y-axis to create a 3D object.
+        Revolves a 2D SDF shape around an arbitrary axis to create a 3D object.
         """
         from .shaping import Revolve
-        r = Revolve()
-        r.child = self
-        return r
+        return Revolve(self, axis=axis)
 
     # --- Surface Displacement ---
     def displace(self, displacement_glsl: str, mask=None, mask_falloff=0.0) -> 'SDFNode':

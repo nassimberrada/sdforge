@@ -84,12 +84,38 @@ class Extrude(SDFNode):
         return self.to_glsl(ctx)
 
 class Revolve(SDFNode):
+    glsl_dependencies = {"shaping"}
+
+    def __init__(self, child: SDFNode, axis=(0, 1, 0)):
+        super().__init__()
+        self.child = child
+        self.axis = axis
+
     def to_glsl(self, ctx: GLSLContext) -> str:
-        revolved_p_xy = f"vec2(length({ctx.p}.xz), {ctx.p}.y)"
-        transformed_p = ctx.new_variable('vec3', f"vec3({revolved_p_xy}, 0.0)")
-        sub_ctx = ctx.with_p(transformed_p)
-        child_var = self.child.to_profile_glsl(sub_ctx)
-        ctx.merge_from(sub_ctx)
-        return child_var
+        ctx.dependencies.update(self.glsl_dependencies)
+        
+        if hasattr(self.axis, 'to_glsl'):
+            axis_str = self.axis.to_glsl(ctx)
+        else:
+            axis_str = f"vec3({float(self.axis[0])}, {float(self.axis[1])}, {float(self.axis[2])})"
+
+        axis_var = ctx.new_variable("vec3", f"normalize({axis_str})")
+        
+        # Evaluate side 1
+        q1_var = ctx.new_variable('vec3', f"opRevolve({ctx.p}, {axis_var}, 1.0)")
+        sub_ctx1 = ctx.with_p(q1_var)
+        d1 = self.child.to_profile_glsl(sub_ctx1)
+        ctx.merge_from(sub_ctx1)  # Fix: Merge statements back to main context
+        
+        # Evaluate side 2
+        q2_var = ctx.new_variable('vec3', f"opRevolve({ctx.p}, {axis_var}, -1.0)")
+        sub_ctx2 = ctx.with_p(q2_var)
+        d2 = self.child.to_profile_glsl(sub_ctx2)
+        ctx.merge_from(sub_ctx2)  # Fix: Merge statements back to main context
+        
+        # Fix: Inline the union (min distance, keep associated material)
+        union_expr = f"({d1}.x < {d2}.x) ? {d1} : {d2}"
+        return ctx.new_variable('vec4', union_expr)
+
     def to_profile_glsl(self, ctx: GLSLContext) -> str:
         return self.to_glsl(ctx)

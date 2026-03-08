@@ -1,36 +1,53 @@
 import sys
 from sdforge import box, sphere, Camera
 
-def static_camera_example():
-    """
-    Returns a scene and a fixed Camera object.
-    The renderer will use this camera's position and target.
-    """
-    scene = box(1.5).round(0.1) | sphere(radius=1.2)
-    
-    # Define a camera positioned at (4, 3, 4), looking at the origin.
-    cam = Camera(position=(4, 3, 4), target=(0, 0, 0), zoom=1.5)
-    
-    return scene, cam
-
-def interactive_camera_example():
+def default_camera_example():
     """
     Returns only a scene.
     When no camera is provided to the render function, it defaults
-    to an interactive orbit camera controlled by the mouse.
+    to a standard perspective orbit camera starting at (5, 4, 5).
     """
-    scene = box(1.5).round(0.1) | sphere(radius=1.2)
+    scene = box(1.5).round(0.1).color((0.2, 0.6, 1.0)) | sphere(radius=1.2).color((1.0, 0.2, 0.2))
     return scene
+
+def custom_perspective_example():
+    """
+    Returns a scene and a custom Camera object.
+    The renderer will use this camera's position and target as the starting
+    point for the interactive orbit.
+    """
+    scene = box(1.5).round(0.1).color((0.2, 0.6, 1.0)) | sphere(radius=1.2).color((1.0, 0.2, 0.2))
+    
+    # Define a camera positioned far away and low to the ground
+    cam = Camera(position=(8, 1, 8), target=(0, 0, 0), zoom=2.0, type='perspective')
+    
+    return scene, cam
+
+def isometric_camera_example():
+    """
+    Returns a scene and an Orthographic Camera object.
+    Because the default camera position is (5, 4, 5), simply setting the type 
+    to 'orthographic' creates a perfect classic isometric projection!
+    (You can still orbit it with the mouse).
+    """
+    scene = box(1.5).round(0.1).color((0.2, 0.6, 1.0)) | sphere(radius=1.2).color((1.0, 0.2, 0.2))
+    
+    # Create an isometric camera
+    cam = Camera(type='orthographic', zoom=1.5)
+    
+    return scene, cam
 
 def main():
     """
     Renders an example based on a command-line argument.
     """
     print("--- SDForge Camera Examples ---")
+    print("Note: All cameras are interactive! Click and drag to orbit.")
     
     examples = {
-        "static": static_camera_example,
-        "interactive": interactive_camera_example,
+        "default": default_camera_example,
+        "custom": custom_perspective_example,
+        "isometric": isometric_camera_example,
     }
     
     if len(sys.argv) < 2:
@@ -60,7 +77,7 @@ def main():
         scene.render(camera=cam)
     else:
         scene = result
-        scene.render() # camera=None, defaults to interactive
+        scene.render() # camera=None, defaults to standard orbit
 
 if __name__ == "__main__":
     main()

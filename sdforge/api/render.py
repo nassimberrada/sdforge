@@ -63,7 +63,7 @@ class NativeRenderer:
         self.params = {}
         self.script_path = os.path.abspath(sys.argv[0])
         self.reload_pending = False
-        self.orbit_mouse_pos = [self.width / 2.0, self.height / 2.0]
+        self.orbit_mouse_pos = [0.0, 0.0]
         self.last_mouse_pos = None
         self.orbit_zoom = self.camera.zoom if self.camera else 1.0
 
@@ -215,9 +215,16 @@ class NativeRenderer:
                 cam = self.camera
                 pos = f"vec3({float(cam.position[0])}, {float(cam.position[1])}, {float(cam.position[2])})"
                 tgt = f"vec3({float(cam.target[0])}, {float(cam.target[1])}, {float(cam.target[2])})"
-                camera_logic_glsl = f"cameraStatic(st, {pos}, {tgt}, u_mouse.z, ro, rd);"
+                is_ortho = getattr(cam, 'type', 'perspective') == 'orthographic'
             else:
-                camera_logic_glsl = "cameraOrbit(st, u_mouse.xy, u_resolution, u_mouse.z, ro, rd);"
+                pos = "vec3(5.0, 4.0, 5.0)"
+                tgt = "vec3(0.0, 0.0, 0.0)"
+                is_ortho = False
+                
+            if is_ortho:
+                camera_logic_glsl = f"cameraOrbitOrtho(st, u_mouse.xy, u_resolution, {pos}, {tgt}, u_mouse.z, ro, rd);"
+            else:
+                camera_logic_glsl = f"cameraOrbit(st, u_mouse.xy, u_resolution, {pos}, {tgt}, u_mouse.z, ro, rd);"
 
             # Lighting
             light = self.light or Light()
@@ -355,10 +362,9 @@ class NativeRenderer:
 
             mx, my = glfw.get_cursor_pos(self.window)
 
-            if not self.camera:
-                if glfw.get_mouse_button(self.window, glfw.MOUSE_BUTTON_LEFT) == glfw.PRESS:
-                    self.orbit_mouse_pos[0] += mx - self.last_mouse_pos[0]
-                    self.orbit_mouse_pos[1] += my - self.last_mouse_pos[1]
+            if glfw.get_mouse_button(self.window, glfw.MOUSE_BUTTON_LEFT) == glfw.PRESS:
+                self.orbit_mouse_pos[0] += mx - self.last_mouse_pos[0]
+                self.orbit_mouse_pos[1] += my - self.last_mouse_pos[1]
                 
             try:
                 self.program['u_mouse'].value = (self.orbit_mouse_pos[0], self.orbit_mouse_pos[1], self.orbit_zoom, 0)

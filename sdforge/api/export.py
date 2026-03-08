@@ -95,7 +95,7 @@ void main() {{
     vec4 hit = raymarch(ro, rd);
     float t = hit.x;
     
-    vec3 color = vec3(0.1, 0.12, 0.15); // Default background color
+    vec3 color = vec3(0.0, 0.0, 0.0); // Default background color
 
     if (t > 0.0) {{
         // 3. We hit something, calculate surface properties

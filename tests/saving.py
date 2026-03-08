@@ -53,6 +53,7 @@ def test_save_frame_api(mock_render):
         watch=False,
         camera=None,
         light=None,
+        transparent=False,
     )
 
 def test_save_displaced_object_succeeds(tmp_path):

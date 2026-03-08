@@ -134,7 +134,7 @@ class SDFNode(ABC):
             for child in self.children: child._collect_uniforms(uniforms)
         if hasattr(self, 'mask') and self.mask: self.mask._collect_uniforms(uniforms)
 
-    def render(self, camera=None, light=None, debug=None, mode='auto', **kwargs):
+    def render(self, camera=None, light=None, debug=None, mode='auto', transparent=False, **kwargs):
         """
         Renders the SDF object.
 
@@ -147,10 +147,11 @@ class SDFNode(ABC):
                                   - 'window': Forces the native OpenGL window.
                                   - 'mesh': Forces static mesh generation and visualization (requires Trimesh).
                                             Useful for Colab, headless environments, or setup issues with GLFW.
+            transparent (bool, optional): Whether to render the scene with a transparent background.
             **kwargs: Additional arguments, e.g., 'samples' for mesh generation resolution.
         """
         from .render import render as render_func
-        return render_func(self, camera=camera, light=light, debug=debug, mode=mode, **kwargs)
+        return render_func(self, camera=camera, light=light, debug=debug, mode=mode, transparent=transparent, **kwargs)
 
     def save(self, path, bounds=None, samples=2**22, verbose=True, algorithm='marching_cubes', adaptive=False, octree_depth=8, vertex_colors=False, decimate_ratio=None, voxel_size=None, backend='auto'):
         """
@@ -185,7 +186,7 @@ class SDFNode(ABC):
         from . import mesh
         mesh.save(self, path, bounds, samples, verbose, algorithm, adaptive, vertex_colors, decimate_ratio, octree_depth=octree_depth, voxel_size=voxel_size, backend=backend)
 
-    def save_frame(self, path, camera=None, light=None, **kwargs):
+    def save_frame(self, path, camera=None, light=None, transparent=False, **kwargs):
         """
         Renders a single frame and saves it to an image file.
 
@@ -199,10 +200,11 @@ class SDFNode(ABC):
                                        Defaults to None (uses default view).
             light (Light, optional): A Light object to define the scene lighting.
                                      Defaults to None (uses default lighting).
+            transparent (bool, optional): Whether to render the scene with a transparent background.
             **kwargs: Additional keyword arguments passed to the renderer,
                       such as `width` and `height`.
         """
-        self.render(save_frame=path, watch=False, camera=camera, light=light, **kwargs)
+        self.render(save_frame=path, watch=False, camera=camera, light=light, transparent=transparent, **kwargs)
 
     def estimate_bounds(self, resolution=64, search_bounds=((-5, -5, -5), (5, 5, 5)), padding=0.1, verbose=True, backend='auto'):
         """

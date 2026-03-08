@@ -46,7 +46,7 @@ vec4 Scene(in vec3 p) {{
 
 class NativeRenderer:
     """A minimal renderer for displaying the raw SDF distance field."""
-    def __init__(self, sdf_obj: SDFNode, camera: Camera = None, light: Light = None, debug: Debug = None, watch=True, width=1280, height=720, **kwargs):
+    def __init__(self, sdf_obj: SDFNode, camera: Camera = None, light: Light = None, debug: Debug = None, watch=True, width=1280, height=720, transparent=False, **kwargs):
         self.sdf_obj = sdf_obj
         self.camera = camera
         self.light = light
@@ -54,6 +54,7 @@ class NativeRenderer:
         self.watching = watch and WATCHDOG_AVAILABLE
         self.width = width
         self.height = height
+        self.transparent = transparent
         self.window = None
         self.ctx = None
         self.program = None
@@ -264,6 +265,7 @@ class NativeRenderer:
                 elif self.debug.mode != 'slice':
                     print(f"WARNING: Unknown debug mode '{self.debug.mode}'. Ignoring.")
 
+            bg_alpha = "0.0" if self.transparent else "1.0"
             fragment_shader = f"""
                 #version 330 core
                 uniform vec2 u_resolution;
@@ -286,14 +288,15 @@ class NativeRenderer:
                     vec4 hit = raymarch(ro, rd);
                     float t = hit.x;
 
-                    vec3 color = vec3(0.1, 0.12, 0.15); // Background color
                     if (t > 0.0) {{
                         vec3 p = ro + t * rd;
                         vec3 normal = estimateNormal(p);
+                        vec3 color;
                         {final_color_logic}
+                        f_color = vec4(color, 1.0);
+                    }} else {{
+                        f_color = vec4(0.0, 0.0, 0.0, {bg_alpha});
                     }}
-
-                    f_color = vec4(color, 1.0);
                 }}
             """
 
@@ -321,6 +324,9 @@ class NativeRenderer:
         if not glfw.init():
             raise RuntimeError("Could not initialize GLFW")
 
+        if self.transparent:
+            glfw.window_hint(glfw.TRANSPARENT_FRAMEBUFFER, glfw.TRUE)
+
         self.window = glfw.create_window(self.width, self.height, "SDF Forge", None, None)
         if not self.window:
             glfw.terminate()
@@ -328,8 +334,11 @@ class NativeRenderer:
         glfw.make_context_current(self.window)
 
         self.ctx = moderngl.create_context()
-        self.program = self._compile_shader()
+        if self.transparent:
+            self.ctx.enable(moderngl.BLEND)
+            self.ctx.blend_func = moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA
 
+        self.program = self._compile_shader()
         if self.program is None:
             print("FATAL: Initial shader compilation failed. Exiting.", file=sys.stderr)
             glfw.terminate()
@@ -376,12 +385,13 @@ class NativeRenderer:
                 try: self.program[name].value = float(value)
                 except KeyError: pass
 
-            # NEW: Upload Param uniforms
             for p in self.params.values():
                 try: self.program[p.uniform_name].value = p.value
                 except KeyError: pass
 
-            self.ctx.clear(0.1, 0.12, 0.15)
+            clear_alpha = 0.0 if self.transparent else 1.0
+            self.ctx.clear(0.0, 0.0, 0.0, clear_alpha)
+
             self.vao.render(mode=moderngl.TRIANGLE_STRIP)
             glfw.swap_buffers(self.window)
             glfw.poll_events()

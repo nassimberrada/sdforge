@@ -36,7 +36,7 @@ shape.render()
 ```
 
 </div>
-<div style="flex:1; min-width:220px; text-align:center; padding-bottom: 30px"> <img src="./assets/hello_forge.png" width="100%"> </div>
+<div style="flex:1;  text-align:center; padding-bottom: 30px"> <img src="./assets/hello_forge.png" width="100%"> </div>
 </div>
 
 ### Live Preview & Hot-Reloading
@@ -65,7 +65,7 @@ if __name__ == "__main__":
 ```
 
 </div>
-<div style="flex:1; min-width:220px; text-align:center; padding-bottom: 30px"> <img src="./assets/hot_reloading.png" width="100%"></div>
+<div style="flex:1;  text-align:center; padding-bottom: 30px"> <img src="./assets/hot_reloading.png" width="100%"></div>
 </div>
 
 
@@ -97,7 +97,7 @@ scene.render()
 ```
 
 </div>
-<div style="flex:1; min-width:220px; text-align:center; padding-bottom: 30px"> <img src="./assets/primitives_operations.png" width="100%"> </div>
+<div style="flex:1;  text-align:center; padding-bottom: 30px"> <img src="./assets/primitives_operations.png" width="100%"> </div>
 </div>
 
 ### Transformations & Shaping
@@ -116,7 +116,7 @@ scene.render()
 ```
 
 </div>
-<div style="flex:1; min-width:220px; text-align:center; padding-bottom: 20px"> <img src="./assets/transformations_shaping.png" width="100%"> </div>
+<div style="flex:1;  text-align:center; padding-bottom: 20px"> <img src="./assets/transformations_shaping.png" width="100%"> </div>
 </div>
 
 ### Materials
@@ -135,7 +135,7 @@ scene.render()
 ```
 
 </div>
-<div style="flex:1; min-width:220px; text-align:center; padding-bottom: 20px"> <img src="./assets/materials.png" width="100%"> </div>
+<div style="flex:1;  text-align:center; padding-bottom: 20px"> <img src="./assets/materials.png" width="100%"> </div>
 </div>
 
 ### Camera & Lighting
@@ -160,7 +160,7 @@ if __name__ == '__main__':
 ```
 
 </div>
-<div style="flex:1; min-width:220px; text-align:center; padding-bottom: 20px"> <img src="./assets/camera_lighting.png" width="100%"> </div>
+<div style="flex:1;  text-align:center; padding-bottom: 20px"> <img src="./assets/camera_lighting.png" width="100%"> </div>
 </div>
 
 ## Advanced Usage
@@ -180,7 +180,7 @@ scene.render()
 ```
 
 </div>
-<div style="flex:1; min-width:220px; text-align:center; padding-bottom: 20px"> <img src="./assets/interactive_parameters.png" width="100%"> </div>
+<div style="flex:1;  text-align:center; padding-bottom: 20px"> <img src="./assets/interactive_parameters.png" width="100%"> </div>
 </div>
 
 ### Custom GLSL with `Forge`
@@ -202,7 +202,7 @@ scene.render()
 ```
 
 </div>
-<div style="flex:1; min-width:220px; text-align:center; padding-bottom: 20px"> <img src="./assets/custom_glsl.png" width="100%"> </div>
+<div style="flex:1;  text-align:center; padding-bottom: 20px"> <img src="./assets/custom_glsl.png" width="100%"> </div>
 </div>
 
 ### Standalone GLSL Export

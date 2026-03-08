@@ -25,19 +25,25 @@ SDF Forge is a Python library for creating 3D models using Signed Distance Funct
 
 Define a simple shape and open a real-time preview window with just a few lines of code.
 
+<div style="display:flex; align-items:center; gap:24px; flex-wrap:wrap;">
+<div style="flex:1.3; min-width:300px;">
+
 ```python
 from sdforge import sphere, box
 
-# A sphere intersected with a box
 shape = sphere(1) & box(1.5)
-
-# Render a preview in a native window.
-# An interactive orbit camera is used by default.
 shape.render()
 ```
 
+</div>
+<div style="flex:1; min-width:220px; text-align:center; padding-bottom: 30px"> <img src="./assets/hello_forge.png" width="100%"> </div>
+</div>
+
 ### Live Preview & Hot-Reloading
 For an interactive workflow, wrap your scene definition in a `main()` function. When you save any changes to the file, the preview window will automatically update.
+
+<div style="display:flex; align-items:center; gap:24px; flex-wrap:wrap;">
+<div style="flex:1.3; min-width:300px;">
 
 ```python
 from sdforge import box, sphere
@@ -54,11 +60,14 @@ def main():
     return scene
 
 if __name__ == "__main__":
-    # The render() function automatically enables hot-reloading by default
-    # and looks for a `main` function in this file to call upon reload.
     scene = main()
     scene.render()
 ```
+
+</div>
+<div style="flex:1; min-width:220px; text-align:center; padding-bottom: 30px"> <img src="./assets/hot_reloading.png" width="100%"></div>
+</div>
+
 
 ### Saving to a Mesh File
 You can save any static model to an `.stl`, `.obj`, or `.glb` file. The `.save()` method uses the Marching Cubes algorithm to generate a mesh from the SDF.
@@ -66,10 +75,7 @@ You can save any static model to an `.stl`, `.obj`, or `.glb` file. The `.save()
 ```python
 from sdforge import sphere, box
 
-# A box with a sphere carved out of it
 shape = box(1.5) - sphere(1.2)
-
-# Save the model. Higher samples = more detail.
 shape.save('model.obj', samples=2**22)
 ```
 
@@ -78,62 +84,72 @@ shape.save('model.obj', samples=2**22)
 ### Primitives & Operations
 Create complex objects by starting with primitives and combining them with Python's bitwise operators: `|` for union, `&` for intersection, and `-` for difference.
 
+<div style="display:flex; align-items:center; gap:24px; flex-wrap:wrap;">
+<div style="flex:1.3; min-width:300px;">
+
 ```python
 from sdforge import sphere, box
 
-# A box with a sphere carved out of it.
 b = box(1.5)
 s = sphere(1.0)
 scene = b - s
-
 scene.render()
 ```
 
+</div>
+<div style="flex:1; min-width:220px; text-align:center; padding-bottom: 30px"> <img src="./assets/primitives_operations.png" width="100%"> </div>
+</div>
+
 ### Transformations & Shaping
 Chain methods to transform, shape, and repeat objects.
+
+<div style="display:flex; align-items:center; gap:24px; flex-wrap:wrap;">
+<div style="flex:1.3; min-width:300px;">
 
 ```python
 import numpy as np
 from sdforge import box, Y
 
-# A tall box
 b = box(size=(0.5, 2.5, 0.5))
-
-# Twist it around the Y-axis
-# The 'k' parameter controls the amount of twist.
 scene = b.twist(3.0).rotate(Y, np.pi / 4)
-
 scene.render()
 ```
+
+</div>
+<div style="flex:1; min-width:220px; text-align:center; padding-bottom: 20px"> <img src="./assets/transformations_shaping.png" width="100%"> </div>
+</div>
 
 ### Materials
 You can assign a unique color to any object or group of objects using the `.color()` method.
 
+<div style="display:flex; align-items:center; gap:24px; flex-wrap:wrap;">
+<div style="flex:1.3; min-width:300px;">
+
 ```python
 from sdforge import sphere, box
 
-# A blue sphere is subtracted from a red box.
 red_box = box(1.5).color(1.0, 0.2, 0.2)
 blue_sphere = sphere(1.0).color(0.3, 0.5, 1.0)
-    
 scene = red_box - blue_sphere
-
 scene.render()
 ```
 
+</div>
+<div style="flex:1; min-width:220px; text-align:center; padding-bottom: 20px"> <img src="./assets/materials.png" width="100%"> </div>
+</div>
+
 ### Camera & Lighting
 You can override the default interactive camera and lighting to set a static viewpoint or create specific lighting conditions by passing `Camera` and `Light` objects to the renderer.
+
+<div style="display:flex; align-items:center; gap:24px; flex-wrap:wrap;">
+<div style="flex:1.3; min-width:300px;">
 
 ```python
 from sdforge import box, sphere, Camera, Light
 
 def main():
-    scene = box(1.5) | sphere(1.2)
-    
-    # A camera positioned at (4, 3, 4), looking at the origin.
-    cam = Camera(position=(4, 3, 4), target=(0, 0, 0), zoom=1.5)
-    
-    # A light source with soft shadows
+    scene = box(1.5) | sphere(1.2)    
+    cam = Camera(position=(4, 3, 4), target=(0, 0, 0), zoom=1.5)    
     light = Light(position=(4, 5, 3), shadow_softness=16.0)
 
     return scene, cam, light
@@ -143,45 +159,51 @@ if __name__ == '__main__':
     scene.render(camera=cam, light=light)
 ```
 
+</div>
+<div style="flex:1; min-width:220px; text-align:center; padding-bottom: 20px"> <img src="./assets/camera_lighting.png" width="100%"> </div>
+</div>
+
 ## Advanced Usage
 
 ### Interactive Parameters
 Use `Param` objects to define interactive, real-time parameters for your model. A compatible UI-enabled renderer would show these as sliders. The default renderer will use their default values.
 
+<div style="display:flex; align-items:center; gap:24px; flex-wrap:wrap;">
+<div style="flex:1.3; min-width:300px;">
+
 ```python
 from sdforge import box, Param
 
-# Create Param objects to control different aspects of the scene.
-# Param(name, default_value, min_value, max_value)
 p_size = Param("Box Size", 0.8, 0.2, 2.0)
-
-# Use the Param objects just like regular numbers.
 scene = box(size=p_size)
-
 scene.render()
 ```
+
+</div>
+<div style="flex:1; min-width:220px; text-align:center; padding-bottom: 20px"> <img src="./assets/interactive_parameters.png" width="100%"> </div>
+</div>
 
 ### Custom GLSL with `Forge`
 For complex or highly-performant shapes, you can write GLSL code directly. This object integrates perfectly with the rest of the API.
 
+<div style="display:flex; align-items:center; gap:24px; flex-wrap:wrap;">
+<div style="flex:1.3; min-width:300px;">
+
 ```python
 from sdforge import sphere, Forge
 
-# A standard library primitive
 s = sphere(1.2)
-
-# A custom shape defined with GLSL
-# 'p' is the vec3 point in space
 custom_box = Forge("""
     vec3 q = abs(p) - vec3(0.8);
     return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
 """)
-
-# The Forge object can be combined like any other shape
 scene = s - custom_box
-
 scene.render()
 ```
+
+</div>
+<div style="flex:1; min-width:220px; text-align:center; padding-bottom: 20px"> <img src="./assets/custom_glsl.png" width="100%"> </div>
+</div>
 
 ### Standalone GLSL Export
 Generate a complete, self-contained GLSL fragment shader for your scene. This file can be used directly in applications like Godot, TouchDesigner, or Three.js.
@@ -190,8 +212,6 @@ Generate a complete, self-contained GLSL fragment shader for your scene. This fi
 from sdforge import box, sphere
 
 scene = box(1.5) - sphere(1.2)
-
-# This single call generates the entire shader file.
 scene.export_shader("exported_shader.glsl")
 ```
 

@@ -46,7 +46,7 @@ vec4 Scene(in vec3 p) {{
 
 class NativeRenderer:
     """A minimal renderer for displaying the raw SDF distance field."""
-    def __init__(self, sdf_obj: SDFNode, camera: Camera = None, light: Light = None, debug: Debug = None, watch=True, width=1280, height=720, transparent=False, **kwargs):
+    def __init__(self, sdf_obj: SDFNode, camera: Camera = None, light: Light = None, debug: Debug = None, watch=True, width=1280, height=720, transparent=False, save_frame=False, **kwargs):
         self.sdf_obj = sdf_obj
         self.camera = camera
         self.light = light
@@ -55,6 +55,7 @@ class NativeRenderer:
         self.width = width
         self.height = height
         self.transparent = transparent
+        self.save_frame_path = save_frame
         self.window = None
         self.ctx = None
         self.program = None
@@ -327,6 +328,9 @@ class NativeRenderer:
         if self.transparent:
             glfw.window_hint(glfw.TRANSPARENT_FRAMEBUFFER, glfw.TRUE)
 
+        if self.save_frame_path:
+            glfw.window_hint(glfw.VISIBLE, glfw.FALSE)
+
         self.window = glfw.create_window(self.width, self.height, "SDF Forge", None, None)
         if not self.window:
             glfw.terminate()
@@ -348,6 +352,53 @@ class NativeRenderer:
         self.vbo = self.ctx.buffer(vertices) # Assign to instance
         self.vao = self.ctx.simple_vertex_array(self.program, self.vbo, 'in_vert')
 
+        # --- PREPARE THE FRAME ---
+        width, height = glfw.get_framebuffer_size(self.window)
+        self.ctx.viewport = (0, 0, width, height)
+
+        try: self.program['u_resolution'].value = (width, height)
+        except KeyError: pass
+
+        try: self.program['u_mouse'].value = (self.orbit_mouse_pos[0], self.orbit_mouse_pos[1], self.orbit_zoom, 0)
+        except KeyError: pass
+
+        for name, value in self.uniforms.items():
+            try: self.program[name].value = float(value)
+            except KeyError: pass
+
+        for p in self.params.values():
+            try: self.program[p.uniform_name].value = p.value
+            except KeyError: pass
+
+        clear_alpha = 0.0 if self.transparent else 1.0
+        self.ctx.clear(0.0, 0.0, 0.0, clear_alpha)
+
+        # --- SAVE FRAME LOGIC ---
+        if self.save_frame_path:
+            try:
+                from PIL import Image
+            except ImportError:
+                print("ERROR: Saving frames requires the 'Pillow' library. Run 'pip install Pillow'.", file=sys.stderr)
+                glfw.terminate()
+                return
+            
+            # Render exactly once off-screen
+            self.vao.render(mode=moderngl.TRIANGLE_STRIP)
+            
+            # Read the raw pixels from the framebuffer
+            image_bytes = self.ctx.screen.read(components=4)
+            
+            # Convert to an Image and flip it (OpenGL renders upside-down relative to image formats)
+            img = Image.frombytes('RGBA', (width, height), image_bytes)
+            img = img.transpose(Image.FLIP_TOP_BOTTOM)
+            
+            img.save(self.save_frame_path)
+            print(f"SUCCESS: Saved frame to '{self.save_frame_path}'")
+            
+            glfw.terminate()
+            return
+
+        # --- INTERACTIVE RENDER LOOP ---
         self._start_watcher()
 
         def scroll_callback(window, xoffset, yoffset):

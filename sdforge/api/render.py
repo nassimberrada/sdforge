@@ -46,7 +46,7 @@ vec4 Scene(in vec3 p) {{
 
 class NativeRenderer:
     """A minimal renderer for displaying the raw SDF distance field."""
-    def __init__(self, sdf_obj: SDFNode, camera: Camera = None, light: Light = None, debug: Debug = None, watch=True, width=1280, height=720, transparent=False, save_frame=False, **kwargs):
+    def __init__(self, sdf_obj: SDFNode, camera: Camera = None, light: Light = None, debug: Debug = None, watch=True, width=1280, height=720, transparent=False, save_frame=False, save_frames_path=None, frames=60, fps=30, stitch_video=False, on_frame=None, **kwargs):
         self.sdf_obj = sdf_obj
         self.camera = camera
         self.light = light
@@ -56,6 +56,11 @@ class NativeRenderer:
         self.height = height
         self.transparent = transparent
         self.save_frame_path = save_frame
+        self.save_frames_path = save_frames_path
+        self.frames = frames
+        self.fps = fps
+        self.stitch_video = stitch_video
+        self.on_frame = on_frame
         self.window = None
         self.ctx = None
         self.program = None
@@ -373,27 +378,114 @@ class NativeRenderer:
         clear_alpha = 0.0 if self.transparent else 1.0
         self.ctx.clear(0.0, 0.0, 0.0, clear_alpha)
 
-        # --- SAVE FRAME LOGIC ---
-        if self.save_frame_path:
+        # --- SAVE FRAME(S) LOGIC ---
+        if self.save_frame_path or self.save_frames_path:
             try:
                 from PIL import Image
             except ImportError:
                 print("ERROR: Saving frames requires the 'Pillow' library. Run 'pip install Pillow'.", file=sys.stderr)
                 glfw.terminate()
                 return
+
+            video_writer = None
+            if self.save_frames_path and self.stitch_video:
+                try:
+                    import imageio
+                except ImportError:
+                    print("ERROR: Video stitching requires 'imageio'. Run 'pip install imageio imageio-ffmpeg'.", file=sys.stderr)
+                    glfw.terminate()
+                    return
+                
+                writer_kwargs = {'fps': self.fps}
+                ext = self.save_frames_path.lower()
+                
+                if ext.endswith('.mp4'):
+                    writer_kwargs['format'] = 'FFMPEG'
+                    writer_kwargs['pixelformat'] = 'yuv420p' 
+                elif ext.endswith('.gif'):
+                    writer_kwargs['loop'] = 0
+                elif ext.endswith('.mov'):
+                    writer_kwargs['codec'] = 'png'
+                    writer_kwargs['pixelformat'] = 'rgba'
+                elif ext.endswith('.webm'):
+                    writer_kwargs['codec'] = 'libvpx-vp9'
+                    writer_kwargs['pixelformat'] = 'yuva420p'
+                
+                try:
+                    video_writer = imageio.get_writer(self.save_frames_path, **writer_kwargs)
+                except Exception as e:
+                    print(f"ERROR: Failed to initialize video writer: {e}", file=sys.stderr)
+                    glfw.terminate()
+                    return
+
+            total_frames = self.frames if self.save_frames_path else 1
             
-            # Render exactly once off-screen
-            self.vao.render(mode=moderngl.TRIANGLE_STRIP)
-            
-            # Read the raw pixels from the framebuffer
-            image_bytes = self.ctx.screen.read(components=4)
-            
-            # Convert to an Image and flip it (OpenGL renders upside-down relative to image formats)
-            img = Image.frombytes('RGBA', (width, height), image_bytes)
-            img = img.transpose(Image.FLIP_TOP_BOTTOM)
-            
-            img.save(self.save_frame_path)
-            print(f"SUCCESS: Saved frame to '{self.save_frame_path}'")
+            for i in range(total_frames):
+                if self.save_frames_path:
+                    # Update animation state
+                    if self.on_frame:
+                        self.on_frame(i, total_frames)
+                    else:
+                        # Default Turntable
+                        self.orbit_mouse_pos[0] = (i / total_frames) * width
+                    
+                    try: self.program['u_mouse'].value = (self.orbit_mouse_pos[0], self.orbit_mouse_pos[1], self.orbit_zoom, 0)
+                    except KeyError: pass
+
+                    for name, value in self.uniforms.items():
+                        try: self.program[name].value = float(value)
+                        except KeyError: pass
+
+                    for p in self.params.values():
+                        try: self.program[p.uniform_name].value = p.value
+                        except KeyError: pass
+
+                # 1. RENDER THE FRAME
+                self.ctx.clear(0.1, 0.12, 0.15, clear_alpha)
+                self.vao.render(mode=moderngl.TRIANGLE_STRIP)
+                
+                # 2. READ THE PIXELS
+                image_bytes = self.ctx.screen.read(components=4)
+                img = Image.frombytes('RGBA', (width, height), image_bytes)
+                img = img.transpose(Image.FLIP_TOP_BOTTOM)
+                
+                # 3. SAVE OR APPEND THE FRAME
+                if self.save_frame_path:
+                    img.save(self.save_frame_path)
+                    print(f"SUCCESS: Saved frame to '{self.save_frame_path}'")
+                    
+                elif self.save_frames_path:
+                    if self.stitch_video:
+                        frame_array = np.array(img)
+                        ext = self.save_frames_path.lower()
+                        
+                        # Strip Alpha for MP4
+                        if ext.endswith('.mp4') and frame_array.shape[2] == 4:
+                            frame_array = frame_array[:, :, :3] 
+
+                        # Enforce Even Dimensions for MP4
+                        if ext.endswith('.mp4'):
+                            h_arr, w_arr = frame_array.shape[:2]
+                            if h_arr % 2 != 0: frame_array = frame_array[:-1, :, :]
+                            if w_arr % 2 != 0: frame_array = frame_array[:, :-1, :]
+                            
+                        video_writer.append_data(frame_array)
+                        print(f"Rendered frame {i+1}/{total_frames}", end='\r')
+                    else:
+                        # Save Image Sequence
+                        path_obj = Path(self.save_frames_path)
+                        stem = path_obj.stem
+                        f_ext = path_obj.suffix or '.png'
+                        out_path = path_obj.with_name(f"{stem}_{i:04d}{f_ext}")
+                        img.save(out_path)
+                        print(f"Saved {out_path}", end='\r')
+
+            # Cleanup and Exit
+            if video_writer:
+                video_writer.close()
+                print(f"\nSUCCESS: Saved video to '{self.save_frames_path}'")
+            elif self.save_frames_path:
+                print(f"\nSUCCESS: Saved {total_frames} frames to '{Path(self.save_frames_path).parent}'")
             
             glfw.terminate()
             return

@@ -206,6 +206,32 @@ class SDFNode(ABC):
         """
         self.render(save_frame=path, watch=False, camera=camera, light=light, transparent=transparent, **kwargs)
 
+    def save_frames(self, path, camera=None, light=None, transparent=False, frames=60, fps=30, stitch_video=False, on_frame=None, **kwargs):
+        """
+        Renders an animation and saves it as an image sequence or an MP4 video.
+
+        If no `on_frame` callback is provided, the camera will automatically perform
+        a perfect 360-degree turntable orbit.
+
+        Args:
+            path (str): The output path. If `stitch_video=True`, use 'output.mp4'. 
+                        Otherwise, it acts as a prefix (e.g., 'frame' saves 'frame_0000.png').
+            camera (Camera, optional): The initial camera settings.
+            light (Light, optional): The scene lighting.
+            transparent (bool): Whether the background should be transparent (PNGs only).
+            frames (int): Total number of frames to render. Defaults to 60.
+            fps (int): Frames per second (used for video). Defaults to 30.
+            stitch_video (bool): If True, stitches the frames into a video file 
+                                 (requires the 'imageio[ffmpeg]' library).
+            on_frame (callable, optional): A function `f(frame_idx, total_frames)` called 
+                                           before each frame. Use this to update `Param` 
+                                           values or camera properties dynamically.
+            **kwargs: Additional arguments like `width` and `height`.
+        """
+        self.render(save_frames_path=path, watch=False, camera=camera, light=light, 
+                    transparent=transparent, frames=frames, fps=fps, 
+                    stitch_video=stitch_video, on_frame=on_frame, **kwargs)
+
     def estimate_bounds(self, resolution=64, search_bounds=((-5, -5, -5), (5, 5, 5)), padding=0.1, verbose=True, backend='auto'):
         """
         Estimates the bounding box of the SDF object by sampling a grid.

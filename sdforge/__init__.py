@@ -9,6 +9,7 @@ from .api.primitives import (
     triangle, trapezoid, polyline, polycurve,
 )
 from .api.forge import Forge
+from .api.function import Function
 from .api.params import Param
 from .api.group import Group
 from .api.sketch import Sketch

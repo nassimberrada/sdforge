@@ -775,7 +775,7 @@ def get_callable(node, profile_mode=False):
     if node_type == 'Revolve': return _revolve(node, child_fns[0])
     if node_type == 'DisplaceByNoise': return _displace_by_noise(node, child_fns[0])
 
-    if node_type in ['Forge', 'Displace']:
+    if node_type in ['Forge', 'Displace', 'Function']:
         raise NotImplementedError(f"Node type '{node_type}' using raw GLSL strings is not supported by the CPU backend. Use backend='gpu'.")
     
     raise NotImplementedError(f"CPU implementation for '{node_type}' is not currently available.")

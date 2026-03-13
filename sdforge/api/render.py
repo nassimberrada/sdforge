@@ -46,7 +46,7 @@ vec4 Scene(in vec3 p) {{
 
 class NativeRenderer:
     """A minimal renderer for displaying the raw SDF distance field."""
-    def __init__(self, sdf_obj: SDFNode, camera: Camera = None, light: Light = None, debug: Debug = None, watch=True, width=1280, height=720, transparent=False, save_frame=False, save_frames_path=None, frames=60, fps=30, stitch_video=False, on_frame=None, **kwargs):
+    def __init__(self, sdf_obj: SDFNode, camera: Camera = None, light: Light = None, debug: Debug = None, watch=True, width=1280, height=720, transparent=False, save_frame=None, save_frames_path=None, frames=60, fps=30, stitch_video=False, on_frame=None, **kwargs):
         self.sdf_obj = sdf_obj
         self.camera = camera
         self.light = light
@@ -335,7 +335,7 @@ class NativeRenderer:
         if self.transparent:
             glfw.window_hint(glfw.TRANSPARENT_FRAMEBUFFER, glfw.TRUE)
 
-        if self.save_frame_path:
+        if self.save_frame_path or self.save_frames_path:
             glfw.window_hint(glfw.VISIBLE, glfw.FALSE)
 
         self.window = glfw.create_window(self.width, self.height, "SDF Forge", None, None)
@@ -449,7 +449,7 @@ class NativeRenderer:
                         except KeyError: pass
 
                 # 1. RENDER THE FRAME
-                self.ctx.clear(0.1, 0.12, 0.15, clear_alpha)
+                self.ctx.clear(0.0, 0.0, 0.0, clear_alpha)
                 self.vao.render(mode=moderngl.TRIANGLE_STRIP)
                 
                 # 2. READ THE PIXELS

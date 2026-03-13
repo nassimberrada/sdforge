@@ -12,6 +12,28 @@ class Expr:
     def __str__(self):
         return self.glsl_str
 
+    def __array_ufunc__(self, ufunc, method, *inputs, **kwargs):
+        """
+        Intercepts NumPy math functions (like np.sin) and converts them
+        into GLSL expression strings instead of crashing!
+        """
+        if method != '__call__':
+            return NotImplemented
+
+        # Get the name of the NumPy function (e.g., 'sin', 'cos', 'exp')
+        func_name = ufunc.__name__
+        
+        # We only support 1-argument functions right now (sin, cos, abs, etc.)
+        if len(inputs) == 1:
+            obj = inputs[0]
+            if hasattr(obj, 'to_glsl'):
+                # Wrap the GLSL string in the math function name
+                new_glsl = f"{func_name}({obj.to_glsl()})"
+                return Expr(new_glsl, obj.params)
+                
+        # If it's a multi-argument function or something weird, fail gracefully
+        return NotImplemented
+
 def _glsl_format(val):
     """Formats a Python value for injection into a GLSL string."""
     if hasattr(val, 'to_glsl'):

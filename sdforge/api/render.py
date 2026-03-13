@@ -194,6 +194,7 @@ class NativeRenderer:
                 #version 330 core
                 uniform vec2 u_resolution;
                 uniform vec4 u_mouse;
+                uniform float u_time;
                 {custom_uniforms_glsl}
                 {material_struct_glsl}
                 {material_uniform_glsl}
@@ -276,6 +277,7 @@ class NativeRenderer:
                 #version 330 core
                 uniform vec2 u_resolution;
                 uniform vec4 u_mouse;
+                uniform float u_time;
                 {custom_uniforms_glsl}
                 {material_struct_glsl}
                 {material_uniform_glsl}
@@ -422,6 +424,12 @@ class NativeRenderer:
             
             for i in range(total_frames):
                 if self.save_frames_path:
+
+                     # Calculate current animation time based on frame index and fps
+                    current_time = i / self.fps 
+                    try: self.program['u_time'].value = current_time
+                    except KeyError: pass
+
                     # Update animation state
                     if self.on_frame:
                         self.on_frame(i, total_frames)
@@ -498,14 +506,22 @@ class NativeRenderer:
             self.orbit_zoom = max(0.1, min(self.orbit_zoom, 50.0))
 
         glfw.set_scroll_callback(self.window, scroll_callback)
-
         self.last_mouse_pos = glfw.get_cursor_pos(self.window)
 
+        start_time = glfw.get_time()
+
         while not glfw.window_should_close(self.window):
+
             if self.reload_pending:
                 self._reload_script()
                 self.reload_pending = False
+                start_time = glfw.get_time()
 
+            # Pass the elapsed time to the shader
+            current_time = glfw.get_time() - start_time
+            try: self.program['u_time'].value = current_time
+            except KeyError: pass
+            
             width, height = glfw.get_framebuffer_size(self.window)
             self.ctx.viewport = (0, 0, width, height)
 

@@ -10,6 +10,6 @@ from .api.primitives import (
 )
 from .api.forge import Forge
 from .api.function import Function
-from .api.params import Param
+from .api.params import Param, Time
 from .api.group import Group
 from .api.sketch import Sketch

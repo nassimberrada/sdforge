@@ -33,6 +33,7 @@ class Group(SDFNode):
 
 _PROPAGATED_METHODS = [
     'translate', 'scale', 'rotate', 'orient', 'twist', 'bend',
+    'tx', 'ty', 'tz', 'rx', 'ry', 'rz',
     'repeat', 'mirror',
     'round', 'shell', 'extrude', 'revolve',
     'displace', 'displace_by_noise',

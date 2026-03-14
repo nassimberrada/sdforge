@@ -481,17 +481,30 @@ class SDFNode(ABC):
         from .transforms import Rotate
         return Rotate(self, axis, angle, mask=mask, mask_falloff=mask_falloff)
 
-    def __add__(self, offset):
-        """Operator overload for translation: `shape + (x, y, z)`."""
-        return self.translate(offset)
+    # --- Ergonomic Transform Aliases ---
+    def tx(self, distance, mask=None, mask_falloff=0.0) -> 'SDFNode':
+        """Translates the object along the X axis."""
+        return self.translate((distance, 0, 0), mask=mask, mask_falloff=mask_falloff)
 
-    def __mul__(self, factor):
-        """Operator overload for uniform scaling: `shape * 2.0`."""
-        return self.scale(factor)
+    def ty(self, distance, mask=None, mask_falloff=0.0) -> 'SDFNode':
+        """Translates the object along the Y axis."""
+        return self.translate((0, distance, 0), mask=mask, mask_falloff=mask_falloff)
 
-    def __rmul__(self, factor):
-        """Operator overload for uniform scaling: `2.0 * shape`."""
-        return self.scale(factor)
+    def tz(self, distance, mask=None, mask_falloff=0.0) -> 'SDFNode':
+        """Translates the object along the Z axis."""
+        return self.translate((0, 0, distance), mask=mask, mask_falloff=mask_falloff)
+
+    def rx(self, angle: float, mask=None, mask_falloff=0.0) -> 'SDFNode':
+        """Rotates the object around the X axis."""
+        return self.rotate(X, angle, mask=mask, mask_falloff=mask_falloff)
+
+    def ry(self, angle: float, mask=None, mask_falloff=0.0) -> 'SDFNode':
+        """Rotates the object around the Y axis."""
+        return self.rotate(Y, angle, mask=mask, mask_falloff=mask_falloff)
+
+    def rz(self, angle: float, mask=None, mask_falloff=0.0) -> 'SDFNode':
+        """Rotates the object around the Z axis."""
+        return self.rotate(Z, angle, mask=mask, mask_falloff=mask_falloff)
 
     def orient(self, axis) -> 'SDFNode':
         """

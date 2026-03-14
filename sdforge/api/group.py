@@ -31,6 +31,30 @@ class Group(SDFNode):
         new_children = [getattr(child, method_name)(*args, **kwargs) for child in self.children]
         return Group(*new_children)
 
+    def distribute(self, direction, spacing=0.0):
+        """
+        Arranges the children of this group sequentially along a direction.
+        
+        Args:
+            direction (tuple or np.ndarray): Vector direction for the layout (e.g., sdforge.X).
+            spacing (float, optional): Gap between adjacent objects. Defaults to 0.0.
+        """
+        if not self.children:
+            return self
+        
+        from .utils import compute_stack_transform
+        
+        transformed_list = [self.children[0]]
+        
+        for i in range(1, len(self.children)):
+            prev_obj = transformed_list[-1]
+            curr_obj = self.children[i]
+            
+            T = compute_stack_transform(prev_obj, curr_obj, direction, spacing)
+            transformed_list.append(curr_obj.translate(T))
+            
+        return Group(*transformed_list)
+
 _PROPAGATED_METHODS = [
     'translate', 'scale', 'rotate', 'orient', 'twist', 'bend',
     'tx', 'ty', 'tz', 'rx', 'ry', 'rz',

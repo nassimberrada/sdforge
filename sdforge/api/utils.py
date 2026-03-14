@@ -1,4 +1,5 @@
 from collections.abc import Iterable
+import numpy as np
 
 class Expr:
     """Represents a GLSL expression that may contain Param objects."""
@@ -75,3 +76,49 @@ for op in ['add', 'sub', 'mul', 'truediv']:
 def _neg_expr(self):
     return Expr(f"(-{self.glsl_str})", self.params)
 setattr(Expr, "__neg__", _neg_expr)
+
+def coincident(point_a, point_b):
+    """Checks if two points are coincident within a small tolerance."""
+    return np.allclose(point_a, point_b, atol=1e-6)
+
+def midpoint(point_a: np.ndarray, point_b: np.ndarray) -> np.ndarray:
+    """Calculates the midpoint between two points."""
+    return (np.array(point_a) + np.array(point_b)) / 2.0
+
+def tangent_offset(circle_radius: float, line_direction: np.ndarray) -> np.ndarray:
+    """Calculates the offset to make a line tangent to a circle."""
+    perp_vec = np.array([-line_direction[1], line_direction[0], 0.0])
+    return perp_vec * circle_radius
+
+def compute_stack_transform(obj_fixed, obj_movable, direction, spacing=0.0):
+    """Calculates the translation vector required to stack obj_movable onto obj_fixed."""
+    direction = np.array(direction, dtype=float)
+    len_dir = np.linalg.norm(direction)
+    if len_dir == 0: raise ValueError("Direction cannot be zero.")
+    direction /= len_dir
+    
+    b_fixed = obj_fixed.estimate_bounds(verbose=False)
+    b_movable = obj_movable.estimate_bounds(verbose=False)
+    
+    min_f, max_f = np.array(b_fixed[0]), np.array(b_fixed[1])
+    min_m, max_m = np.array(b_movable[0]), np.array(b_movable[1])
+    
+    c_f = (min_f + max_f) / 2.0
+    c_m = (min_m + max_m) / 2.0
+    
+    T = c_f - c_m
+    
+    abs_dir = np.abs(direction)
+    axis_idx = np.argmax(abs_dir)
+    sign = np.sign(direction[axis_idx])
+    
+    fixed_face = max_f[axis_idx] if sign > 0 else min_f[axis_idx]
+    movable_face = min_m[axis_idx] if sign > 0 else max_m[axis_idx]
+    
+    aligned_movable_face_pos = movable_face + T[axis_idx]
+    target_pos = fixed_face + (sign * spacing)
+    
+    diff = target_pos - aligned_movable_face_pos
+    T[axis_idx] += diff
+    
+    return T

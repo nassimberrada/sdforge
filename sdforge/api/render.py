@@ -332,6 +332,8 @@ class NativeRenderer:
         if not glfw.init():
             raise RuntimeError("Could not initialize GLFW")
 
+        glfw.window_hint(glfw.VISIBLE, glfw.TRUE)
+        
         if self.transparent:
             glfw.window_hint(glfw.TRANSPARENT_FRAMEBUFFER, glfw.TRUE)
 

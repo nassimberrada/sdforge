@@ -655,3 +655,50 @@ class SDFNode(ABC):
         """
         from .noise import DisplaceByNoise
         return DisplaceByNoise(self, scale, strength, mask=mask, mask_falloff=mask_falloff)
+
+    # --- Fluent Constraints ---
+    def align_to(self, reference_point, face_normal, offset: float = 0.0) -> 'SDFNode':
+        face_normal = np.array(face_normal) / np.linalg.norm(face_normal)
+        
+        if np.allclose(Y, face_normal):
+            rotated_obj = self
+        elif np.allclose(Y, -face_normal):
+            rotated_obj = self.rotate(X, np.pi)
+        else:
+            if np.allclose(np.abs(face_normal), X):
+                rotated_obj = self.rotate(Z, -np.sign(face_normal[0]) * np.pi / 2)
+            elif np.allclose(np.abs(face_normal), Y):
+                rotated_obj = self if face_normal[1] > 0 else self.rotate(X, np.pi)
+            elif np.allclose(np.abs(face_normal), Z):
+                rotated_obj = self.rotate(X, np.sign(face_normal[2]) * np.pi / 2)
+            else:
+                raise ValueError("align_to currently only supports cardinal axis normals (X, Y, Z).")
+
+        try:
+            obj_half_size = self.height / 2.0
+        except AttributeError:
+            obj_half_size = 0.5 
+
+        translation = np.array(reference_point) + face_normal * (obj_half_size + offset)
+        return rotated_obj.translate(translation)
+
+    def place_at_angle(self, pivot_point, axis, angle_rad, distance) -> 'SDFNode':
+        return self.translate(X * distance).rotate(axis, angle_rad).translate(pivot_point)
+
+    def offset_along(self, reference_point, direction, distance) -> 'SDFNode':
+        normalized_dir = np.array(direction) / np.linalg.norm(direction)
+        destination = np.array(reference_point) + normalized_dir * distance
+        return self.translate(destination)
+
+    def bounding_box(self, padding: float = 0.0) -> 'SDFNode':
+        from .primitives import box # Local import to avoid circular dependency
+        bounds = self.estimate_bounds(verbose=False)
+        min_c, max_c = np.array(bounds[0]), np.array(bounds[1])
+        size = max_c - min_c + (2 * padding)
+        center = (min_c + max_c) / 2.0
+        return box(size=tuple(size)).translate(tuple(center))
+
+    def stack(self, other: 'SDFNode', direction, spacing: float = 0.0) -> 'SDFNode':
+        from .utils import compute_stack_transform
+        T = compute_stack_transform(self, other, direction, spacing)
+        return self | other.translate(T)

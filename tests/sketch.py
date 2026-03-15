@@ -1,9 +1,9 @@
 import numpy as np
 from sdforge import Sketch, SDFNode
-from sdforge.api.operations import Union
-from sdforge.api.render import SceneCompiler
+from sdforge.api.operations.combinations import Union
+from sdforge.api.engine.render import SceneCompiler
+from sdforge.api.primitives.geometry import Line, Bezier
 from tests.conftest import requires_glsl_validator
-from sdforge.api.primitives import Line, Bezier # Import for type checking
 
 def test_sketch_init():
     s = Sketch(start=(1, 2))

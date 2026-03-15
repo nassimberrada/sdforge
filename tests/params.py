@@ -1,5 +1,5 @@
 import pytest
-from sdforge.api.params import Param
+from sdforge.api.primitives.params import Param
 
 def test_param_init():
     p = Param("Size", 1.0, 0.0, 2.0)

@@ -27,7 +27,7 @@ def test_export_shader_includes_dependencies(tmp_path):
     with open(output_file, 'r') as f:
         content = f.read()
         # Check for function names from different library files
-        assert "sdSphere" in content # from primitives.glsl
+        assert "sdSphere" in content # from geometry.glsl
         assert "opTwist" in content  # from transforms.glsl
 
 def test_export_shader_with_param_and_forge(tmp_path):

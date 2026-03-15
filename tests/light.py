@@ -1,5 +1,5 @@
 import pytest
-from sdforge.api.light import Light
+from sdforge.api.scene.light import Light
 
 def test_light_instantiation():
     """Tests static instantiation of the Light class."""

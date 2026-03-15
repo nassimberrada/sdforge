@@ -1,5 +1,5 @@
 import pytest
-from sdforge.api.camera import Camera
+from sdforge.api.scene.camera import Camera
 
 def test_camera_instantiation_defaults():
     """Tests that the Camera initializes with correct default values."""

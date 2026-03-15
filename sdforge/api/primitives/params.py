@@ -1,18 +1,18 @@
 import uuid
-from .utils import _combine_expr, Expr
+from ..utils.helpers import _combine_expr, Expr
 
 class Param:
     """
     An interactive, real-time parameter for an SDF model.
     Can be used to bind Python variables to GLSL uniforms for animations.
     """
-    def __init__(self, default: float, name: str = None, min_val: float = None, max_val: float = None):
+    def __init__(self, name: str, default: float, min_val: float = None, max_val: float = None):
         """
         Initializes an interactive parameter.
 
         Args:
+            name (str): The display name for UI sliders.
             default (float): The initial value of the parameter.
-            name (str, optional): The display name for UI sliders.
             min_val (float, optional): The minimum value for UI sliders.
             max_val (float, optional): The maximum value for UI sliders.
         

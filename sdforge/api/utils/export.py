@@ -2,12 +2,16 @@ from pathlib import Path
 
 def _get_glsl_from_lib(rel_path: str) -> str:
     """Reads the content of a GLSL file from the library."""
+    glsl_path = Path(__file__).parent.parent / 'glsl' / rel_path
+    
+    if not glsl_path.exists():
+        glsl_path = Path(__file__).parent.parent.parent / 'glsl' / rel_path
+        
     try:
-        glsl_path = Path(__file__).parent.parent / 'glsl' / rel_path
         with open(glsl_path, 'r') as f:
             return f.read()
     except FileNotFoundError:
-        print(f"ERROR: Could not find GLSL library file: {rel_path}")
+        print(f"ERROR: Could not find GLSL library file: '{rel_path}' at {glsl_path}")
         return ""
 
 def assemble_standalone_shader(sdf_obj) -> str:
@@ -15,7 +19,7 @@ def assemble_standalone_shader(sdf_obj) -> str:
     Assembles a complete, self-contained GLSL fragment shader for an SDF object.
     The resulting shader can be used in other applications like Godot or Three.js.
     """
-    from .render import SceneCompiler
+    from ..engine.render import SceneCompiler
 
     # 1. Collect Materials, Uniforms, and Params
     materials = []

@@ -1,7 +1,7 @@
 import numpy as np
 import atexit
 import sys
-from .core import GLSLContext
+from ..core import GLSLContext
 from .loader import get_glsl_definitions
 
 class HeadlessContext:

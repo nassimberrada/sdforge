@@ -1,9 +1,9 @@
 import pytest
 import numpy as np
-from sdforge.api.primitives import *
-from sdforge.api.shaping import Round
-from examples.primitives import *
-from sdforge.api.render import SceneCompiler
+from sdforge.api.primitives.geometry import *
+from sdforge.api.operations.shaping import Round
+from sdforge.api.engine.render import SceneCompiler
+from examples.geometry import *
 from tests.conftest import requires_glsl_validator
 
 
@@ -202,13 +202,13 @@ PRIMITIVE_TEST_CASES = [
 @pytest.mark.usefixtures("assert_equivalence")
 @pytest.mark.parametrize("sdf_obj", PRIMITIVE_TEST_CASES, ids=[type(p).__name__ for p in PRIMITIVE_TEST_CASES])
 def test_primitive_equivalence(assert_equivalence, sdf_obj):
-    """Tests numeric equivalence between Python and GLSL for all primitives."""
+    """Tests numeric equivalence between Python and GLSL for all geometry."""
     assert_equivalence(sdf_obj)
 
 @requires_glsl_validator
 @pytest.mark.parametrize("sdf_obj", PRIMITIVE_TEST_CASES, ids=[type(p).__name__ for p in PRIMITIVE_TEST_CASES])
 def test_primitive_glsl_compiles(validate_glsl, sdf_obj):
-    """Tests that the GLSL generated for all primitives is syntactically valid."""
+    """Tests that the GLSL generated for all geometry is syntactically valid."""
     scene_code = SceneCompiler().compile(sdf_obj)
     validate_glsl(scene_code)
 

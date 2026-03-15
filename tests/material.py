@@ -1,5 +1,5 @@
 import pytest
-from sdforge.api.material import Material
+from sdforge.api.scene.material import Material
 from sdforge import sphere, box
 from sdforge.api.core import GLSLContext, SDFNode
 

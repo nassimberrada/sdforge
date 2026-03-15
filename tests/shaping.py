@@ -1,8 +1,8 @@
 import pytest
 import numpy as np
 from sdforge import sphere, box, circle, rectangle, X
-from sdforge.api.render import SceneCompiler
-from tests.conftest import requires_glsl_validator
+from sdforge.api.engine.render import SceneCompiler
+from tests.conftest import requires_glsl_validator, HEADLESS_SUPPORTED
 
 # --- Callable Tests ---
 
@@ -59,6 +59,47 @@ def test_revolve_callable():
     expected = prof_callable(points_2d)
     assert np.allclose(rev_callable(points_3d), expected, atol=1e-4)
 
+def test_displace_api():
+    """Tests the API and GLSL generation for generic displacement."""
+    s = sphere(radius=1.0).displace("p.x * 0.1")
+    scene_code = SceneCompiler().compile(s)
+    assert "opDisplace" in scene_code
+    assert "p.x * 0.1" in scene_code
+
+def test_displace_with_mask_glsl():
+    """Tests that displacement with mask generates mix logic."""
+    mask = box(1.0)
+    s = sphere(radius=1.0).displace("0.1", mask=mask, mask_falloff=0.2)
+    scene_code = SceneCompiler().compile(s)
+    assert "smoothstep" in scene_code
+    assert "* (1.0 - smoothstep" in scene_code
+
+def test_displace_by_noise_api():
+    """Tests the API and GLSL generation for noise displacement."""
+    s = sphere(radius=1.0).displace_by_noise(scale=5.0, strength=0.2)
+    scene_code = SceneCompiler().compile(s)
+    assert "opDisplace" in scene_code
+    assert "snoise" in scene_code
+    assert "p * 5.0" in scene_code
+    assert "* 0.2" in scene_code
+
+# --- Callable Tests ---
+
+@pytest.mark.skipif(not HEADLESS_SUPPORTED, reason="Requires moderngl.")
+def test_displace_by_noise_callable_works(headless_env):
+    """
+    Ensures that noise displacement works on the GPU backend.
+    """
+    s = sphere(1.0).displace_by_noise(scale=1.0, strength=0.5)
+    try:
+        evaluator = s.to_callable()
+        points = np.zeros((1, 3))
+        res = evaluator(points)
+        assert res.shape == (1,)
+        assert np.isfinite(res[0])
+    except TypeError:
+        pytest.fail("DisplaceByNoise.to_callable() raised TypeError, but should work on GPU.")
+
 # --- Equivalence and Compilation Tests ---
 
 SHAPING_TEST_CASES = [
@@ -66,9 +107,12 @@ SHAPING_TEST_CASES = [
     sphere(radius=1.0).shell(0.05),
     circle(radius=1.0).extrude(0.5),
     rectangle(size=(0.5, 1.0)).translate(X * 1.0).revolve(),
-    # Masked Shaping
     box(1.0).round(0.1, mask=sphere(0.5)),
     sphere(1.0).shell(0.1, mask=box(1.0), mask_falloff=0.1),
+    sphere(radius=1.0).displace("sin(p.y * 10.0) * 0.1"),
+    sphere(radius=1.0).displace("0.1", mask=box(0.5)),
+    sphere(radius=1.0).displace_by_noise(),
+    sphere(radius=1.0).displace_by_noise(mask=box(0.5)),
 ]
 
 @pytest.mark.usefixtures("assert_equivalence")

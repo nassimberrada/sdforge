@@ -1,6 +1,6 @@
 import uuid
 import numpy as np
-from .core import SDFNode, GLSLContext
+from ..core import SDFNode, GLSLContext
 
 class Forge(SDFNode):
     """

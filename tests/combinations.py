@@ -1,17 +1,17 @@
 import pytest
 import numpy as np
 from sdforge import sphere, box, SDFNode
-from sdforge.api.render import SceneCompiler
+from sdforge.api.engine.render import SceneCompiler
 from sdforge.api.core import GLSLContext
 from tests.conftest import requires_glsl_validator
-from examples.operations import (
+from examples.combinations import (
     union_example,
     intersection_example,
     difference_example,
     smooth_union_example,
     morphing_example,
 )
-from sdforge.api.operations import Union, Intersection, Difference, Morph
+from sdforge.api.operations.combinations import Union, Intersection, Difference, Morph
 
 @pytest.fixture
 def shapes():

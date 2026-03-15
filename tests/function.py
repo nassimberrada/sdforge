@@ -1,5 +1,5 @@
 import pytest
-from sdforge.api.function import Function
+from sdforge.api.primitives.function import Function
 from sdforge.api.core import GLSLContext
 
 class MockCompiler:

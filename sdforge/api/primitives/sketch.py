@@ -1,7 +1,7 @@
 import numpy as np
-from .primitives import line, curve
-from .operations import Union
-from .core import SDFNode
+from .geometry import line, curve
+from ..operations.combinations import Union
+from ..core import SDFNode
 
 class Sketch:
     """
@@ -115,7 +115,7 @@ class Sketch:
                 nodes.append(curve(seg['start'], seg['control'], seg['end'], radius=stroke_radius))
 
         if not nodes:
-            from ..api.primitives import sphere
+            from .primitives.geometry import sphere
             return sphere(0).translate((1e5, 0, 0))
 
         return Union(nodes)

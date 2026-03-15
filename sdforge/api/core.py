@@ -2,7 +2,6 @@ import numpy as np
 import sys
 from abc import ABC, abstractmethod
 
-# Cardinal axis constants
 X, Y, Z = np.array([1,0,0]), np.array([0,1,0]), np.array([0,0,1])
 
 class GLSLContext:
@@ -50,8 +49,8 @@ class SDFNode(ABC):
         self.mask = None
 
     def _collect_params(self, params: dict):
-        from .params import Param
-        from .utils import Expr
+        from .primitives.params import Param
+        from .utils.helpers import Expr
         for attr_name in dir(self):
             if attr_name.startswith('_') or attr_name in ['child', 'children', 'mask']: continue
             try:
@@ -107,7 +106,7 @@ class SDFNode(ABC):
     def _resolve_callable(self, backend, profile_mode):
         if backend == 'auto':
             try:
-                from . import gpu
+                from .engine import gpu
                 if gpu.HeadlessContext.get():
                     backend = 'gpu'
                 else:
@@ -116,11 +115,11 @@ class SDFNode(ABC):
                 backend = 'cpu'
 
         if backend == 'gpu':
-            from . import gpu
+            from .engine import gpu
             return gpu.get_callable(self, profile_mode=profile_mode)
         
         elif backend == 'cpu':
-            from . import cpu
+            from .engine import cpu
             if profile_mode:
                 raise NotImplementedError("CPU backend does not yet support to_profile_callable (2D logic). Use backend='gpu'.")
             return cpu.get_callable(self)
@@ -150,7 +149,7 @@ class SDFNode(ABC):
             transparent (bool, optional): Whether to render the scene with a transparent background.
             **kwargs: Additional arguments, e.g., 'samples' for mesh generation resolution.
         """
-        from .render import render as render_func
+        from .engine.render import render as render_func
         return render_func(self, camera=camera, light=light, debug=debug, mode=mode, transparent=transparent, **kwargs)
 
     def save(self, path, bounds=None, samples=2**22, verbose=True, algorithm='marching_cubes', adaptive=False, octree_depth=8, vertex_colors=False, decimate_ratio=None, voxel_size=None, backend='auto'):
@@ -183,7 +182,7 @@ class SDFNode(ABC):
             if verbose: print("INFO: No bounds provided to .save(), estimating automatically.", file=sys.stderr)
             bounds = self.estimate_bounds(verbose=verbose, backend=backend)
 
-        from . import mesh
+        from .engine import mesh
         mesh.save(self, path, bounds, samples, verbose, algorithm, adaptive, vertex_colors, decimate_ratio, octree_depth=octree_depth, voxel_size=voxel_size, backend=backend)
 
     def save_frame(self, path, camera=None, light=None, transparent=False, **kwargs):
@@ -236,7 +235,7 @@ class SDFNode(ABC):
         """
         Estimates the bounding box of the SDF object by sampling a grid.
         """
-        from .mesh import _cartesian_product
+        from .engine.mesh import _cartesian_product
         if verbose: print(f"INFO: Estimating bounds with {resolution**3} samples ({backend})...", file=sys.stderr)
 
         sdf_callable = self.to_callable(backend=backend)
@@ -272,7 +271,7 @@ class SDFNode(ABC):
         Args:
             path (str): The file path to save the GLSL shader to (e.g., 'my_scene.glsl').
         """
-        from .export import assemble_standalone_shader
+        from .utils.export import assemble_standalone_shader
         shader_code = assemble_standalone_shader(self)
         with open(path, 'w') as f: f.write(shader_code)
         print(f"SUCCESS: Shader exported to '{path}'.")
@@ -296,7 +295,7 @@ class SDFNode(ABC):
             mask (SDFNode, optional): A mask to limit the blending strength.
             mask_falloff (float, optional): Smoothness of the mask transition.
         """
-        from .operations import Union
+        from .operations.combinations import Union
         return Union(children=[self] + list(others), blend=blend, blend_type=blend_type, mask=mask, mask_falloff=mask_falloff)
 
     def intersection(self, *others, blend: float = 0.0, blend_type: str = 'smooth', mask: 'SDFNode' = None, mask_falloff: float = 0.0) -> 'SDFNode':
@@ -311,7 +310,7 @@ class SDFNode(ABC):
             mask (SDFNode, optional): A mask to limit the blending strength.
             mask_falloff (float, optional): Smoothness of the mask transition.
         """
-        from .operations import Intersection
+        from .operations.combinations import Intersection
         return Intersection(children=[self] + list(others), blend=blend, blend_type=blend_type, mask=mask, mask_falloff=mask_falloff)
 
     def difference(self, other, blend: float = 0.0, blend_type: str = 'smooth', mask: 'SDFNode' = None, mask_falloff: float = 0.0) -> 'SDFNode':
@@ -326,7 +325,7 @@ class SDFNode(ABC):
             mask (SDFNode, optional): A mask to limit the blending strength.
             mask_falloff (float, optional): Smoothness of the mask transition.
         """
-        from .operations import Difference
+        from .operations.combinations import Difference
         return Difference(self, other, blend=blend, blend_type=blend_type, mask=mask, mask_falloff=mask_falloff)
 
     def morph(self, other, factor: float = 0.5, mask: 'SDFNode' = None, mask_falloff: float = 0.0) -> 'SDFNode':
@@ -340,7 +339,7 @@ class SDFNode(ABC):
             mask (SDFNode, optional): A mask to limit where the morphing occurs.
             mask_falloff (float, optional): Smoothness of the mask transition.
         """
-        from .operations import Morph
+        from .operations.combinations import Morph
         return Morph(self, other, factor=factor, mask=mask, mask_falloff=mask_falloff)
 
     def __or__(self, other):
@@ -355,77 +354,6 @@ class SDFNode(ABC):
         """Operator overload for a simple difference: `shape1 - shape2`."""
         return self.difference(other)
 
-    # --- Fluent Constraints ---
-    def align_to(self, reference_point, face_normal, offset: float = 0.0) -> 'SDFNode':
-        """
-        Aligns the object's primary axis (Y) to a specific face normal at a target point.
-
-        Args:
-            reference_point (tuple or np.ndarray): The point on the target face where the object
-                                                   will be placed.
-            face_normal (tuple or np.ndarray): The normal vector of the target face (e.g., `sdforge.X`).
-                                               Currently supports cardinal axes.
-            offset (float, optional): An additional distance to move the object along the normal.
-                                      Defaults to 0.0.
-        """
-        from .constraints import align_to_face
-        return align_to_face(self, reference_point, face_normal, offset)
-
-    def place_at_angle(self, pivot_point, axis, angle_rad, distance) -> 'SDFNode':
-        """
-        Places the object at a specific angle and distance from a pivot point.
-
-        Args:
-            pivot_point (tuple or np.ndarray): The center of rotation.
-            axis (tuple or np.ndarray): The axis of rotation (e.g., `sdforge.Y`).
-            angle_rad (float): The angle in radians to rotate the object around the pivot.
-            distance (float): The radial distance from the pivot point to place the object.
-        """
-        from .constraints import place_at_angle
-        return place_at_angle(self, pivot_point, axis, angle_rad, distance)
-
-    def offset_along(self, reference_point, direction, distance) -> 'SDFNode':
-        """
-        Translates the object relative to a reference point along a specific direction vector.
-
-        Args:
-            reference_point (tuple or np.ndarray): The starting point for the calculation.
-            direction (tuple or np.ndarray): The direction vector (will be normalized).
-            distance (float): The distance to move along the direction vector.
-        """
-        from .constraints import offset_along
-        return offset_along(self, reference_point, direction, distance)
-
-    def bounding_box(self, padding: float = 0.0) -> 'SDFNode':
-        """
-        Creates a new box primitive that completely encloses this object.
-
-        Args:
-            padding (float, optional): Extra space to add to all sides of the bounding box.
-                                       Defaults to 0.0.
-        """
-        from .constraints import bounding_box
-        return bounding_box(self, padding)
-
-    def stack(self, other: 'SDFNode', direction, spacing: float = 0.0) -> 'SDFNode':
-        """
-        Stacks the `other` object onto `self` along the given direction.
-        
-        This method automatically estimates the bounding boxes of both objects,
-        aligns their centers on the plane perpendicular to the direction, and
-        places `other` such that it touches `self` (plus spacing).
-
-        Args:
-            other (SDFNode): The object to be stacked onto this one.
-            direction (tuple): The vector direction of the stack (e.g., (0,1,0) to stack on top).
-            spacing (float, optional): The gap between the objects. Defaults to 0.0.
-
-        Returns:
-            SDFNode: A union of self and the transformed other.
-        """
-        from .constraints import stack
-        return stack(self, other, direction, spacing)
-
     # --- Material ---
     def color(self, r, g=None, b=None, mask: 'SDFNode' = None) -> 'SDFNode':
         """
@@ -438,7 +366,7 @@ class SDFNode(ABC):
             mask (SDFNode, optional): A mask defining where to apply this color.
                                       The color applies where the mask is < 0 (inside).
         """
-        from .material import Material
+        from .scene.material import Material
         if isinstance(r, (list, tuple, np.ndarray)):
             return Material(self, tuple(r), mask=mask)
         return Material(self, (r, g, b), mask=mask)
@@ -453,7 +381,7 @@ class SDFNode(ABC):
             mask (SDFNode, optional): An SDF defining the region where the transform applies.
             mask_falloff (float, optional): The smoothing distance for the mask edge.
         """
-        from .transforms import Translate
+        from .operations.transforms import Translate
         return Translate(self, offset, mask=mask, mask_falloff=mask_falloff)
 
     def scale(self, factor, mask=None, mask_falloff=0.0) -> 'SDFNode':
@@ -465,7 +393,7 @@ class SDFNode(ABC):
             mask (SDFNode, optional): An SDF defining the region where the transform applies.
             mask_falloff (float, optional): The smoothing distance for the mask edge.
         """
-        from .transforms import Scale
+        from .operations.transforms import Scale
         return Scale(self, factor, mask=mask, mask_falloff=mask_falloff)
 
     def rotate(self, axis, angle: float, mask=None, mask_falloff=0.0) -> 'SDFNode':
@@ -478,7 +406,7 @@ class SDFNode(ABC):
             mask (SDFNode, optional): An SDF defining the region where the transform applies.
             mask_falloff (float, optional): The smoothing distance for the mask edge.
         """
-        from .transforms import Rotate
+        from .operations.transforms import Rotate
         return Rotate(self, axis, angle, mask=mask, mask_falloff=mask_falloff)
 
     # --- Ergonomic Transform Aliases ---
@@ -513,7 +441,7 @@ class SDFNode(ABC):
         Args:
             axis (str or np.ndarray): The target axis, e.g., 'x', 'y', 'z'.
         """
-        from .transforms import Orient
+        from .operations.transforms import Orient
         axis_map = {'x': X, 'y': Y, 'z': Z}
         if isinstance(axis, str) and axis.lower() in axis_map:
             axis = axis_map[axis.lower()]
@@ -528,7 +456,7 @@ class SDFNode(ABC):
             mask (SDFNode, optional): An SDF defining the region where the transform applies.
             mask_falloff (float, optional): The smoothing distance for the mask edge.
         """
-        from .transforms import Twist
+        from .operations.transforms import Twist
         return Twist(self, strength, mask=mask, mask_falloff=mask_falloff)
 
     def bend(self, axis, curvature: float, mask=None, mask_falloff=0.0) -> 'SDFNode':
@@ -541,7 +469,7 @@ class SDFNode(ABC):
             mask (SDFNode, optional): An SDF defining the region where the transform applies.
             mask_falloff (float, optional): The smoothing distance for the mask edge.
         """
-        from .transforms import Bend
+        from .operations.transforms import Bend
         return Bend(self, axis, curvature, mask=mask, mask_falloff=mask_falloff)
 
     def warp(self, frequency: float, strength: float, mask=None, mask_falloff=0.0) -> 'SDFNode':
@@ -554,7 +482,7 @@ class SDFNode(ABC):
             mask (SDFNode, optional): An SDF defining the region where the transform applies.
             mask_falloff (float, optional): The smoothing distance for the mask edge.
         """
-        from .transforms import Warp
+        from .operations.transforms import Warp
         return Warp(self, frequency, strength, mask=mask, mask_falloff=mask_falloff)
 
     def repeat(self, spacing=None, count=None, axis=None) -> 'SDFNode':
@@ -575,7 +503,7 @@ class SDFNode(ABC):
             axis (vec3, optional): The axis to rotate around. Only used in Polar mode.
                                    Defaults to Y axis (0, 1, 0).
         """
-        from .transforms import Repeat
+        from .operations.transforms import Repeat
         return Repeat(self, spacing=spacing, count=count, axis=axis)
 
     def mirror(self, axes) -> 'SDFNode':
@@ -585,7 +513,7 @@ class SDFNode(ABC):
         Args:
             axes (np.ndarray): The axes to mirror across.
         """
-        from .transforms import Mirror
+        from .operations.transforms import Mirror
         return Mirror(self, axes)
 
     # --- Shaping Operations ---
@@ -598,7 +526,7 @@ class SDFNode(ABC):
             mask (SDFNode, optional): A mask to vary the rounding radius.
             mask_falloff (float, optional): Smoothness of the mask transition.
         """
-        from .shaping import Round
+        from .operations.shaping import Round
         return Round(self, radius, mask=mask, mask_falloff=mask_falloff)
 
     def shell(self, thickness: float, mask: 'SDFNode' = None, mask_falloff: float = 0.0) -> 'SDFNode':
@@ -610,7 +538,7 @@ class SDFNode(ABC):
             mask (SDFNode, optional): A mask to vary the shell thickness.
             mask_falloff (float, optional): Smoothness of the mask transition.
         """
-        from .shaping import Shell
+        from .operations.shaping import Shell
         return Shell(self, thickness, mask=mask, mask_falloff=mask_falloff)
 
     def extrude(self, height: float) -> 'SDFNode':
@@ -620,14 +548,14 @@ class SDFNode(ABC):
         Args:
             height (float): The total height of the extrusion.
         """
-        from .shaping import Extrude
+        from .operations.shaping import Extrude
         return Extrude(self, height)
 
     def revolve(self, axis=(0, 1, 0)) -> 'SDFNode':
         """
         Revolves a 2D SDF shape around an arbitrary axis to create a 3D object.
         """
-        from .shaping import Revolve
+        from .operations.shaping import Revolve
         return Revolve(self, axis=axis)
 
     # --- Surface Displacement ---
@@ -640,7 +568,7 @@ class SDFNode(ABC):
             mask (SDFNode, optional): An SDF defining the region where the transform applies.
             mask_falloff (float, optional): The smoothing distance for the mask edge.
         """
-        from .noise import Displace
+        from .operations.shaping import Displace
         return Displace(self, displacement_glsl, mask=mask, mask_falloff=mask_falloff)
 
     def displace_by_noise(self, scale: float = 10.0, strength: float = 0.1, mask=None, mask_falloff=0.0) -> 'SDFNode':
@@ -653,7 +581,7 @@ class SDFNode(ABC):
             mask (SDFNode, optional): An SDF defining the region where the transform applies.
             mask_falloff (float, optional): The smoothing distance for the mask edge.
         """
-        from .noise import DisplaceByNoise
+        from .operations.shaping import DisplaceByNoise
         return DisplaceByNoise(self, scale, strength, mask=mask, mask_falloff=mask_falloff)
 
     # --- Fluent Constraints ---
@@ -691,7 +619,7 @@ class SDFNode(ABC):
         return self.translate(destination)
 
     def bounding_box(self, padding: float = 0.0) -> 'SDFNode':
-        from .primitives import box # Local import to avoid circular dependency
+        from .primitives.geometry import box
         bounds = self.estimate_bounds(verbose=False)
         min_c, max_c = np.array(bounds[0]), np.array(bounds[1])
         size = max_c - min_c + (2 * padding)
@@ -699,6 +627,6 @@ class SDFNode(ABC):
         return box(size=tuple(size)).translate(tuple(center))
 
     def stack(self, other: 'SDFNode', direction, spacing: float = 0.0) -> 'SDFNode':
-        from .utils import compute_stack_transform
+        from .utils.helpers import compute_stack_transform
         T = compute_stack_transform(self, other, direction, spacing)
         return self | other.translate(T)

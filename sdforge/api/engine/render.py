@@ -4,11 +4,11 @@ import time
 from pathlib import Path
 import importlib.util
 import numpy as np
-from .core import SDFNode, GLSLContext
+from ..core import SDFNode, GLSLContext
 from .loader import get_glsl_definitions
-from .camera import Camera
-from .light import Light
-from .debug import Debug
+from ..scene.camera import Camera
+from ..scene.light import Light
+from ..utils.debug import Debug
 
 try:
     from watchdog.observers import Observer

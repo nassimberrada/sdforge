@@ -1,8 +1,8 @@
 import pytest
 import numpy as np
 from sdforge import Group, sphere, box, X, Y
-from sdforge.api.operations import Union
-from sdforge.api.transforms import Translate
+from sdforge.api.operations.combinations import Union
+from sdforge.api.operations.transforms import Translate
 
 @pytest.fixture
 def shapes():

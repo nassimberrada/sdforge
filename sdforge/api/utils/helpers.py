@@ -45,7 +45,7 @@ def _glsl_format(val):
     
 def _combine_expr(a, b, op):
     """Helper to combine two values (Expr, Param, or number) into a new Expr."""
-    from .params import Param # avoid circular import
+    from ..primitives.params import Param # avoid circular import
     
     a_params = set()
     if isinstance(a, Param): a_params.add(a)

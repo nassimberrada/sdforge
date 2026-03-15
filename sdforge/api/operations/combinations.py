@@ -1,11 +1,11 @@
 import numpy as np
 from functools import reduce
-from .core import SDFNode, GLSLContext
-from .utils import _glsl_format
-from .params import Param
+from ..core import SDFNode, GLSLContext
+from ..utils.helpers import _glsl_format
+from ..primitives.params import Param
 
 class Union(SDFNode):
-    glsl_dependencies = {"operations"}
+    glsl_dependencies = {"combinations"}
     def __init__(self, children: list, blend: float = 0.0, blend_type: str = 'smooth', mask: SDFNode = None, mask_falloff: float = 0.0):
         super().__init__()
         self.children = children
@@ -48,7 +48,7 @@ class Union(SDFNode):
         return self._base_to_glsl(ctx, profile_mode=True)
 
 class Intersection(SDFNode):
-    glsl_dependencies = {"operations"}
+    glsl_dependencies = {"combinations"}
     def __init__(self, children: list, blend: float = 0.0, blend_type: str = 'smooth', mask: SDFNode = None, mask_falloff: float = 0.0):
         super().__init__()
         self.children = children
@@ -86,7 +86,7 @@ class Intersection(SDFNode):
     def to_profile_glsl(self, ctx: GLSLContext) -> str: return self._base_to_glsl(ctx, True)
 
 class Difference(SDFNode):
-    glsl_dependencies = {"operations"}
+    glsl_dependencies = {"combinations"}
     def __init__(self, a: SDFNode, b: SDFNode, blend: float = 0.0, blend_type: str = 'smooth', mask: SDFNode = None, mask_falloff: float = 0.0):
         super().__init__()
         self.a = a
@@ -129,7 +129,7 @@ class Difference(SDFNode):
         if self.mask: self.mask._collect_materials(materials)
 
 class Morph(SDFNode):
-    glsl_dependencies = {"operations"}
+    glsl_dependencies = {"combinations"}
     def __init__(self, a: SDFNode, b: SDFNode, factor: float = 0.5, mask: SDFNode = None, mask_falloff: float = 0.0):
         super().__init__()
         self.a = a

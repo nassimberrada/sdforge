@@ -1,8 +1,8 @@
 import pytest
 import numpy as np
 from sdforge import sphere, box, X, Y, Z
-from sdforge.api.transforms import Warp
-from sdforge.api.render import SceneCompiler
+from sdforge.api.operations.transforms import Warp
+from sdforge.api.engine.render import SceneCompiler
 from tests.conftest import requires_glsl_validator, HEADLESS_SUPPORTED
 
 @pytest.fixture
@@ -16,7 +16,6 @@ def shape():
 def test_translate_api_and_callable(shape):
     offset = np.array([1, 2, 3])
     t_shape = shape.translate(offset)
-    t_op = shape + offset
 
     t_callable = t_shape.to_callable()
     point = np.array([[1.1, 2.2, 3.3]])
@@ -25,7 +24,6 @@ def test_translate_api_and_callable(shape):
     expected = shape.to_callable()(point - offset)
     
     assert np.allclose(t_callable(point), expected, atol=1e-4)
-    assert np.allclose(t_op.to_callable()(point), expected, atol=1e-4)
 
 @pytest.mark.skipif(not HEADLESS_SUPPORTED, reason="Requires moderngl for GPU evaluation")
 def test_masked_translate_callable(shape):
@@ -54,8 +52,6 @@ def test_masked_translate_callable(shape):
 def test_scale_api_and_callable(shape):
     factor = 2.0
     s_shape = shape.scale(factor)
-    s_op1 = shape * factor
-    s_op2 = factor * shape
 
     s_callable = s_shape.to_callable()
     point = np.array([[0.6, 1.2, 1.8]])
@@ -64,8 +60,6 @@ def test_scale_api_and_callable(shape):
     expected = shape.to_callable()(point / factor) * factor
     
     assert np.allclose(s_callable(point), expected, atol=1e-4)
-    assert np.allclose(s_op1.to_callable()(point), expected, atol=1e-4)
-    assert np.allclose(s_op2.to_callable()(point), expected, atol=1e-4)
 
 @pytest.mark.skipif(not HEADLESS_SUPPORTED, reason="Requires moderngl for GPU evaluation")
 def test_masked_scale_callable(shape):

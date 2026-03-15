@@ -56,6 +56,20 @@ def revolve_example():
     profile = r1 | r2
     return profile.revolve()
 
+def noise_displacement_example():
+    """Applies procedural noise to the surface of a sphere."""
+    s = sphere(radius=1.2)
+    # Higher scale = finer detail, higher strength = more displacement.
+    return s.displace_by_noise(scale=8.0, strength=0.1)
+
+def sine_wave_displacement_example():
+    """Applies a custom GLSL sine wave displacement to a box."""
+    b = box(size=1.8).round(0.1)
+    # You can use any GLSL expression that returns a float.
+    # The variable 'p' represents the point in space being sampled.
+    glsl_code = "sin(p.x * 20.0) * sin(p.z * 20.0) * 0.05"
+    return b.displace(glsl_code)
+
 def main():
     """
     Renders an example based on a command-line argument.
@@ -69,6 +83,8 @@ def main():
         "masked_shell": masked_shell_example,
         "extrude": extrude_example,
         "revolve": revolve_example,
+        "noise": noise_displacement_example,
+        "wave_noise": sine_wave_displacement_example
     }
     
     if len(sys.argv) < 2:

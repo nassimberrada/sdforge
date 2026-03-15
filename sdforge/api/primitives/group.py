@@ -1,6 +1,6 @@
 import numpy as np
-from .core import SDFNode, GLSLContext
-from .operations import Union
+from ..core import SDFNode, GLSLContext
+from ..operations.combinations import Union
 
 class Group(SDFNode):
     """
@@ -42,7 +42,7 @@ class Group(SDFNode):
         if not self.children:
             return self
         
-        from .utils import compute_stack_transform
+        from ..utils.helpers import compute_stack_transform
         
         transformed_list = [self.children[0]]
         

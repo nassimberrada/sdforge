@@ -1,12 +1,12 @@
 import numpy as np
-from .core import SDFNode, GLSLContext
-from .utils import _glsl_format
-from .params import Param
+from ..core import SDFNode, GLSLContext
+from ..utils.helpers import _glsl_format
+from ..primitives.params import Param
 
 # --- Primitive Classes ---
 
 class Sphere(SDFNode):
-    glsl_dependencies = {"primitives"}
+    glsl_dependencies = {"geometry"}
     def __init__(self, radius: float = 1.0):
         super().__init__()
         self.radius = radius
@@ -25,7 +25,7 @@ def sphere(radius: float = 1.0) -> SDFNode:
     return Sphere(radius)
 
 class Box(SDFNode):
-    glsl_dependencies = {"primitives"}
+    glsl_dependencies = {"geometry"}
     def __init__(self, size: tuple = (1.0, 1.0, 1.0)):
         super().__init__()
         self.size = size
@@ -55,7 +55,7 @@ def box(size=1.0) -> SDFNode:
     return Box(size=tuple(size))
 
 class HexPrism(SDFNode):
-    glsl_dependencies = {"primitives"}
+    glsl_dependencies = {"geometry"}
     def __init__(self, radius: float = 1.0, height: float = 1.0):
         super().__init__()
         self.radius = radius
@@ -78,7 +78,7 @@ def hex_prism(radius: float = 1.0, height: float = 1.0) -> SDFNode:
     return HexPrism(radius, height)
 
 class Pyramid(SDFNode):
-    glsl_dependencies = {"primitives"}
+    glsl_dependencies = {"geometry"}
     def __init__(self, height: float = 1.0):
         super().__init__()
         self.height = height
@@ -97,7 +97,7 @@ def pyramid(height: float = 1.0) -> SDFNode:
     return Pyramid(height)
 
 class Torus(SDFNode):
-    glsl_dependencies = {"primitives"}
+    glsl_dependencies = {"geometry"}
     def __init__(self, radius_major: float = 1.0, radius_minor: float = 0.25):
         super().__init__()
         self.radius_major, self.radius_minor = radius_major, radius_minor
@@ -117,7 +117,7 @@ def torus(radius_major: float = 1.0, radius_minor: float = 0.25) -> SDFNode:
     return Torus(radius_major, radius_minor)
 
 class Line(SDFNode):
-    glsl_dependencies = {"primitives"}
+    glsl_dependencies = {"geometry"}
     def __init__(self, start, end, radius: float = 0.1, rounded_caps: bool = True):
         super().__init__()
         self.start, self.end, self.radius = np.array(start), np.array(end), radius
@@ -155,7 +155,7 @@ def line(start, end, radius: float = 0.1, rounded_caps: bool = True) -> SDFNode:
     return Line(start, end, radius, rounded_caps)
 
 class Polyline(SDFNode):
-    glsl_dependencies = {"primitives", "operations"}
+    glsl_dependencies = {"geometry", "operations"}
     def __init__(self, points, radius: float = 0.1, closed: bool = False):
         super().__init__()
         self.points = np.array(points)
@@ -215,7 +215,7 @@ def polyline(points, radius: float = 0.1, closed: bool = False) -> SDFNode:
     return Polyline(points, radius, closed)
 
 class Polycurve(SDFNode):
-    glsl_dependencies = {"primitives", "operations"}
+    glsl_dependencies = {"geometry", "operations"}
     def __init__(self, points, radius: float = 0.1, closed: bool = False):
         super().__init__()
         self.points = np.array(points)
@@ -293,7 +293,7 @@ def polycurve(points, radius: float = 0.1, closed: bool = False) -> SDFNode:
     return Polycurve(points, radius, closed)
 
 class Bezier(SDFNode):
-    glsl_dependencies = {"primitives"}
+    glsl_dependencies = {"geometry"}
     def __init__(self, p0, p1, p2, radius: float = 0.1):
         super().__init__()
         self.p0, self.p1, self.p2 = np.array(p0), np.array(p1), np.array(p2)
@@ -327,7 +327,7 @@ def curve(p0, p1, p2, radius: float = 0.1) -> SDFNode:
     return Bezier(p0, p1, p2, radius)
 
 class Cylinder(SDFNode):
-    glsl_dependencies = {"primitives"}
+    glsl_dependencies = {"geometry"}
     def __init__(self, radius: float = 0.5, height: float = 1.0):
         super().__init__()
         self.radius, self.height = radius, height
@@ -348,7 +348,7 @@ def cylinder(radius: float = 0.5, height: float = 1.0) -> SDFNode:
     return Cylinder(radius, height)
 
 class Cone(SDFNode):
-    glsl_dependencies = {"primitives"}
+    glsl_dependencies = {"geometry"}
     def __init__(self, height: float = 1.0, radius_base: float = 0.5, radius_top: float = 0.0):
         super().__init__()
         self.height, self.radius_base, self.radius_top = height, radius_base, radius_top
@@ -374,7 +374,7 @@ def cone(height: float = 1.0, radius_base: float = 0.5, radius_top: float = 0.0)
     return Cone(height, radius_base, radius_top)
 
 class Plane(SDFNode):
-    glsl_dependencies = {"primitives"}
+    glsl_dependencies = {"geometry"}
     def __init__(self, normal, point=(0,0,0)):
         super().__init__()
         self.normal = np.array(normal)
@@ -398,7 +398,7 @@ def plane(normal, point=(0,0,0)) -> SDFNode:
     return Plane(normal, point)
 
 class Octahedron(SDFNode):
-    glsl_dependencies = {"primitives"}
+    glsl_dependencies = {"geometry"}
     def __init__(self, size: float = 1.0):
         super().__init__()
         self.size = size
@@ -419,7 +419,7 @@ def octahedron(size: float = 1.0) -> SDFNode:
     return Octahedron(size)
 
 class Ellipsoid(SDFNode):
-    glsl_dependencies = {"primitives"}
+    glsl_dependencies = {"geometry"}
     def __init__(self, radii: tuple = (1.0, 0.5, 0.5)):
         super().__init__()
         self.radii = np.array(radii)
@@ -439,7 +439,7 @@ def ellipsoid(radii=(1.0, 0.5, 0.5)) -> SDFNode:
     return Ellipsoid(tuple(radii))
     
 class Circle(SDFNode):
-    glsl_dependencies = {"primitives"}
+    glsl_dependencies = {"geometry"}
     def __init__(self, radius: float = 1.0):
         super().__init__()
         self.radius = radius
@@ -464,7 +464,7 @@ def circle(radius: float = 1.0) -> SDFNode:
     return Circle(radius)
 
 class Rectangle(SDFNode):
-    glsl_dependencies = {"primitives"}
+    glsl_dependencies = {"geometry"}
     def __init__(self, size: tuple = (1.0, 1.0)):
         super().__init__()
         self.size = np.array(size)
@@ -493,7 +493,7 @@ def rectangle(size=1.0) -> SDFNode:
     return Rectangle(tuple(size))
 
 class Triangle(SDFNode):
-    glsl_dependencies = {"primitives"}
+    glsl_dependencies = {"geometry"}
     def __init__(self, radius: float = 1.0):
         super().__init__()
         self.radius = radius
@@ -516,7 +516,7 @@ def triangle(radius: float = 1.0) -> SDFNode:
     return Triangle(radius)
 
 class Trapezoid(SDFNode):
-    glsl_dependencies = {"primitives"}
+    glsl_dependencies = {"geometry"}
     def __init__(self, bottom_width: float = 1.0, top_width: float = 0.5, height: float = 0.5):
         super().__init__()
         self.bottom_width, self.top_width, self.height = bottom_width, top_width, height

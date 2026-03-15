@@ -1,7 +1,7 @@
 import pytest
 import numpy as np
 from sdforge import Forge, sphere
-from sdforge.api.render import SceneCompiler
+from sdforge.api.engine.render import SceneCompiler
 from tests.conftest import requires_glsl_validator, HEADLESS_SUPPORTED
 
 # --- API and Compilation Tests ---
@@ -61,7 +61,7 @@ def test_forge_callable_with_uniforms(headless_env):
 # --- GLSL Validation Tests ---
 
 forge_with_deps = Forge("sdBox(p, vec3(0.5))", uniforms={})
-forge_with_deps.glsl_dependencies.add("primitives")
+forge_with_deps.glsl_dependencies.add("geometry")
 
 FORGE_TEST_CASES = [
     Forge("length(p) - 1.0"),

@@ -1,6 +1,6 @@
 import uuid
-from .core import SDFNode, GLSLContext
-from .utils import _glsl_format
+from ..core import SDFNode, GLSLContext
+from ..utils.helpers import _glsl_format
 
 class Function(SDFNode):
     """

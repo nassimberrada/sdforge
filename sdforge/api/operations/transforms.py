@@ -1,7 +1,7 @@
 import numpy as np
-from .core import SDFNode, GLSLContext, X, Y, Z
-from .utils import _glsl_format
-from .params import Param
+from ..core import SDFNode, GLSLContext, X, Y, Z
+from ..utils.helpers import _glsl_format
+from ..primitives.params import Param
 
 class _Transform(SDFNode):
     """Base class for transforms to reduce boilerplate."""
